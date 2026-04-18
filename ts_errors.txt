@@ -1,0 +1,4 @@
+prisma.config.ts(12,5): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/app/layout.tsx(21,18): error TS2322: Type '{ className: string; }' is not assignable to type 'IntrinsicAttributes'.
+  Property 'className' does not exist on type 'IntrinsicAttributes'.

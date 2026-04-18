@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Shop {
+  id             String        @id @default(cuid())
+  name           String
+  mobile         String
+  address        String?
+  qrCodeId       String        @unique
+  businessTypeId String?
+  businessType   BusinessType? @relation(fields: [businessTypeId], references: [id])
+  products       Product[]
+  bills          Bill[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model BusinessType {
+  id       String         @id @default(cuid())
+  name     String         @unique // e.g. "Kirana", "Tent House"
+  items    BusinessItem[]
+  shops    Shop[]
+}
+
+model BusinessItem {
+  id           String       @id @default(cuid())
+  name         String
+  baseUnit     String       // "pc", "day", "meter"
+  typeId       String
+  businessType BusinessType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  localName    String?
+  barcode      String?
+  costPrice    Float
+  baseUnit     String     // "g", "kg", "pc", "ltr", "day", "meter"
+  baseQuantity Float  // 100, 1, etc.
+  price        Float         // price for baseQuantity
+  packetWeight Float?
+  packetUnit   String?
+  imageUrl     String?
+  category     String?
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  billItems    BillItem[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Bill {
+  id            String     @id @default(cuid())
+  billNumber    String     @unique
+  date          DateTime   @default(now())
+  customerName  String?
+  customerPhone String?
+  totalAmount   Float
+  profit        Float
+  status        String     @default("UNPAID") // "PAID" or "UNPAID"
+  paymentMethod String?    // "CASH", "UPI", etc.
+  notes         String?
+  shopId        String
+  shop          Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  items         BillItem[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model BillItem {
+  id           String   @id @default(cuid())
+  billId       String
+  bill         Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  productId    String?
+  product      Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name         String
+  quantity     Float
+  unit         String
+  sellingPrice Float
+  costPrice    Float
+  total        Float
+}

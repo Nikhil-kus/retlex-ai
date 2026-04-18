@@ -1,0 +1,1 @@
+fetch("http://localhost:3000/api/vision/ocr", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shopId: "cm6kzzp7b0000a6gwaig37a28", imageBase64: "data:image/jpeg;base64,/9j/4AAQSk" }) }) .then(res => res.json()) .then(res => console.log("JSON RESULT:", res)) .catch(err => console.error(err));
