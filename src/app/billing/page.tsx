@@ -478,85 +478,21 @@ export default function BillingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, shopId: shop.id })
       });
+      const data = await res.json();
+
       if (!res.ok) {
-        setReviewItems([{ name: `Engine Error: Server failed`, quantity: 0, unit: '', price: 0, productId: null, isRepeated: false }]);
+        setReviewItems([{ name: `Engine Error: ${data.error || 'Server failed'}`, quantity: 0, unit: '', price: 0, productId: null, isRepeated: false }]);
         setIsReviewing(true);
         setIsProcessing(false);
         return;
       }
-      
-      if (!res.body) return;
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-
-      // Clear the slate and open the container immediately so it builds live visually
-      setReviewItems([]);
-      setIsReviewing(true);
-
-      let buffer = "";
-      const seenFrontendItems = new Set(); // DEDUPLICATION (VERY IMPORTANT)
-
-      while (true) {
-        let readResult;
-        let frontendTimer: any;
-        try {
-            // TIMEOUT PROTECTION
-            const timeoutPromise = new Promise((_, reject) => {
-                frontendTimer = setTimeout(() => reject(new Error("Stream timeout")), 90000);
-            });
-            readResult = await Promise.race([ reader.read(), timeoutPromise ]);
-            clearTimeout(frontendTimer);
-        } catch (timeoutError) {
-            if (frontendTimer) clearTimeout(frontendTimer);
-            console.warn("Stream read timed out gracefully.");
-            break;
-        }
-
-        const { done, value } = readResult as any;
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Safely parse chunks using newline delimiters since edge streams might merge multiple strings in one buffer payload
-        let boundary = buffer.indexOf('\n');
-        while (boundary !== -1) {
-           const chunkStr = buffer.slice(0, boundary).trim();
-           buffer = buffer.slice(boundary + 1);
-
-           if (chunkStr) {
-               // 1. SAFE JSON PARSING & 6. FRONTEND SAFETY
-              try {
-                  const parsed = JSON.parse(chunkStr);
-                  if (parsed.item) {
-                     const itemKey = `${parsed.item.productId || parsed.item.name}_${parsed.item.quantity}`.toLowerCase();
-                     // 3. DEDUPLICATION (frontend validation)
-                     if (!seenFrontendItems.has(itemKey)) {
-                         seenFrontendItems.add(itemKey);
-                         // Append item live row by row (7. ERROR RESILIENCE - state is preserved)
-                         setReviewItems(prev => [...prev, parsed.item]);
-                     }
-                  }
-              } catch(e) {
-                  // If JSON is incomplete -> DO NOT crash. Skip chunk.
-                  console.warn("Skipping unparseable chunk fragment");
-              }
-           }
-           boundary = buffer.indexOf('\n');
-        }
-      }
-
-      // 4. FALLBACK HANDLING
-      if (buffer.trim().startsWith('{') && buffer.trim().endsWith('}')) {
-          try {
-              const fallbackParsed = JSON.parse(buffer.trim());
-              if (fallbackParsed.item) {
-                  const itemKey = `${fallbackParsed.item.productId || fallbackParsed.item.name}_${fallbackParsed.item.quantity}`.toLowerCase();
-                  if (!seenFrontendItems.has(itemKey)) setReviewItems(prev => [...prev, fallbackParsed.item]);
-              }
-          } catch (e) {
-              // Discard safely
-          }
+      if (data.items && data.items.length > 0) {
+        setReviewItems(data.items);
+        setIsReviewing(true);
+      } else {
+        setReviewItems([{ name: `Error: Could not detect any text/items in this image`, quantity: 0, unit: '', price: 0, productId: null, isRepeated: false }]);
+        setIsReviewing(true);
       }
     } catch (err: any) {
       setReviewItems([{ name: `Network Error: ${err.message}`, quantity: 0, unit: '', price: 0, productId: null, isRepeated: false }]);

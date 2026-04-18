@@ -12,11 +12,15 @@ export async function POST(request: Request) {
     // Claude 3 Haiku, or a custom YOLO edge model, and ask it to identify products and their counts.
     // For this MVP, we simulate a practical AI response that returns labels.
 
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API latency
+
     // Simulate AI detecting a few random items from the catalog for demo purposes
+    // We'll pick 2-3 random items from the existing catalog to show the review UI workflow correctly.
     const shuffled = [...catalog].sort(() => 0.5 - Math.random());
-    const detectedProducts = shuffled; 
+    const detectedProducts = shuffled; // 2 to 3 items 
 
     const detectedItems = detectedProducts.map(product => {
+      // Simulate that the AI found the object and we matched it to the catalog
       return {
         productId: product.id,
         name: product.name,
@@ -24,11 +28,12 @@ export async function POST(request: Request) {
         unit: product.baseUnit || "pc",
         price: product.price || 0,
         costPrice: product.costPrice,
-        confidence: 'medium', 
-        aiLabel: product.name 
+        confidence: 'medium', // Require review
+        aiLabel: product.name // The raw label the AI returned
       };
     });
 
+    // Add one unmatched item to show the fallback UI
     detectedItems.push({
       productId: null as any,
       name: "Unrecognized Blue Packet",
@@ -40,25 +45,9 @@ export async function POST(request: Request) {
       aiLabel: "Unknown Object"
     });
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        const encoder = new TextEncoder();
-        
-        for (const item of detectedItems) {
-           await new Promise(resolve => setTimeout(resolve, 600)); // Simulate AI generating each item dynamically
-           controller.enqueue(encoder.encode(JSON.stringify({ item }) + '\n'));
-        }
-        
-        controller.close();
-      }
-    });
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'application/x-ndjson',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
+    return NextResponse.json({
+      success: true,
+      items: detectedItems
     });
 
   } catch (error) {
