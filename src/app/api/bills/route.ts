@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+// import prisma from '@/lib/prisma';
 
 export async function POST(request: Request) {
   try {
@@ -8,10 +8,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const shop = await prisma.shop.findUnique({
-      where: { id: data.shopId },
-      include: { businessType: true }
-    });
+    // const shop = await prisma.shop.findUnique({
+    //   where: { id: data.shopId },
+    //   include: { businessType: true }
+    // });
+    const shop = { businessType: { name: "General" } };
     const isTentHouse = shop?.businessType?.name === 'Tent House';
 
     const billNumber = `BILL-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
@@ -64,23 +65,27 @@ export async function POST(request: Request) {
       };
     });
 
-    const bill = await prisma.bill.create({
-      data: {
-        billNumber,
-        shopId: data.shopId,
-        customerName: data.customerName || null,
-        customerPhone: data.customerPhone || null,
-        totalAmount,
-        profit: totalProfit,
-        status: data.status || 'UNPAID',
-        paymentMethod: data.paymentMethod || null,
-        notes: data.notes || null,
-        items: {
-          create: itemsData
-        }
-      },
-      include: { items: true }
-    });
+    // const bill = await prisma.bill.create({
+    //   data: {
+    //     billNumber,
+    //     shopId: data.shopId,
+    //     customerName: data.customerName || null,
+    //     customerPhone: data.customerPhone || null,
+    //     totalAmount,
+    //     profit: totalProfit,
+    //     status: data.status || 'UNPAID',
+    //     paymentMethod: data.paymentMethod || null,
+    //     notes: data.notes || null,
+    //     items: {
+    //       create: itemsData
+    //     }
+    //   },
+    //   include: { items: true }
+    // });
+    const bill = {
+      id: "temp-id",
+      message: "Prisma disabled temporarily"
+    };
 
     return NextResponse.json(bill);
   } catch (error) {
@@ -99,7 +104,7 @@ export async function GET(request: Request) {
       include: { items: true },
       orderBy: { createdAt: 'desc' }
     });
-    
+
     return NextResponse.json(bills);
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch bills' }, { status: 500 });
