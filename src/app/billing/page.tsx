@@ -14,6 +14,37 @@ export default function BillingPage() {
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
 
+  const mergeOverlappingStrings = (s1: string, s2: string) => {
+    if (!s1) return s2 || "";
+    if (!s2) return s1 || "";
+    
+    const s1Lower = s1.trim().toLowerCase();
+    const s2Lower = s2.trim().toLowerCase();
+    
+    if (s1Lower === s2Lower) return s1.trim();
+    if (s2Lower.startsWith(s1Lower)) return s2.trim();
+    if (s1Lower.endsWith(s2Lower)) return s1.trim();
+
+    const words1 = s1.trim().split(/\s+/);
+    const words2 = s2.trim().split(/\s+/);
+
+    let maxOverlap = 0;
+    const minLen = Math.min(words1.length, words2.length);
+    
+    for (let i = 1; i <= minLen; i++) {
+        const endOfS1 = words1.slice(-i).join(" ").toLowerCase();
+        const startOfS2 = words2.slice(0, i).join(" ").toLowerCase();
+        if (endOfS1 === startOfS2) {
+            maxOverlap = i;
+        }
+    }
+    
+    if (maxOverlap > 0) {
+        return words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ");
+    }
+    return s1.trim() + " " + s2.trim();
+  };
+
   const parseVoiceItems = (text: string) => {
     text = text.toLowerCase().trim();
     const words = text.split(/\s+/);
@@ -254,22 +285,11 @@ export default function BillingPage() {
       for (let i = 0; i < event.results.length; ++i) {
         const text = event.results[i][0].transcript.trim();
         if (!text) continue;
-        
-        const mergedTrimmed = merged.trim();
-        if (mergedTrimmed.length === 0) {
-           merged = text + " ";
-        } else {
-           // Android Bug Workaround: Android often accumulates the whole sentence into the next chunk.
-           if (text.toLowerCase().startsWith(mergedTrimmed.toLowerCase()) && text.length > mergedTrimmed.length) {
-               merged = text + " "; 
-           } else {
-               merged += text + " ";
-           }
-        }
+        merged = mergeOverlappingStrings(merged, text);
       }
       
       currentBreathRef.current = merged;
-      const fullText = (globalTranscriptRef.current + " " + merged).trim();
+      const fullText = mergeOverlappingStrings(globalTranscriptRef.current, merged);
       setFinalTranscript(fullText);
       
       if (fullText.length > 1) {
@@ -287,14 +307,13 @@ export default function BillingPage() {
 
     recognition.onend = () => {
        // Android Chrome often stops recognition on brief pauses despite continuous=true.
-       // If the user hasn't explicitly clicked stop, auto-restart it.
        if (isListeningRef.current) {
-          globalTranscriptRef.current += " " + currentBreathRef.current;
+          globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
           currentBreathRef.current = "";
           try { recognition.start(); } catch(e) {}
        } else {
           // Commit final breath if stopped manually
-          globalTranscriptRef.current += " " + currentBreathRef.current;
+          globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
           currentBreathRef.current = "";
        }
     };
