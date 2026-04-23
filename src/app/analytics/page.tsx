@@ -1,9 +1,11 @@
-import prisma from '@/lib/prisma';
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 export const dynamic = 'force-dynamic';
 import { ChartColumn, TrendingUp, IndianRupee, PackageOpen } from 'lucide-react';
 
 export default async function AnalyticsPage() {
-  const shop = await prisma.shop.findFirst();
+  const querySnapshot = await getDocs(collection(db, "shops"));
+  const shop = querySnapshot.empty ? null : { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as any;
   if (!shop) return <div className="p-8">Please setup shop first.</div>;
 
   const now = new Date();
@@ -16,16 +18,24 @@ export default async function AnalyticsPage() {
   
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-  const [dailyBills, weeklyBills, monthlyBills, allBills] = await Promise.all([
-    prisma.bill.findMany({ where: { shopId: shop.id, date: { gte: today } }, include: { items: true } }),
-    prisma.bill.findMany({ where: { shopId: shop.id, date: { gte: startOfWeek } }, include: { items: true } }),
-    prisma.bill.findMany({ where: { shopId: shop.id, date: { gte: startOfMonth } }, include: { items: true } }),
-    prisma.bill.findMany({ where: { shopId: shop.id }, include: { items: true } })
-  ]);
+  const billsSnapshot = await getDocs(query(collection(db, "bills"), where("shopId", "==", shop.id)));
+  const allBills = billsSnapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      ...data,
+      date: data.createdAt ? new Date(data.createdAt) : (data.date ? new Date(data.date) : new Date(0)),
+      items: data.items || []
+    } as any;
+  });
+
+  const dailyBills = allBills.filter((b: any) => b.date >= today);
+  const weeklyBills = allBills.filter((b: any) => b.date >= startOfWeek);
+  const monthlyBills = allBills.filter((b: any) => b.date >= startOfMonth);
 
   const calcStats = (bills: any[]) => ({
-    sales: bills.reduce((acc, b) => acc + b.totalAmount, 0),
-    profit: bills.reduce((acc, b) => acc + b.profit, 0),
+    sales: bills.reduce((acc: number, b: any) => acc + b.totalAmount, 0),
+    profit: bills.reduce((acc: number, b: any) => acc + b.profit, 0),
     count: bills.length
   });
 
@@ -35,7 +45,7 @@ export default async function AnalyticsPage() {
 
   // Top products
   const productSales: Record<string, { name: string, qty: number, revenue: number }> = {};
-  allBills.forEach(b => {
+  allBills.forEach((b: any) => {
     b.items.forEach((item: any) => {
       if (!productSales[item.name]) {
         productSales[item.name] = { name: item.name, qty: 0, revenue: 0 };
@@ -46,7 +56,7 @@ export default async function AnalyticsPage() {
   });
 
   const topProducts = Object.values(productSales)
-    .sort((a, b) => b.revenue - a.revenue)
+    .sort((a: any, b: any) => b.revenue - a.revenue)
     .slice(0, 5);
 
   return (
@@ -158,7 +168,7 @@ export default async function AnalyticsPage() {
           </div>
           <div className="mt-8 pt-6 border-t border-slate-700/50 flex align-center justify-between">
             <span className="text-slate-300">Total Unpaid Pipeline</span>
-            <span className="font-bold text-rose-400">₹{allBills.filter(b => b.status === 'UNPAID').reduce((a,b)=>a+b.totalAmount,0).toFixed(2)}</span>
+            <span className="font-bold text-rose-400">₹{allBills.filter((b: any) => b.status === 'UNPAID').reduce((a: number, b: any) => a + b.totalAmount, 0).toFixed(2)}</span>
           </div>
         </div>
       </div>

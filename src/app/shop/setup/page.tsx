@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Store, Save, QrCode } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { collection, addDoc } from "firebase/firestore";
+import { db } from "../../../lib/firebase";
 
 export default function ShopSetupPage() {
   const [shop, setShop] = useState<any>(null);
@@ -28,22 +30,23 @@ export default function ShopSetupPage() {
       });
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+
+
+  const handleSubmit = async (e: any) => {
     e.preventDefault();
-    setSaving(true);
-    const res = await fetch('/api/shop', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData)
-    });
-    
-    if (res.ok) {
-      const updated = await res.json();
-      setShop(updated);
-      alert('Shop profile saved successfully!');
-      router.refresh();
+
+    try {
+      await addDoc(collection(db, "shops"), {
+        name: formData.name,
+        mobile: formData.mobile,
+        address: formData.address,
+      });
+
+      alert("Shop saved successfully ✅");
+    } catch (error) {
+      console.error("Firebase error:", error);
+      alert("Error saving shop ❌");
     }
-    setSaving(false);
   };
 
   if (loading) return <div className="p-8">Loading...</div>;
@@ -63,47 +66,47 @@ export default function ShopSetupPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Shop Name *</label>
-              <input 
+              <input
                 required
-                type="text" 
+                type="text"
                 className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 value={formData.name}
-                onChange={e => setFormData({...formData, name: e.target.value})}
+                onChange={e => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g. Super Kirana Store"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Mobile Number *</label>
-              <input 
+              <input
                 required
-                type="tel" 
+                type="tel"
                 className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 value={formData.mobile}
-                onChange={e => setFormData({...formData, mobile: e.target.value})}
+                onChange={e => setFormData({ ...formData, mobile: e.target.value })}
                 placeholder="e.g. 9876543210"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Address</label>
-              <textarea 
+              <textarea
                 rows={3}
                 className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 value={formData.address}
-                onChange={e => setFormData({...formData, address: e.target.value})}
+                onChange={e => setFormData({ ...formData, address: e.target.value })}
                 placeholder="Full shop address..."
               />
             </div>
-            
-            <button 
+
+            <button
               disabled={saving}
-              type="submit" 
+              type="submit"
               className="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <Save size={20} />
               {saving ? 'Saving...' : 'Save Profile'}
             </button>
           </form>
-          
+
           <div className="pt-6 border-t border-slate-100">
             <h3 className="font-semibold mb-2">Import Default Catalog</h3>
             <p className="text-sm text-slate-500 mb-4">Want to quickly add preset items for Kirana or Tent House?</p>
@@ -124,9 +127,9 @@ export default function ShopSetupPage() {
             </div>
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 w-full mt-4">
               <p className="text-xs text-slate-500 uppercase font-semibold mb-1">Your QR Link</p>
-              <a 
-                href={`/qr/${shop.qrCodeId}`} 
-                target="_blank" 
+              <a
+                href={`/qr/${shop.qrCodeId}`}
+                target="_blank"
                 rel="noreferrer"
                 className="text-indigo-600 font-medium break-all text-sm hover:underline flex items-center justify-center gap-2"
               >

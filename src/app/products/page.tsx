@@ -22,9 +22,13 @@ export default function ProductsPage() {
     fetch('/api/shop')
       .then(r => r.json())
       .then(data => {
-        setShop(data);
-        if (data) fetchProducts(data.id, '');
-      });
+        if (data && !data.error) {
+          setShop(data);
+          fetchProducts(data.id, '');
+        } else {
+          setShop(null); // or leave as null
+        }
+      })
   }, []);
 
   useEffect(() => {
@@ -82,6 +86,11 @@ export default function ProductsPage() {
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto space-y-6">
+      {!shop && !loading && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-xl mb-6">
+          <strong>Database Error or Shop Not Found:</strong> Could not connect to Firebase, or you haven't set up a shop yet. Please configure your Firebase environment variables in `.env` and complete the shop setup!
+        </div>
+      )}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-3">
@@ -92,7 +101,8 @@ export default function ProductsPage() {
         </div>
         <button
           onClick={() => { resetForm(); setIsModalOpen(true); }}
-          className="bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 font-medium"
+          disabled={!shop}
+          className="bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={20} /> Add Product
         </button>

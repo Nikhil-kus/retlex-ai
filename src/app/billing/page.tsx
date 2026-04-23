@@ -9,8 +9,12 @@ export default function BillingPage() {
   const [isListening, setIsListening] = useState(false);
   const [finalTranscript, setFinalTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
-  const transcriptRef = useRef("");
-  const processedChunksRef = useRef(new Set());  const parseVoiceItems = (text: string) => {
+  const isListeningRef = useRef(false);
+  const globalTranscriptRef = useRef("");
+  const currentBreathRef = useRef("");
+  const baseReviewItemsRef = useRef<any[]>([]);
+
+  const parseVoiceItems = (text: string) => {
     text = text.toLowerCase().trim();
     const words = text.split(/\s+/);
     const items: any[] = [];
@@ -123,7 +127,8 @@ export default function BillingPage() {
     return items;
   };
 
-  const handleVoiceText = (text: string) => {
+  const processVoiceTextToItems = (text: string) => {
+    if (!text || text.trim().length === 0) return [];
     const parsedItems = parseVoiceItems(text);
     
     // PHASE 2: NORMALIZATION LAYER
@@ -222,13 +227,7 @@ export default function BillingPage() {
       };
     });
 
-    setReviewItems(prev => {
-      // Accumulate new voice chunks without destroying previous ones in the review screen
-      return [...prev, ...matchedItems];
-    });
-    setIsReviewing(true);
-
-    console.log("Phase 3: Sent to Review UI:", matchedItems);
+    return matchedItems;
   };
   const startVoiceInput = () => {
     const SpeechRecognition =
@@ -239,7 +238,9 @@ export default function BillingPage() {
       return;
     }
 
-    transcriptRef.current = "";
+    baseReviewItemsRef.current = [...reviewItems];
+    globalTranscriptRef.current = "";
+    currentBreathRef.current = "";
     setFinalTranscript("");
 
     const recognition = new SpeechRecognition();
@@ -249,59 +250,67 @@ export default function BillingPage() {
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event: any) => {
-      let interimStr = "";
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        const chunk = event.results[i][0].transcript;
+      let merged = "";
+      for (let i = 0; i < event.results.length; ++i) {
+        const text = event.results[i][0].transcript.trim();
+        if (!text) continue;
         
-        if (event.results[i].isFinal) {
-          const cleanChunk = chunk.trim().toLowerCase();
-          if (!processedChunksRef.current.has(cleanChunk)) {
-            processedChunksRef.current.add(cleanChunk);
-            transcriptRef.current += chunk + " ";
-            
-            // PROCESS FINISHED CHUNK INSTANTLY!
-            if (cleanChunk) {
-               handleVoiceText(cleanChunk);
-            }
-          }
+        const mergedTrimmed = merged.trim();
+        if (mergedTrimmed.length === 0) {
+           merged = text + " ";
         } else {
-          interimStr += chunk;
+           // Android Bug Workaround: Android often accumulates the whole sentence into the next chunk.
+           if (text.toLowerCase().startsWith(mergedTrimmed.toLowerCase()) && text.length > mergedTrimmed.length) {
+               merged = text + " "; 
+           } else {
+               merged += text + " ";
+           }
         }
       }
       
-      setFinalTranscript(transcriptRef.current + interimStr);
+      currentBreathRef.current = merged;
+      const fullText = (globalTranscriptRef.current + " " + merged).trim();
+      setFinalTranscript(fullText);
+      
+      if (fullText.length > 1) {
+         const newParsedItems = processVoiceTextToItems(fullText);
+         if (newParsedItems.length > 0) {
+           setReviewItems([...baseReviewItemsRef.current, ...newParsedItems]);
+           setIsReviewing(true);
+         }
+      }
     };
-
 
     recognition.onerror = (e: any) => {
        console.error("Speech Error:", e);
-       // Auto-stop if it fails out natively but attempt to process whatever was captured
-       if (isListening) stopVoiceInput();
     };
 
-    recognition.start();
+    recognition.onend = () => {
+       // Android Chrome often stops recognition on brief pauses despite continuous=true.
+       // If the user hasn't explicitly clicked stop, auto-restart it.
+       if (isListeningRef.current) {
+          globalTranscriptRef.current += " " + currentBreathRef.current;
+          currentBreathRef.current = "";
+          try { recognition.start(); } catch(e) {}
+       } else {
+          // Commit final breath if stopped manually
+          globalTranscriptRef.current += " " + currentBreathRef.current;
+          currentBreathRef.current = "";
+       }
+    };
+
+    isListeningRef.current = true;
     setIsListening(true);
+    recognition.start();
     recognitionRef.current = recognition;
   };
 
   const stopVoiceInput = () => {
+    isListeningRef.current = false;
+    setIsListening(false);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
     }
-    setIsListening(false);
-
-    // We do NOT process on stop anymore to avoid duplicating what was done live.
-    // However, if the user cut off mid-sentence and there's trailing interim text,
-    // we can attempt to process it cleanly if it wasn't flagged as final yet!
-    
-    let leftover = finalTranscript.trim().replace(transcriptRef.current.trim(), "").trim();
-    if (leftover && leftover.length > 2) {
-       handleVoiceText(leftover);
-    }
-    
-    // Clear out for next usage safely
-    transcriptRef.current = "";
-    setFinalTranscript("");
   };
 
   const router = useRouter();
@@ -328,8 +337,12 @@ export default function BillingPage() {
 
   useEffect(() => {
     fetch('/api/shop').then(r => r.json()).then(data => {
-      setShop(data);
-      if (data?.id) fetchCatalog(data.id);
+      if (data && !data.error) {
+        setShop(data);
+        if (data?.id) fetchCatalog(data.id);
+      } else {
+        setShop({ error: true });
+      }
     });
   }, []);
 
@@ -517,7 +530,16 @@ export default function BillingPage() {
     setReviewItems([]);
   };
 
-  if (!shop) return <div className="p-8">Loading...</div>;
+  if (!shop) return <div className="p-8 text-center mt-20">Loading...</div>;
+  if (shop.error) return (
+    <div className="p-8 max-w-lg mx-auto mt-20 text-center space-y-6">
+      <div className="bg-rose-50 border border-rose-200 text-rose-700 p-6 rounded-xl text-left shadow-sm">
+        <h2 className="text-xl font-bold mb-2">Database Error / Shop Not Found</h2>
+        <p>Could not connect to Firebase, or you haven't set up a shop yet.</p>
+        <p className="mt-2 text-sm text-rose-600">Please make sure you have configured your Firebase environment variables in <code className="bg-rose-100 px-1 py-0.5 rounded">.env</code> and completed the shop setup!</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto flex flex-col lg:flex-row gap-6 h-full">

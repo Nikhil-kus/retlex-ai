@@ -1,12 +1,14 @@
-import prisma from '@/lib/prisma';
+import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { Store, Receipt, Clock, Download } from 'lucide-react';
 
-export default async function CustomerQRPage({ params }: { params: { shopId: string } }) {
-  const shop = await prisma.shop.findUnique({
-    where: { qrCodeId: params.shopId }
-  });
+export default async function CustomerQRPage({ params }: { params: Promise<{ shopId: string }> }) {
+  const { shopId } = await params;
+  const shopQuery = query(collection(db, "shops"), where("qrCodeId", "==", shopId));
+  const shopSnapshot = await getDocs(shopQuery);
+  const shop = shopSnapshot.empty ? null : { id: shopSnapshot.docs[0].id, ...shopSnapshot.docs[0].data() } as any;
 
   if (!shop) {
     return (
@@ -21,14 +23,16 @@ export default async function CustomerQRPage({ params }: { params: { shopId: str
   // Find bills generated in the last 5 minutes for this shop
   const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000);
   
-  const recentBills = await prisma.bill.findMany({
-    where: {
-      shopId: shop.id,
-      date: { gte: fiveMinsAgo }
-    },
-    orderBy: { date: 'desc' },
-    include: { items: true }
-  });
+  const billsQuery = query(collection(db, "bills"), where("shopId", "==", shop.id));
+  const billsSnapshot = await getDocs(billsQuery);
+  
+  const recentBills = billsSnapshot.docs
+    .map(doc => {
+      const data = doc.data();
+      return { id: doc.id, ...data, date: data.createdAt ? new Date(data.createdAt) : (data.date ? new Date(data.date) : new Date(0)), items: data.items || [] } as any;
+    })
+    .filter(b => b.date >= fiveMinsAgo)
+    .sort((a, b) => b.date.getTime() - a.date.getTime());
 
   return (
     <div className="min-h-screen bg-slate-50 pb-10">
@@ -61,7 +65,7 @@ export default async function CustomerQRPage({ params }: { params: { shopId: str
             </div>
           ) : (
             <div className="space-y-4">
-              {recentBills.map(bill => (
+              {recentBills.map((bill: any) => (
                 <div key={bill.id} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                   <div className="bg-slate-50 p-4 flex justify-between items-center border-b border-slate-200">
                     <div>

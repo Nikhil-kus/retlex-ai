@@ -1,9 +1,11 @@
-import prisma from "@/lib/prisma"
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 export const dynamic = 'force-dynamic';
 import Link from "next/link"
 import { ArrowRight, Package, Receipt, IndianRupee, Store, History } from "lucide-react"
 export default async function Dashboard() {
-  const shop = await prisma.shop.findFirst()
+  const querySnapshot = await getDocs(collection(db, "shops"));
+  const shop = querySnapshot.empty ? null : { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as any;
   
   if (!shop) {
     return (
@@ -22,19 +24,23 @@ export default async function Dashboard() {
   today.setHours(0,0,0,0)
 
   // Fetch some stats
-  const [totalProducts, todayBills, allUnpaid] = await Promise.all([
-    prisma.product.count({ where: { shopId: shop.id } }),
-    prisma.bill.findMany({ 
-      where: { shopId: shop.id, date: { gte: today } } 
-    }),
-    prisma.bill.findMany({
-      where: { shopId: shop.id, status: 'UNPAID' }
-    })
-  ])
+  const productsSnapshot = await getDocs(query(collection(db, "products"), where("shopId", "==", shop.id)));
+  const totalProducts = productsSnapshot.size;
 
-  const todaySales = todayBills.reduce((acc, bill) => acc + bill.totalAmount, 0)
-  const todayProfit = todayBills.reduce((acc, bill) => acc + bill.profit, 0)
-  const totalUnpaid = allUnpaid.reduce((acc, bill) => acc + bill.totalAmount, 0)
+  const billsSnapshot = await getDocs(query(collection(db, "bills"), where("shopId", "==", shop.id)));
+  const allBills = billsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as any);
+
+  const todayBills = allBills.filter((b: any) => {
+    const bDate = b.createdAt ? new Date(b.createdAt) : (b.date ? new Date(b.date) : new Date(0));
+    b.date = bDate; // attach date object for UI
+    return bDate >= today;
+  });
+
+  const allUnpaid = allBills.filter((b: any) => b.status === 'UNPAID');
+
+  const todaySales = todayBills.reduce((acc: number, bill: any) => acc + bill.totalAmount, 0)
+  const todayProfit = todayBills.reduce((acc: number, bill: any) => acc + bill.profit, 0)
+  const totalUnpaid = allUnpaid.reduce((acc: number, bill: any) => acc + bill.totalAmount, 0)
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto space-y-8">
@@ -73,7 +79,7 @@ export default async function Dashboard() {
             <p className="text-slate-500 text-sm">No bills generated today.</p>
           ) : (
             <div className="space-y-4">
-              {todayBills.slice(0, 5).map(b => (
+              {todayBills.slice(0, 5).map((b: any) => (
                 <div key={b.id} className="flex justify-between items-center pb-2 border-b border-slate-50 last:border-0 text-sm">
                   <div>
                     <span className="font-medium">{b.billNumber}</span>

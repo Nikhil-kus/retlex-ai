@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export async function POST(request: Request) {
   try {
     const { imageBase64, shopId } = await request.json();
     if (!imageBase64 || !shopId) return NextResponse.json({ error: 'Missing image or shopId' }, { status: 400 });
 
-    const catalog = await prisma.product.findMany({ where: { shopId } });
+    const q = query(collection(db, "products"), where("shopId", "==", shopId));
+    const querySnapshot = await getDocs(q);
+    const catalog = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as any);
 
     // In a real production app, you would send `imageBase64` to an AI model like GPT-4 Vision, 
     // Claude 3 Haiku, or a custom YOLO edge model, and ask it to identify products and their counts.

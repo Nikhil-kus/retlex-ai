@@ -1,15 +1,15 @@
 import Fuse from 'fuse.js';
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { collection, getDocs, getDoc, doc, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export async function POST(request: Request) {
   try {
     const { imageBase64, shopId } = await request.json();
     if (!imageBase64 || !shopId) return NextResponse.json({ error: 'Missing image or shopId' }, { status: 400 });
 
-    const shop = await prisma.shop.findUnique({
-      where: { id: shopId }
-    });
+    const shopDoc = await getDoc(doc(db, "shops", shopId));
+    const shop = shopDoc.exists() ? { id: shopDoc.id, ...shopDoc.data() } : null;
 
     const geminiApiKey = process.env.GEMINI_API_KEY;
     if (!geminiApiKey) {
@@ -20,8 +20,10 @@ export async function POST(request: Request) {
     const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
 
     // Fetch catalog early to construct AI prompt
-    const catalog = await prisma.product.findMany({ where: { shopId } });
-    const catalogNames = catalog.map(c => c.name);
+    const q = query(collection(db, "products"), where("shopId", "==", shopId));
+    const querySnapshot = await getDocs(q);
+    const catalog = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const catalogNames = catalog.map((c: any) => c.name);
 
     // STRICT PROMPT provided by the user
     const prompt = `You are a retail assistant.

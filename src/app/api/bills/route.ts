@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-// import prisma from '@/lib/prisma';
+import { collection, addDoc, getDocs, getDoc, doc, query, where, orderBy } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export async function POST(request: Request) {
   try {
@@ -8,11 +9,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // const shop = await prisma.shop.findUnique({
-    //   where: { id: data.shopId },
-    //   include: { businessType: true }
-    // });
-    const shop = { businessType: { name: "General" } };
+    const shopDoc = await getDoc(doc(db, "shops", data.shopId));
+    const shop: any = shopDoc.exists() ? shopDoc.data() : null;
     const isTentHouse = shop?.businessType?.name === 'Tent House';
 
     const billNumber = `BILL-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
@@ -65,27 +63,22 @@ export async function POST(request: Request) {
       };
     });
 
-    // const bill = await prisma.bill.create({
-    //   data: {
-    //     billNumber,
-    //     shopId: data.shopId,
-    //     customerName: data.customerName || null,
-    //     customerPhone: data.customerPhone || null,
-    //     totalAmount,
-    //     profit: totalProfit,
-    //     status: data.status || 'UNPAID',
-    //     paymentMethod: data.paymentMethod || null,
-    //     notes: data.notes || null,
-    //     items: {
-    //       create: itemsData
-    //     }
-    //   },
-    //   include: { items: true }
-    // });
-    const bill = {
-      id: "temp-id",
-      message: "Prisma disabled temporarily"
+    const billData = {
+      billNumber,
+      shopId: data.shopId,
+      customerName: data.customerName || null,
+      customerPhone: data.customerPhone || null,
+      totalAmount,
+      profit: totalProfit,
+      status: data.status || 'UNPAID',
+      paymentMethod: data.paymentMethod || null,
+      notes: data.notes || null,
+      items: itemsData,
+      createdAt: new Date().toISOString()
     };
+    
+    const billRef = await addDoc(collection(db, "bills"), billData);
+    const bill = { id: billRef.id, ...billData };
 
     return NextResponse.json(bill);
   } catch (error) {
@@ -99,11 +92,9 @@ export async function GET(request: Request) {
     const shopId = searchParams.get('shopId');
     if (!shopId) return NextResponse.json({ error: 'Shop ID required' }, { status: 400 });
 
-    const bills = await prisma.bill.findMany({
-      where: { shopId },
-      include: { items: true },
-      orderBy: { createdAt: 'desc' }
-    });
+    const q = query(collection(db, "bills"), where("shopId", "==", shopId), orderBy("createdAt", "desc"));
+    const querySnapshot = await getDocs(q);
+    const bills = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     return NextResponse.json(bills);
   } catch (error) {

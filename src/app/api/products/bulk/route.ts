@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { collection, addDoc, getDocs, query, where, doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export async function POST(request: Request) {
   try {
@@ -11,31 +12,26 @@ export async function POST(request: Request) {
 
     // Optional: update the shop's business type if provided
     if (businessTypeId) {
-      await prisma.shop.update({
-        where: { id: shopId },
-        data: { businessTypeId }
-      });
+      await updateDoc(doc(db, "shops", shopId), { businessTypeId });
     }
 
     const createdItems = [];
     for (const item of items) {
       // Check if it already exists
-      const existing = await prisma.product.findFirst({
-        where: { shopId, name: item.name }
-      });
+      const q = query(collection(db, "products"), where("shopId", "==", shopId), where("name", "==", item.name));
+      const existing = await getDocs(q);
 
-      if (!existing) {
-        const prod = await prisma.product.create({
-          data: {
-            shopId,
-            name: item.name,
-            baseUnit: item.baseUnit,
-            baseQuantity: 1, // Default for templates, users can edit later if kirana, but strict 1 for tent house
-            price: 0, // Default to 0, owner must update
-            costPrice: 0,
-          }
-        });
-        createdItems.push(prod);
+      if (existing.empty) {
+        const prodData = {
+          shopId,
+          name: item.name,
+          baseUnit: item.baseUnit,
+          baseQuantity: 1, // Default for templates, users can edit later if kirana, but strict 1 for tent house
+          price: 0, // Default to 0, owner must update
+          costPrice: 0,
+        };
+        const docRef = await addDoc(collection(db, "products"), prodData);
+        createdItems.push({ id: docRef.id, ...prodData });
       }
     }
 
