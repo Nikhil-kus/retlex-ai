@@ -289,27 +289,81 @@ export default function BillingPage() {
       let finalQty = item.quantity;
       let finalUnit = item.unit || 'pc';
       const baseUnit = match.baseUnit || 'pc';
+      const baseQty = match.baseQuantity || 1;
 
-      if (item.unit === 'g' && baseUnit === 'kg') {
-        finalQty = finalQty / 1000;
-        finalUnit = 'kg';
-      } else if (item.unit === 'g' && baseUnit === 'g') {
-        finalQty = finalQty / (match.baseQuantity || 1);
-        finalUnit = match.baseQuantity > 1 ? 'pc' : 'g';
-      } else if (item.unit === 'ml' && baseUnit === 'l') {
-        finalQty = finalQty / 1000;
-        finalUnit = 'l';
-      } else if (item.unit === 'ml' && baseUnit === 'ml') {
-        finalQty = finalQty / (match.baseQuantity || 1);
-        finalUnit = match.baseQuantity > 1 ? 'pc' : 'ml';
-      } else if (item.unit === 'kg' && baseUnit === 'kg') {
-        finalQty = finalQty / (match.baseQuantity || 1);
-        finalUnit = match.baseQuantity > 1 ? 'pc' : 'kg';
-      } else if (item.unit === 'l' && baseUnit === 'l') {
-        finalQty = finalQty / (match.baseQuantity || 1);
-        finalUnit = match.baseQuantity > 1 ? 'pc' : 'l';
+      if (item.unit === 'g') {
+          if (baseUnit === 'kg') {
+              finalQty = finalQty / 1000;
+              finalUnit = 'kg';
+          } else if (baseUnit === 'pc') {
+              // User said 'g', but DB is 'pc' (packet). Calculate packets!
+              if (baseQty > 1) { // Assuming baseQty is packet weight in grams
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'g';
+              }
+          } else if (baseUnit === 'g') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'g';
+              }
+          }
+      } else if (item.unit === 'ml') {
+          if (baseUnit === 'l') {
+              finalQty = finalQty / 1000;
+              finalUnit = 'l';
+          } else if (baseUnit === 'pc') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'ml';
+              }
+          } else if (baseUnit === 'ml') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'ml';
+              }
+          }
+      } else if (item.unit === 'kg') {
+          if (baseUnit === 'pc') {
+              if (baseQty > 1) { // baseQty is in grams
+                  finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'kg';
+              }
+          } else if (baseUnit === 'kg') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'kg';
+              }
+          }
+      } else if (item.unit === 'l') {
+          if (baseUnit === 'pc') {
+              if (baseQty > 1) { // baseQty is in ml
+                  finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'l';
+              }
+          } else if (baseUnit === 'l') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'l';
+              }
+          }
       } else {
-        // Mismatch between spoken unit and base unit (e.g. spoken 'g', base 'pc')
+        // Mismatch between spoken unit and base unit without a conversion rule
         // Keep the spoken unit so UI accurately reflects what was heard!
         finalUnit = item.unit;
       }
