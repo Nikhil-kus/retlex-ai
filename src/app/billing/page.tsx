@@ -309,87 +309,80 @@ export default function BillingPage() {
     globalTranscriptRef.current = "";
     currentBreathRef.current = "";
     setFinalTranscript("");
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "hi-IN";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-
-    recognition.onresult = (event: any) => {
-      let merged = "";
-      for (let i = 0; i < event.results.length; ++i) {
-        const text = event.results[i][0].transcript.trim();
-        if (!text) continue;
-        merged = mergeOverlappingStrings(merged, text);
-      }
-      
-      currentBreathRef.current = merged;
-      const fullText = mergeOverlappingStrings(globalTranscriptRef.current, merged);
-      setFinalTranscript(fullText);
-      
-      if (fullText.length > 1) {
-         const newParsedItems = processVoiceTextToItems(fullText);
-         if (newParsedItems.length > 0) {
-           setReviewItems([...baseReviewItemsRef.current, ...newParsedItems]);
-           setIsReviewing(true);
-         }
-      }
-    };
-
-    recognition.onerror = (e: any) => {
-       console.error("Speech Error:", e.error || e);
-       if (e.error === 'not-allowed' || e.error === 'audio-capture') {
-           // Fatal errors: reset UI so user isn't stuck thinking it's listening
-           setIsListening(false);
-           isListeningRef.current = false;
-           alert("Microphone error: Please check permissions or hardware.");
-       }
-    };
-
-    recognition.onend = () => {
-       // Android Chrome often stops recognition on brief pauses despite continuous=true.
-       if (isListeningRef.current) {
-          globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
-          currentBreathRef.current = "";
-          
-          // Add a slight delay before restarting to prevent Chrome's infinite loop blocker
-          setTimeout(() => {
-              if (isListeningRef.current) {
-                  try { 
-                      recognition.start(); 
-                  } catch(e) {
-                      console.error("Failed to restart mic instantly:", e);
-                      // Fallback retry
-                      setTimeout(() => {
-                          if (isListeningRef.current) {
-                              try { recognition.start(); } catch(err) {
-                                  // If it completely fails, reset UI so user isn't stuck
-                                  setIsListening(false);
-                                  isListeningRef.current = false;
-                              }
-                          }
-                      }, 1000);
-                  }
-              }
-          }, 100);
-       } else {
-          // Commit final breath if stopped manually
-          globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
-          currentBreathRef.current = "";
-       }
-    };
-
     isListeningRef.current = true;
     setIsListening(true);
-    try {
-        recognition.start();
-        recognitionRef.current = recognition;
-    } catch(e) {
-        alert("Failed to start microphone.");
-        setIsListening(false);
-        isListeningRef.current = false;
-    }
+
+    const initMic = () => {
+        if (!isListeningRef.current) return;
+        
+        const recognition = new SpeechRecognition();
+        recognition.lang = "hi-IN";
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+
+        recognition.onresult = (event: any) => {
+            let merged = "";
+            for (let i = 0; i < event.results.length; ++i) {
+                const text = event.results[i][0].transcript.trim();
+                if (!text) continue;
+                merged = mergeOverlappingStrings(merged, text);
+            }
+            
+            currentBreathRef.current = merged;
+            const fullText = mergeOverlappingStrings(globalTranscriptRef.current, merged);
+            setFinalTranscript(fullText);
+            
+            if (fullText.length > 1) {
+                const newParsedItems = processVoiceTextToItems(fullText);
+                if (newParsedItems.length > 0) {
+                    setReviewItems([...baseReviewItemsRef.current, ...newParsedItems]);
+                    setIsReviewing(true);
+                }
+            }
+        };
+
+        recognition.onerror = (e: any) => {
+            console.error("Speech Error:", e.error || e);
+            if (e.error === 'not-allowed' || e.error === 'audio-capture') {
+                setIsListening(false);
+                isListeningRef.current = false;
+                alert("Microphone error: Please check permissions or hardware.");
+            }
+        };
+
+        recognition.onend = () => {
+            if (isListeningRef.current) {
+                globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
+                currentBreathRef.current = "";
+                
+                // Re-create the recognition object to bypass Android Chrome zombie state bug
+                setTimeout(() => {
+                    initMic();
+                }, 100);
+            } else {
+                globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
+                currentBreathRef.current = "";
+            }
+        };
+
+        try {
+            recognition.start();
+            recognitionRef.current = recognition;
+        } catch(e) {
+            console.error("Failed to start mic:", e);
+            setTimeout(() => {
+                if (isListeningRef.current) {
+                    try { recognition.start(); } catch(err) {
+                        setIsListening(false);
+                        isListeningRef.current = false;
+                    }
+                }
+            }, 1000);
+        }
+    };
+
+    initMic();
   };
 
   const stopVoiceInput = () => {
