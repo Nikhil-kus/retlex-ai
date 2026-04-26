@@ -46,8 +46,44 @@ export default function BillingPage() {
   };
 
   const parseVoiceItems = (text: string) => {
-    text = text.toLowerCase().trim();
-    const words = text.split(/\s+/);
+    // PRE-PROCESSING: Normalization for robust parsing
+    text = text.toLowerCase().trim()
+      // Remove prices so they aren't parsed as quantities (e.g. "50 wala namak" -> "namak")
+      .replace(/(\d+(?:\.\d+)?)\s*(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)/gi, ' ')
+      .replace(/\b(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)\b/gi, ' ')
+      // Remove filler words that cause incorrect item grouping
+      .replace(/\b(and|plus)\b/gi, ' ')
+      .replace(/और|तथा|भी|या/g, ' ')
+      .replace(/\b(aur|tatha|bhi|ya)\b/gi, ' ')
+      // Convert compound weights (2 kg 500 g -> 2.5 kg)
+      .replace(/(\d+(?:\.\d+)?)\s*(kg|kilo|kilos|किलो)\s+(\d+(?:\.\d+)?)\s*(g|gram|grams|ग्राम)/gi, (match, kg, kgUnit, g, gUnit) => {
+        return (parseFloat(kg) + parseFloat(g) / 1000).toString() + " kg";
+      })
+      .replace(/(\d+(?:\.\d+)?)\s*(l|liter|litre|litres|लीटर)\s+(\d+(?:\.\d+)?)\s*(ml|mili|मिली)/gi, (match, l, lUnit, ml, mlUnit) => {
+        return (parseFloat(l) + parseFloat(ml) / 1000).toString() + " l";
+      })
+      // Hindi weight phrasing
+      .replace(/ढाई\s*सौ/g, '250').replace(/dhai\s*sau/g, '250')
+      .replace(/डेढ़\s*सौ/g, '150').replace(/dedh\s*sau/g, '150')
+      .replace(/एक\s*सौ\s*पचास/g, '150').replace(/ek\s*sau\s*pachas/g, '150')
+      .replace(/दो\s*सौ\s*पचास/g, '250').replace(/do\s*sau\s*pachas/g, '250')
+      .replace(/एक\s*सौ/g, '100').replace(/ek\s*sau/g, '100')
+      .replace(/दो\s*सौ/g, '200').replace(/do\s*sau/g, '200')
+      .replace(/तीन\s*सौ/g, '300').replace(/teen\s*sau/g, '300')
+      .replace(/चार\s*सौ/g, '400').replace(/char\s*sau/g, '400')
+      .replace(/पांच\s*सौ/g, '500').replace(/paanch\s*sau/g, '500')
+      .replace(/छह\s*सौ/g, '600').replace(/che\s*sau/g, '600')
+      .replace(/सात\s*सौ/g, '700').replace(/saat\s*sau/g, '700')
+      .replace(/आठ\s*सौ/g, '800').replace(/aath\s*sau/g, '800')
+      .replace(/नौ\s*सौ/g, '900').replace(/nau\s*sau/g, '900')
+      // Hindi fractions
+      .replace(/आधा/g, '0.5').replace(/aadha/g, '0.5')
+      .replace(/पाव/g, '0.25').replace(/paav/g, '0.25')
+      .replace(/सवा/g, '1.25').replace(/sawa/g, '1.25')
+      .replace(/डेढ़/g, '1.5').replace(/dedh/g, '1.5')
+      .replace(/ढाई/g, '2.5').replace(/dhai/g, '2.5');
+
+    const words = text.split(/\s+/).filter(w => w.length > 0);
     const items: any[] = [];
 
     const unitMap: any = {
@@ -181,10 +217,10 @@ export default function BillingPage() {
       };
     });
 
-    // PHASE 3: CONNECT WITH EXISTING CATALOG (STRICT MODE)
+    // PHASE 3: CONNECT WITH EXISTING CATALOG (FORGIVING MODE)
     const fuse = new Fuse(catalog, {
       keys: ['name', 'localName'],
-      threshold: 0.35,
+      threshold: 0.55,
       includeScore: true,
       ignoreLocation: true,
       minMatchCharLength: 2
@@ -197,8 +233,8 @@ export default function BillingPage() {
       const result = fuse.search(searchName);
       let bestMatch: any = null;
 
-      // Strict direct hit check ONLY
-      if (result.length && (result[0].score ?? 1) <= 0.4) {
+      // Forgiving direct hit check to allow typos
+      if (result.length && (result[0].score ?? 1) <= 0.6) {
         bestMatch = result[0].item;
       }
 
@@ -302,7 +338,13 @@ export default function BillingPage() {
     };
 
     recognition.onerror = (e: any) => {
-       console.error("Speech Error:", e);
+       console.error("Speech Error:", e.error || e);
+       if (e.error === 'not-allowed' || e.error === 'audio-capture') {
+           // Fatal errors: reset UI so user isn't stuck thinking it's listening
+           setIsListening(false);
+           isListeningRef.current = false;
+           alert("Microphone error: Please check permissions or hardware.");
+       }
     };
 
     recognition.onend = () => {
@@ -310,7 +352,27 @@ export default function BillingPage() {
        if (isListeningRef.current) {
           globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
           currentBreathRef.current = "";
-          try { recognition.start(); } catch(e) {}
+          
+          // Add a slight delay before restarting to prevent Chrome's infinite loop blocker
+          setTimeout(() => {
+              if (isListeningRef.current) {
+                  try { 
+                      recognition.start(); 
+                  } catch(e) {
+                      console.error("Failed to restart mic instantly:", e);
+                      // Fallback retry
+                      setTimeout(() => {
+                          if (isListeningRef.current) {
+                              try { recognition.start(); } catch(err) {
+                                  // If it completely fails, reset UI so user isn't stuck
+                                  setIsListening(false);
+                                  isListeningRef.current = false;
+                              }
+                          }
+                      }, 1000);
+                  }
+              }
+          }, 100);
        } else {
           // Commit final breath if stopped manually
           globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
@@ -320,8 +382,14 @@ export default function BillingPage() {
 
     isListeningRef.current = true;
     setIsListening(true);
-    recognition.start();
-    recognitionRef.current = recognition;
+    try {
+        recognition.start();
+        recognitionRef.current = recognition;
+    } catch(e) {
+        alert("Failed to start microphone.");
+        setIsListening(false);
+        isListeningRef.current = false;
+    }
   };
 
   const stopVoiceInput = () => {
