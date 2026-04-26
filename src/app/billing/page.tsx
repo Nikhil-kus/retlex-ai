@@ -55,6 +55,15 @@ export default function BillingPage() {
       .replace(/\b(and|plus)\b/gi, ' ')
       .replace(/और|तथा|भी|या/g, ' ')
       .replace(/\b(aur|tatha|bhi|ya)\b/gi, ' ')
+      // Fix misheard numbers (phonetic matching)
+      .replace(/\b(to|too|tu|two|तो|टो|do|दो)\b/gi, ' 2 ')
+      .replace(/\b(for|four|फ़ॉर|फॉर|फोर)\b/gi, ' 4 ')
+      .replace(/\b(won|one|वन|on|un|an)\b/gi, ' 1 ')
+      .replace(/\b(at|eight|एट|it)\b/gi, ' 8 ')
+      .replace(/\b(teen|three|थ्री|तीन|tin)\b/gi, ' 3 ')
+      .replace(/\b(five|फाइव|पाइप|पांच|panch)\b/gi, ' 5 ')
+      .replace(/\b(six|सिक्स|छह|che|chhe)\b/gi, ' 6 ')
+      .replace(/\b(ten|टेन|दस|das)\b/gi, ' 10 ')
       // Convert compound weights (2 kg 500 g -> 2.5 kg)
       .replace(/(\d+(?:\.\d+)?)\s*(kg|kilo|kilos|किलो)\s+(\d+(?:\.\d+)?)\s*(g|gram|grams|ग्राम)/gi, (match, kg, kgUnit, g, gUnit) => {
         return (parseFloat(kg) + parseFloat(g) / 1000).toString() + " kg";
@@ -220,7 +229,7 @@ export default function BillingPage() {
     // PHASE 3: CONNECT WITH EXISTING CATALOG (FORGIVING MODE)
     const fuse = new Fuse(catalog, {
       keys: ['name', 'localName'],
-      threshold: 0.55,
+      threshold: 0.6,
       includeScore: true,
       ignoreLocation: true,
       minMatchCharLength: 2
@@ -238,7 +247,19 @@ export default function BillingPage() {
         bestMatch = result[0].item;
       }
 
-      // DO NOT GUESS fallback logic removed as requested.
+      // Smart Fallback: If full phrase fails due to stuttering (e.g. "टॉफी ट्रॉफी"), try matching individual words
+      if (!bestMatch) {
+          const words = searchName.split(/\s+/);
+          for (const w of words) {
+              if (w.length > 2) {
+                  const subResult = fuse.search(w);
+                  if (subResult.length && (subResult[0].score ?? 1) <= 0.4) {
+                      bestMatch = subResult[0].item;
+                      break;
+                  }
+              }
+          }
+      }
 
       const key = (bestMatch?.id || item.name).toLowerCase();
       let isRepeated = false;
@@ -266,23 +287,38 @@ export default function BillingPage() {
       // PHASE 4: FINAL SAFE OUTPUT
       const match = bestMatch;
       let finalQty = item.quantity;
+      let finalUnit = item.unit || 'pc';
       const baseUnit = match.baseUnit || 'pc';
 
       if (item.unit === 'g' && baseUnit === 'kg') {
         finalQty = finalQty / 1000;
+        finalUnit = 'kg';
       } else if (item.unit === 'g' && baseUnit === 'g') {
         finalQty = finalQty / (match.baseQuantity || 1);
+        finalUnit = match.baseQuantity > 1 ? 'pc' : 'g';
       } else if (item.unit === 'ml' && baseUnit === 'l') {
         finalQty = finalQty / 1000;
+        finalUnit = 'l';
       } else if (item.unit === 'ml' && baseUnit === 'ml') {
         finalQty = finalQty / (match.baseQuantity || 1);
+        finalUnit = match.baseQuantity > 1 ? 'pc' : 'ml';
+      } else if (item.unit === 'kg' && baseUnit === 'kg') {
+        finalQty = finalQty / (match.baseQuantity || 1);
+        finalUnit = match.baseQuantity > 1 ? 'pc' : 'kg';
+      } else if (item.unit === 'l' && baseUnit === 'l') {
+        finalQty = finalQty / (match.baseQuantity || 1);
+        finalUnit = match.baseQuantity > 1 ? 'pc' : 'l';
+      } else {
+        // Mismatch between spoken unit and base unit (e.g. spoken 'g', base 'pc')
+        // Keep the spoken unit so UI accurately reflects what was heard!
+        finalUnit = item.unit;
       }
 
       return {
         productId: match.id,
         name: match.name, // Safely mapped exactly from Database Output
         quantity: finalQty,
-        unit: baseUnit,
+        unit: finalUnit,
         baseUnit: match.baseUnit,
         baseQuantity: match.baseQuantity,
         price: match.price,
