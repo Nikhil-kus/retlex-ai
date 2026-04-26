@@ -486,7 +486,7 @@ export default function BillingPage() {
   const router = useRouter();
   const [shop, setShop] = useState<any>(null);
   const [catalog, setCatalog] = useState<any[]>([]);
-  const [mode, setMode] = useState<'MANUAL' | 'OCR' | 'AI'>('MANUAL');
+  const [mode, setMode] = useState<'MANUAL' | 'OCR' | 'AI'>('AI');
 
   // Cart state
   const [cart, setCart] = useState<any[]>([]);
@@ -504,6 +504,13 @@ export default function BillingPage() {
   const [reviewItems, setReviewItems] = useState<any[]>([]);
   const [isReviewing, setIsReviewing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const reviewEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (reviewEndRef.current) {
+        reviewEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [reviewItems.length]);
 
   useEffect(() => {
     fetch('/api/shop').then(r => r.json()).then(data => {
@@ -752,7 +759,7 @@ export default function BillingPage() {
             </div>
 
             {mode === 'MANUAL' && (
-              <div className="space-y-4 relative">
+              <div className="space-y-4">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                   <input
@@ -763,23 +770,36 @@ export default function BillingPage() {
                     className="w-full pl-10 pr-4 py-3 border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg shadow-sm"
                   />
                 </div>
-                {search.length > 1 && (
-                  <div className="absolute top-full left-0 right-0 z-10 bg-white border border-slate-200 shadow-xl rounded-xl mt-2 overflow-hidden max-h-80 overflow-y-auto">
-                    {searchResults.length === 0 ? (
+                
+                <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden max-h-[50vh] overflow-y-auto">
+                    {(search.length > 1 ? searchResults : catalog.slice(0, 50)).length === 0 ? (
                       <div className="p-4 text-slate-500 text-center">No products found.</div>
                     ) : (
-                      searchResults.map(p => (
-                        <div key={p.id} onClick={() => addToCart(p)} className="flex justify-between items-center p-4 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0">
-                          <div>
+                      (search.length > 1 ? searchResults : catalog.slice(0, 50)).map(p => {
+                        const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
+                        const qty = cartItem ? cartItem.quantity : 0;
+                        return (
+                        <div key={p.id} className="flex justify-between items-center p-4 hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors">
+                          <div className="flex-1 cursor-pointer" onClick={() => qty === 0 && addToCart(p)}>
                             <p className="font-semibold text-slate-800">{p.name}</p>
-                            <p className="text-xs text-slate-500">₹{(p.price || 0).toFixed(2)} / {p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit} • {p.category}</p>
+                            <p className="text-xs text-slate-500">₹{(p.price || 0).toFixed(2)} / {p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit} • {p.category || 'General'}</p>
                           </div>
-                          <Plus className="text-indigo-600 bg-indigo-50 rounded-md p-1" size={28} />
+                          
+                          {qty > 0 ? (
+                              <div className="flex items-center gap-3 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 shadow-inner">
+                                <button onClick={(e) => { e.stopPropagation(); const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }} className="w-8 h-8 flex items-center justify-center bg-white text-indigo-600 rounded-md shadow-sm font-bold hover:bg-indigo-100 transition">-</button>
+                                <span className="font-semibold w-6 text-center text-indigo-900">{qty}</span>
+                                <button onClick={(e) => { e.stopPropagation(); updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1); }} className="w-8 h-8 flex items-center justify-center bg-indigo-600 text-white rounded-md shadow-sm font-bold hover:bg-indigo-700 transition">+</button>
+                              </div>
+                          ) : (
+                              <button onClick={(e) => { e.stopPropagation(); addToCart(p); }} className="text-indigo-600 bg-indigo-50 px-4 py-2 rounded-lg font-semibold hover:bg-indigo-100 transition-colors flex items-center gap-1">
+                                <Plus size={16}/> Add
+                              </button>
+                          )}
                         </div>
-                      ))
+                      )})
                     )}
-                  </div>
-                )}
+                </div>
               </div>
             )}
 
@@ -873,6 +893,7 @@ export default function BillingPage() {
                       </div>
                     </div>
                   ))}
+                  <div ref={reviewEndRef} />
                 </div>
 
                 <button
