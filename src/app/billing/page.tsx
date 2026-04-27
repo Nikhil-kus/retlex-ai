@@ -136,6 +136,22 @@ export default function BillingPage() {
       hasLeadingNumber = false;
     };
 
+    const hasNameAhead = (startIndex: number) => {
+      for (let j = startIndex; j < words.length; j++) {
+        const w = words[j];
+        if (unitMap[w]) continue;
+        let isNum = false;
+        if (!isNaN(Number(w))) isNum = true;
+        else if (numMap[w] !== undefined) isNum = true;
+        else {
+          const match = w.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
+          if (match) isNum = true;
+        }
+        if (!isNum) return true;
+      }
+      return false;
+    };
+
     let i = 0;
     while (i < words.length) {
       const word = words[i];
@@ -173,10 +189,17 @@ export default function BillingPage() {
         
         if (pendingName.length > 0) {
           if (hasLeadingNumber) {
-            commitItem();
-            pendingQty = parsedNum;
-            pendingUnit = finalUnit;
-            hasLeadingNumber = true;
+            const nextWordIndex = i + (isCombined ? 1 : (parsedUnitStr ? 2 : 1));
+            if (hasNameAhead(nextWordIndex)) {
+              commitItem();
+              pendingQty = parsedNum;
+              pendingUnit = finalUnit;
+              hasLeadingNumber = true;
+            } else {
+              pendingQty = parsedNum;
+              pendingUnit = finalUnit;
+              commitItem();
+            }
           } else {
             commitItem(parsedNum, finalUnit);
           }
@@ -449,7 +472,7 @@ export default function BillingPage() {
                 // Re-create the recognition object to bypass Android Chrome zombie state bug
                 setTimeout(() => {
                     initMic();
-                }, 100);
+                }, 10);
             } else {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
@@ -463,12 +486,9 @@ export default function BillingPage() {
             console.error("Failed to start mic:", e);
             setTimeout(() => {
                 if (isListeningRef.current) {
-                    try { recognition.start(); } catch(err) {
-                        setIsListening(false);
-                        isListeningRef.current = false;
-                    }
+                    initMic();
                 }
-            }, 1000);
+            }, 250);
         }
     };
 
