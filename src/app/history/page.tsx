@@ -79,7 +79,7 @@ export default function HistoryPage() {
                   <tr key={b.id} className="hover:bg-slate-50/50">
                     <td className="px-6 py-4">
                       <div className="font-semibold text-slate-900">{b.billNumber}</div>
-                      <div className="text-xs text-slate-500">{new Date(b.date).toLocaleString()}</div>
+                      <div className="text-xs text-slate-500">{new Date(b.createdAt).toLocaleString()}</div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-slate-900">{b.customerName || 'Walk-in'}</div>

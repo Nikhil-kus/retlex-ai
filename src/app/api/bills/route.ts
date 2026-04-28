@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { collection, addDoc, getDocs, getDoc, doc, query, where, orderBy } from "firebase/firestore";
+import { collection, addDoc, getDocs, getDoc, doc, query, where, orderBy, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export async function POST(request: Request) {
@@ -55,6 +55,7 @@ export async function POST(request: Request) {
       return {
         productId: item.productId || null,
         name: item.name,
+        localName: item.localName || null,
         quantity: parseFloat(item.quantity),
         unit: scannedUnit, // PRESERVES EXACTLY WHAT WAS SCANNED (e.g., 'g')
         sellingPrice: price,
@@ -74,7 +75,8 @@ export async function POST(request: Request) {
       paymentMethod: data.paymentMethod || null,
       notes: data.notes || null,
       items: itemsData,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      date: serverTimestamp()
     };
     
     const billRef = await addDoc(collection(db, "bills"), billData);
@@ -92,12 +94,32 @@ export async function GET(request: Request) {
     const shopId = searchParams.get('shopId');
     if (!shopId) return NextResponse.json({ error: 'Shop ID required' }, { status: 400 });
 
-    const q = query(collection(db, "bills"), where("shopId", "==", shopId), orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-    const bills = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-    return NextResponse.json(bills);
+    try {
+      // Try with orderBy first (requires Firestore index)
+      const q = query(collection(db, "bills"), where("shopId", "==", shopId), orderBy("date", "desc"));
+      const querySnapshot = await getDocs(q);
+      const bills = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      return NextResponse.json(bills);
+    } catch (indexError: any) {
+      // If index error, fall back to client-side sorting
+      if (indexError.code === 'failed-precondition' || indexError.message?.includes('index')) {
+        const q = query(collection(db, "bills"), where("shopId", "==", shopId));
+        const querySnapshot = await getDocs(q);
+        const bills = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+        
+        // Sort by createdAt (ISO string) in descending order
+        bills.sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        
+        return NextResponse.json(bills);
+      }
+      throw indexError;
+    }
   } catch (error) {
+    console.error('Bills fetch error:', error);
     return NextResponse.json({ error: 'Failed to fetch bills' }, { status: 500 });
   }
 }

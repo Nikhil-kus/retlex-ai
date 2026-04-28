@@ -4,6 +4,7 @@ import Fuse from 'fuse.js';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X } from 'lucide-react';
+import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 
 export default function BillingPage() {
   const [isListening, setIsListening] = useState(false);
@@ -394,6 +395,7 @@ export default function BillingPage() {
       return {
         productId: match.id,
         name: match.name, // Safely mapped exactly from Database Output
+        localName: match.localName,
         quantity: finalQty,
         unit: finalUnit,
         baseUnit: match.baseUnit,
@@ -569,6 +571,7 @@ export default function BillingPage() {
       return [...prev, {
         productId: product.id,
         name: product.name,
+        localName: product.localName || null,
         price: product.price || 0,
         costPrice: product.costPrice || 0,
         unit: product.baseUnit || 'pc',
@@ -631,6 +634,29 @@ export default function BillingPage() {
 
     if (res.ok) {
       const bill = await res.json();
+      
+      // Generate WhatsApp message if customer phone is available
+      if (customerInfo.phone) {
+        // Calculate total amount
+        const totalAmount = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
+        
+        // Prepare cart items with calculated totals for message
+        const cartItemsForMessage = cart.map(item => ({
+          ...item,
+          itemTotal: calculateItemTotal(item)
+        }));
+        
+        // Generate the WhatsApp message
+        const whatsappMessage = generateWhatsAppMessage(
+          shop.name || 'Kirana Store',
+          cartItemsForMessage,
+          totalAmount
+        );
+        
+        // Open WhatsApp chat with pre-filled message
+        openWhatsAppChat(customerInfo.phone, whatsappMessage);
+      }
+      
       router.push(`/history`);
     } else {
       alert('Failed to generate bill');
@@ -801,7 +827,9 @@ export default function BillingPage() {
                         return (
                         <div key={p.id} className="flex justify-between items-center p-4 hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors">
                           <div className="flex-1 cursor-pointer" onClick={() => qty === 0 && addToCart(p)}>
-                            <p className="font-semibold text-slate-800">{p.name}</p>
+                            <p className="font-semibold text-slate-800">
+                              {p.name} {p.localName && <span className="text-slate-500 font-normal ml-1">({p.localName})</span>}
+                            </p>
                             <p className="text-xs text-slate-500">₹{(p.price || 0).toFixed(2)} / {p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit} • {p.category || 'General'}</p>
                           </div>
                           
@@ -880,6 +908,7 @@ export default function BillingPage() {
                               className="font-semibold w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none"
                               placeholder="Product Name"
                             />
+                            {item.localName && <span className="text-sm text-slate-500 whitespace-nowrap">({item.localName})</span>}
                             {item.isRepeated && (
                               <span className="px-2 py-0.5 bg-amber-500 text-white text-[10px] uppercase tracking-wider font-extrabold rounded shadow-sm whitespace-nowrap absolute -top-2 right-4 rotate-3">
                                 Repeated
@@ -946,7 +975,9 @@ export default function BillingPage() {
               <div key={idx} className="bg-slate-800 p-3 rounded-xl border border-slate-700 relative group">
                 <div className="flex justify-between items-start pr-6">
                   <div>
-                    <p className="font-semibold text-sm line-clamp-1">{item.name}</p>
+                    <p className="font-semibold text-sm line-clamp-1">
+                      {item.name} {item.localName && <span className="text-indigo-300 font-normal ml-1">({item.localName})</span>}
+                    </p>
                     <p className="text-slate-400 text-xs mt-0.5">₹{(item.price || 0).toFixed(2)} / {item.baseQuantity === 1 ? '' : item.baseQuantity}{item.baseUnit || item.unit}</p>
                   </div>
                   <p className="font-bold text-indigo-300">₹{calculateItemTotal(item).toFixed(2)}</p>

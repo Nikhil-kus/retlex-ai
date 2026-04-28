@@ -91,7 +91,9 @@ export default function BillViewPage() {
               {bill.items.map((item: any) => (
                 <tr key={item.id}>
                   <td className="py-3">
-                    <p className="font-medium text-slate-800">{item.name}</p>
+                    <p className="font-medium text-slate-800">
+                      {item.name} {item.localName && <span className="text-slate-500 font-normal ml-1">({item.localName})</span>}
+                    </p>
                   </td>
                   <td className="py-3 text-center text-slate-600">
                     {item.quantity} {item.unit}
