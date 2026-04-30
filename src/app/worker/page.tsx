@@ -9,7 +9,8 @@ export default function WorkerPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [selectedBill, setSelectedBill] = useState<any>(null);
-  const [packedItems, setPackedItems] = useState<Set<string>>(new Set());
+  // Map to store packed items for each bill: billId -> Set of item indices
+  const [billPackedItems, setBillPackedItems] = useState<Map<string, Set<number>>>(new Map());
 
   // Fetch shop info
   useEffect(() => {
@@ -60,7 +61,10 @@ export default function WorkerPage() {
         // Remove from list immediately
         setBills(bills.filter(b => b.id !== billId));
         setSelectedBill(null);
-        setPackedItems(new Set());
+        // Remove packed items for this bill
+        const newBillPackedItems = new Map(billPackedItems);
+        newBillPackedItems.delete(billId);
+        setBillPackedItems(newBillPackedItems);
       } else {
         alert('Failed to mark bill as done');
       }
@@ -73,18 +77,36 @@ export default function WorkerPage() {
   };
 
   const toggleItemPacked = (itemIndex: number) => {
-    const key = `${selectedBill.id}-${itemIndex}`;
-    const newPacked = new Set(packedItems);
-    if (newPacked.has(key)) {
-      newPacked.delete(key);
+    if (!selectedBill) return;
+    
+    const billId = selectedBill.id;
+    const newBillPackedItems = new Map(billPackedItems);
+    
+    // Get or create the set for this bill
+    const packedSet = newBillPackedItems.get(billId) || new Set<number>();
+    
+    // Toggle the item
+    if (packedSet.has(itemIndex)) {
+      packedSet.delete(itemIndex);
     } else {
-      newPacked.add(key);
+      packedSet.add(itemIndex);
     }
-    setPackedItems(newPacked);
+    
+    // Update the map
+    if (packedSet.size === 0) {
+      newBillPackedItems.delete(billId);
+    } else {
+      newBillPackedItems.set(billId, packedSet);
+    }
+    
+    setBillPackedItems(newBillPackedItems);
   };
 
+  // Get packed items for current selected bill
+  const currentBillPackedItems = selectedBill ? (billPackedItems.get(selectedBill.id) || new Set<number>()) : new Set<number>();
+
   const allItemsPacked = selectedBill && selectedBill.items?.length > 0 && 
-    selectedBill.items.every((_, idx: number) => packedItems.has(`${selectedBill.id}-${idx}`));
+    selectedBill.items.every((_, idx: number) => currentBillPackedItems.has(idx));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6">
@@ -134,7 +156,6 @@ export default function WorkerPage() {
                       key={bill.id}
                       onClick={() => {
                         setSelectedBill(bill);
-                        setPackedItems(new Set());
                       }}
                       className={`w-full text-left p-4 rounded-lg border-2 transition ${
                         selectedBill?.id === bill.id
@@ -182,7 +203,6 @@ export default function WorkerPage() {
                     <button
                       onClick={() => {
                         setSelectedBill(null);
-                        setPackedItems(new Set());
                       }}
                       className="text-slate-400 hover:text-white transition"
                     >
@@ -201,8 +221,7 @@ export default function WorkerPage() {
                 <div className="flex-1 overflow-y-auto p-6 space-y-3">
                   <h3 className="text-white font-bold text-lg mb-4">Items to Pack ({selectedBill.items?.length || 0})</h3>
                   {selectedBill.items?.map((item: any, idx: number) => {
-                    const itemKey = `${selectedBill.id}-${idx}`;
-                    const isPacked = packedItems.has(itemKey);
+                    const isPacked = currentBillPackedItems.has(idx);
                     return (
                       <button
                         key={idx}
@@ -248,7 +267,7 @@ export default function WorkerPage() {
                       </span>
                     </div>
                     <div className="text-xs text-slate-500">
-                      {packedItems.size} of {selectedBill.items?.length || 0} items packed
+                      {currentBillPackedItems.size} of {selectedBill.items?.length || 0} items packed
                     </div>
                   </div>
 
