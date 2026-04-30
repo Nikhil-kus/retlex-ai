@@ -508,7 +508,7 @@ export default function BillingPage() {
   const router = useRouter();
   const [shop, setShop] = useState<any>(null);
   const [catalog, setCatalog] = useState<any[]>([]);
-  const [mode, setMode] = useState<'MANUAL' | 'OCR' | 'AI'>('AI');
+  const [mode, setMode] = useState<'MANUAL' | 'OCR' | 'PENDING'>('MANUAL');
 
   // Cart state
   const [cart, setCart] = useState<any[]>([]);
@@ -518,6 +518,11 @@ export default function BillingPage() {
   // Manual Mode state
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
+
+  // Pending Bills state
+  const [pendingBills, setPendingBills] = useState<any[]>([]);
+  const [completedBills, setCompletedBills] = useState<any[]>([]);
+  const [loadingBills, setLoadingBills] = useState(false);
 
   // AI/OCR state
   const [file, setFile] = useState<File | null>(null);
@@ -538,7 +543,10 @@ export default function BillingPage() {
     fetch('/api/shop').then(r => r.json()).then(data => {
       if (data && !data.error) {
         setShop(data);
-        if (data?.id) fetchCatalog(data.id);
+        if (data?.id) {
+          fetchCatalog(data.id);
+          fetchBills(data.id);
+        }
       } else {
         setShop({ error: true });
       }
@@ -548,6 +556,24 @@ export default function BillingPage() {
   const fetchCatalog = async (shopId: string) => {
     const res = await fetch(`/api/products?shopId=${shopId}`);
     if (res.ok) setCatalog(await res.json());
+  };
+
+  const fetchBills = async (shopId: string) => {
+    try {
+      setLoadingBills(true);
+      const res = await fetch(`/api/bills?shopId=${shopId}`);
+      if (res.ok) {
+        const allBills = await res.json();
+        const pending = allBills.filter((b: any) => b.orderStatus === 'PENDING');
+        const completed = allBills.filter((b: any) => b.orderStatus === 'COMPLETED').slice(0, 3);
+        setPendingBills(pending);
+        setCompletedBills(completed);
+      }
+    } catch (error) {
+      console.error('Failed to fetch bills:', error);
+    } finally {
+      setLoadingBills(false);
+    }
   };
 
   useEffect(() => {
@@ -773,7 +799,7 @@ export default function BillingPage() {
           <div className="flex border-b border-slate-100">
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
             <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan Slip" />
-            <TabButton active={mode === 'AI'} onClick={() => setMode('AI')} icon={<Camera size={18} />} label="Scan Counter" />
+            <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
           </div>
 
           <div className="p-6">
@@ -851,12 +877,12 @@ export default function BillingPage() {
               </div>
             )}
 
-            {(mode === 'OCR' || mode === 'AI') && !isReviewing && (
+            {(mode === 'OCR') && !isReviewing && (
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-lg font-semibold">{mode === 'OCR' ? 'Upload Customer List slip' : 'Upload Counter Products Image'}</h3>
+                  <h3 className="text-lg font-semibold">Upload Customer List slip</h3>
                   <p className="text-slate-500 text-sm mb-4">
-                    {mode === 'OCR' ? "We'll read handwritten or printed text and match it." : "We'll detect actual products on the counter and match them."}
+                    We'll read handwritten or printed text and match it.
                   </p>
                 </div>
 
@@ -887,7 +913,63 @@ export default function BillingPage() {
               </div>
             )}
 
-            {(mode === 'OCR' || mode === 'AI') && isReviewing && (
+            {mode === 'PENDING' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold">Pending Orders</h3>
+                  <p className="text-slate-500 text-sm mb-4">
+                    Orders waiting to be fulfilled
+                  </p>
+                </div>
+
+                {loadingBills ? (
+                  <div className="text-center py-8 text-slate-500">Loading orders...</div>
+                ) : pendingBills.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">No pending orders</div>
+                ) : (
+                  <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+                    {pendingBills.map((bill) => (
+                      <div key={bill.id} className="p-4 border border-amber-200 bg-amber-50 rounded-xl">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="font-semibold text-slate-900">{bill.billNumber}</p>
+                            <p className="text-xs text-slate-500">{new Date(bill.createdAt).toLocaleTimeString()}</p>
+                          </div>
+                          <span className="bg-amber-500 text-white px-2.5 py-1 rounded-full text-xs font-semibold">PENDING</span>
+                        </div>
+                        <div className="text-sm text-slate-700 mb-2">
+                          {bill.items?.length || 0} items • ₹{bill.totalAmount?.toFixed(2) || '0.00'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="border-t border-slate-200 pt-6">
+                  <h4 className="text-sm font-semibold text-slate-700 mb-3">Recent Completed Orders</h4>
+                  {completedBills.length === 0 ? (
+                    <div className="text-center py-4 text-slate-500 text-sm">No completed orders yet</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {completedBills.map((bill) => (
+                        <div key={bill.id} className="p-3 border border-emerald-200 bg-emerald-50 rounded-lg">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium text-slate-900 text-sm">{bill.billNumber}</p>
+                              <p className="text-xs text-slate-500">{new Date(bill.createdAt).toLocaleTimeString()}</p>
+                            </div>
+                            <span className="bg-emerald-500 text-white px-2 py-0.5 rounded text-xs font-semibold">✓ DONE</span>
+                          </div>
+                          <p className="text-xs text-slate-600 mt-1">₹{bill.totalAmount?.toFixed(2) || '0.00'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {(mode === 'OCR') && isReviewing && (
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold flex items-center gap-2"><CheckCircle className="text-emerald-500" /> Review Detected Items</h3>
