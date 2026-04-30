@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { CheckCircle, Clock, X, Check } from 'lucide-react';
 
 export default function WorkerPage() {
   const [bills, setBills] = useState<any[]>([]);
   const [shop, setShop] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [selectedBill, setSelectedBill] = useState<any>(null);
+  const [packedItems, setPackedItems] = useState<Set<string>>(new Set());
 
   // Fetch shop info
   useEffect(() => {
@@ -57,6 +59,8 @@ export default function WorkerPage() {
       if (res.ok) {
         // Remove from list immediately
         setBills(bills.filter(b => b.id !== billId));
+        setSelectedBill(null);
+        setPackedItems(new Set());
       } else {
         alert('Failed to mark bill as done');
       }
@@ -68,12 +72,26 @@ export default function WorkerPage() {
     }
   };
 
+  const toggleItemPacked = (itemIndex: number) => {
+    const key = `${selectedBill.id}-${itemIndex}`;
+    const newPacked = new Set(packedItems);
+    if (newPacked.has(key)) {
+      newPacked.delete(key);
+    } else {
+      newPacked.add(key);
+    }
+    setPackedItems(newPacked);
+  };
+
+  const allItemsPacked = selectedBill && selectedBill.items?.length > 0 && 
+    selectedBill.items.every((_, idx: number) => packedItems.has(`${selectedBill.id}-${idx}`));
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white flex items-center gap-3 mb-2">
+        <div className="mb-6">
+          <h1 className="text-3xl md:text-4xl font-bold text-white flex items-center gap-3 mb-2">
             <Clock className="text-amber-400" size={32} />
             Order Queue
           </h1>
@@ -83,103 +101,177 @@ export default function WorkerPage() {
         </div>
 
         {/* Status Summary */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-8 flex items-center gap-4">
+        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-6 flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Clock className="text-amber-400" size={20} />
             <span className="text-white font-semibold">{bills.length} Pending</span>
           </div>
         </div>
 
-        {/* Bills Grid */}
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="text-slate-400 flex flex-col items-center gap-3">
-              <Clock className="animate-spin" size={32} />
-              <p>Loading orders...</p>
-            </div>
-          </div>
-        ) : bills.length === 0 ? (
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-12 text-center">
-            <CheckCircle className="mx-auto text-emerald-400 mb-4" size={48} />
-            <p className="text-slate-300 text-lg font-medium">All orders completed!</p>
-            <p className="text-slate-500 text-sm mt-2">No pending orders at the moment.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {bills.map((bill) => (
-              <div
-                key={bill.id}
-                className="bg-slate-800 border border-slate-700 rounded-xl p-6 hover:border-slate-600 transition shadow-lg"
-              >
-                {/* Bill Header */}
-                <div className="mb-4 pb-4 border-b border-slate-700">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h3 className="text-white font-bold text-lg">{bill.billNumber}</h3>
-                      <p className="text-slate-400 text-xs">
+        {/* Main Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Bills List - Left Side */}
+          <div className="lg:col-span-1">
+            <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
+              <div className="bg-slate-700/50 p-4 border-b border-slate-700">
+                <h2 className="text-white font-bold text-lg">Pending Orders</h2>
+              </div>
+
+              {loading ? (
+                <div className="p-8 text-center text-slate-400">
+                  <Clock className="animate-spin mx-auto mb-2" size={24} />
+                  <p>Loading...</p>
+                </div>
+              ) : bills.length === 0 ? (
+                <div className="p-8 text-center text-slate-400">
+                  <CheckCircle className="mx-auto mb-2 text-emerald-400" size={32} />
+                  <p className="text-sm">All orders completed!</p>
+                </div>
+              ) : (
+                <div className="space-y-2 p-4 max-h-[calc(100vh-300px)] overflow-y-auto">
+                  {bills.map((bill) => (
+                    <button
+                      key={bill.id}
+                      onClick={() => {
+                        setSelectedBill(bill);
+                        setPackedItems(new Set());
+                      }}
+                      className={`w-full text-left p-4 rounded-lg border-2 transition ${
+                        selectedBill?.id === bill.id
+                          ? 'bg-amber-500/20 border-amber-500 shadow-lg shadow-amber-500/20'
+                          : 'bg-slate-700/30 border-slate-700 hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="text-white font-bold text-sm">{bill.billNumber}</h3>
+                        <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded text-xs font-semibold">
+                          {bill.items?.length || 0} items
+                        </span>
+                      </div>
+                      <p className="text-slate-400 text-xs mb-1">
                         {new Date(bill.createdAt).toLocaleTimeString()}
                       </p>
+                      <p className="text-emerald-400 font-semibold text-sm">
+                        ₹{bill.totalAmount?.toFixed(2) || '0.00'}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bill Details - Right Side */}
+          <div className="lg:col-span-2">
+            {!selectedBill ? (
+              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-12 text-center h-full flex flex-col items-center justify-center">
+                <Clock className="text-slate-600 mb-4" size={48} />
+                <p className="text-slate-400 text-lg">Select an order to view details</p>
+              </div>
+            ) : (
+              <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden flex flex-col h-full">
+                {/* Bill Header */}
+                <div className="bg-slate-700/50 p-6 border-b border-slate-700">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h2 className="text-2xl font-bold text-white">{selectedBill.billNumber}</h2>
+                      <p className="text-slate-400 text-sm mt-1">
+                        {new Date(selectedBill.createdAt).toLocaleString()}
+                      </p>
                     </div>
-                    <span className="bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1">
-                      <Clock size={12} />
+                    <button
+                      onClick={() => {
+                        setSelectedBill(null);
+                        setPackedItems(new Set());
+                      }}
+                      className="text-slate-400 hover:text-white transition"
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Customer: {selectedBill.customerName || 'Walk-in'}</span>
+                    <span className="bg-amber-500/20 text-amber-300 px-3 py-1 rounded-full text-sm font-semibold">
                       PENDING
                     </span>
                   </div>
                 </div>
 
                 {/* Items List */}
-                <div className="mb-6 space-y-2">
-                  <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-3">
-                    Items ({bill.items?.length || 0})
-                  </p>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {bill.items?.map((item: any, idx: number) => (
-                      <div
+                <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                  <h3 className="text-white font-bold text-lg mb-4">Items to Pack ({selectedBill.items?.length || 0})</h3>
+                  {selectedBill.items?.map((item: any, idx: number) => {
+                    const itemKey = `${selectedBill.id}-${idx}`;
+                    const isPacked = packedItems.has(itemKey);
+                    return (
+                      <button
                         key={idx}
-                        className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/50"
+                        onClick={() => toggleItemPacked(idx)}
+                        className={`w-full p-4 rounded-lg border-2 transition text-left ${
+                          isPacked
+                            ? 'bg-emerald-500/20 border-emerald-500 shadow-lg shadow-emerald-500/20'
+                            : 'bg-slate-700/30 border-slate-700 hover:border-slate-600'
+                        }`}
                       >
-                        <div className="flex justify-between items-start mb-1">
-                          <span className="text-white font-medium text-sm line-clamp-1">
-                            {item.name}
-                          </span>
-                          <span className="text-slate-400 text-xs ml-2 flex-shrink-0">
-                            ₹{item.total?.toFixed(2) || '0.00'}
-                          </span>
+                        <div className="flex items-start gap-4">
+                          <div className={`flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center mt-1 transition ${
+                            isPacked
+                              ? 'bg-emerald-500 border-emerald-500'
+                              : 'border-slate-500'
+                          }`}>
+                            {isPacked && <Check size={16} className="text-white" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-semibold text-base ${isPacked ? 'text-emerald-300 line-through' : 'text-white'}`}>
+                              {item.name}
+                            </p>
+                            {item.localName && (
+                              <p className="text-slate-400 text-sm">({item.localName})</p>
+                            )}
+                            <p className="text-slate-400 text-sm mt-1">
+                              {item.quantity} {item.unit || 'pc'} • ₹{item.total?.toFixed(2) || '0.00'}
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-slate-500 text-xs">
-                          {item.quantity} {item.unit || 'pc'}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      </button>
+                    );
+                  })}
                 </div>
 
-                {/* Total */}
-                <div className="bg-slate-900/50 rounded-lg p-3 mb-6 border border-slate-700/50">
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400 font-medium">Total Amount</span>
-                    <span className="text-emerald-400 font-bold text-lg">
-                      ₹{bill.totalAmount?.toFixed(2) || '0.00'}
-                    </span>
+                {/* Footer */}
+                <div className="bg-slate-700/50 border-t border-slate-700 p-6 space-y-4">
+                  <div className="bg-slate-900/50 rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-slate-400">Total Amount</span>
+                      <span className="text-emerald-400 font-bold text-xl">
+                        ₹{selectedBill.totalAmount?.toFixed(2) || '0.00'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {packedItems.size} of {selectedBill.items?.length || 0} items packed
+                    </div>
                   </div>
-                </div>
 
-                {/* Mark Done Button */}
-                <button
-                  onClick={() => handleMarkDone(bill.id)}
-                  disabled={updatingId === bill.id}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition flex items-center justify-center gap-2"
-                >
-                  <CheckCircle size={20} />
-                  {updatingId === bill.id ? 'Marking...' : 'Mark Done'}
-                </button>
+                  <button
+                    onClick={() => handleMarkDone(selectedBill.id)}
+                    disabled={updatingId === selectedBill.id || !allItemsPacked}
+                    className={`w-full py-4 rounded-lg font-bold text-white flex items-center justify-center gap-2 transition ${
+                      allItemsPacked
+                        ? 'bg-emerald-600 hover:bg-emerald-500'
+                        : 'bg-slate-700 cursor-not-allowed opacity-50'
+                    }`}
+                  >
+                    <CheckCircle size={20} />
+                    {updatingId === selectedBill.id ? 'Completing...' : allItemsPacked ? 'Complete Order' : 'Pack All Items First'}
+                  </button>
+                </div>
               </div>
-            ))}
+            )}
           </div>
-        )}
+        </div>
 
         {/* Auto-refresh indicator */}
-        <div className="mt-8 text-center text-slate-500 text-xs">
+        <div className="mt-6 text-center text-slate-500 text-xs">
           Auto-refreshing every 2 seconds
         </div>
       </div>
