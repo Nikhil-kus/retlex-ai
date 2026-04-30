@@ -16,11 +16,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { status } = await request.json();
+    const body = await request.json();
     const { id } = await params;
-    await updateDoc(doc(db, "bills", id), { status });
-    const bill = { id, status };
-    return NextResponse.json(bill);
+    
+    const updateData: any = {};
+    if (body.status !== undefined) updateData.status = body.status;
+    if (body.orderStatus !== undefined) updateData.orderStatus = body.orderStatus;
+    
+    await updateDoc(doc(db, "bills", id), updateData);
+    return NextResponse.json({ id, ...updateData });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to update bill' }, { status: 500 });
   }

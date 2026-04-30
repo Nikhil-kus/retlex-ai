@@ -75,6 +75,7 @@ export async function POST(request: Request) {
       paymentMethod: data.paymentMethod || null,
       notes: data.notes || null,
       items: itemsData,
+      orderStatus: 'PENDING',
       createdAt: new Date().toISOString(),
       date: serverTimestamp()
     };
