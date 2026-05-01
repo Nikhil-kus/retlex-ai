@@ -411,6 +411,24 @@ export default function BillingPage() {
 
     return matchedItems;
   };
+
+  const getSuggestions = (item: any) => {
+    if (!item.productId) return [];
+    
+    // Use first word of the product name for a broader search
+    const searchWord = (item.name || '').split(' ')[0].toLowerCase();
+    
+    return catalog.filter(product => {
+      if (product.id === item.productId) return false;
+      
+      const prodName = (product.name || '').toLowerCase();
+      const prodLocal = (product.localName || '').toLowerCase();
+      const itemLocal = (item.localName || '').toLowerCase();
+      
+      return (itemLocal && prodLocal === itemLocal) || prodName.includes(searchWord);
+    }).slice(0, 5);
+  };
+
   const startVoiceInput = () => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -451,7 +469,11 @@ export default function BillingPage() {
             if (fullText.length > 1) {
                 const newParsedItems = processVoiceTextToItems(fullText);
                 if (newParsedItems.length > 0) {
-                    setReviewItems([...baseReviewItemsRef.current, ...newParsedItems]);
+                    const enrichedItems = newParsedItems.map((item: any) => ({
+                        ...item,
+                        suggestions: getSuggestions(item)
+                    }));
+                    setReviewItems([...baseReviewItemsRef.current, ...enrichedItems]);
                     setIsReviewing(true);
                 }
             }
@@ -1120,6 +1142,36 @@ export default function BillingPage() {
                           />
                         </div>
                       </div>
+
+                      {item.suggestions && item.suggestions.length > 0 && (
+                        <div className="mt-2 pt-3 border-t border-slate-200/60">
+                          <p className="text-xs font-semibold text-slate-500 mb-2">Similar Items Available:</p>
+                          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+                            {item.suggestions.map((sug: any, sIdx: number) => (
+                              <button
+                                key={sIdx}
+                                onClick={() => {
+                                  const newItems = [...reviewItems];
+                                  newItems[idx] = {
+                                    ...newItems[idx],
+                                    productId: sug.id,
+                                    name: sug.name,
+                                    localName: sug.localName,
+                                    price: sug.price,
+                                    baseUnit: sug.baseUnit,
+                                    baseQuantity: sug.baseQuantity
+                                  };
+                                  setReviewItems(newItems);
+                                }}
+                                className="flex-shrink-0 bg-white border border-indigo-100 rounded-lg p-2 text-left hover:bg-indigo-50 hover:border-indigo-300 transition-colors w-36"
+                              >
+                                <p className="text-xs font-bold text-slate-800 line-clamp-1">{sug.name}</p>
+                                <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">₹{(sug.price || 0).toFixed(2)} / {sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                   <div ref={reviewEndRef} />
