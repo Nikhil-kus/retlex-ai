@@ -36,7 +36,7 @@ export default function Sidebar() {
       <nav
         className={`fixed md:sticky top-0 left-0 h-screen w-64 bg-slate-900 text-slate-100 flex flex-col transition-transform transform ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:translate-x-0 z-40 shadow-xl`}
+        } md:translate-x-0 z-50 shadow-xl`}
       >
         <div className="p-6">
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
@@ -73,7 +73,7 @@ export default function Sidebar() {
       {/* Overlay for mobile */}
       {isOpen && (
         <div 
-          className="md:hidden fixed inset-0 bg-black/50 z-30"
+          className="md:hidden fixed inset-0 bg-black/50 z-40"
           onClick={() => setIsOpen(false)}
         />
       )}
