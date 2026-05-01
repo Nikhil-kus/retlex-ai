@@ -397,6 +397,7 @@ export default function BillingPage() {
         productId: match.id,
         name: match.name, // Safely mapped exactly from Database Output
         localName: match.localName,
+        imageUrl: match.imageUrl,
         quantity: finalQty,
         unit: finalUnit,
         baseUnit: match.baseUnit,
@@ -638,6 +639,7 @@ export default function BillingPage() {
         productId: product.id,
         name: product.name,
         localName: product.localName || null,
+        imageUrl: product.imageUrl || null,
         price: product.price || 0,
         costPrice: product.costPrice || 0,
         unit: product.baseUnit || 'pc',
@@ -1121,8 +1123,12 @@ export default function BillingPage() {
                   {reviewItems.map((item, idx) => (
                     <div key={idx} className={`p-4 border rounded-xl flex flex-col gap-3 transition-colors ${item.isRepeated ? 'border-amber-400 bg-amber-50 shadow-[0_0_12px_rgba(251,191,36,0.3)] relative' : item.productId ? 'border-emerald-200 bg-emerald-50/30' : 'border-rose-200 bg-rose-50/30'}`}>
                       <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
+                        <div className="flex gap-3 flex-1 items-start">
+                          <div className="w-12 h-12 rounded-lg bg-white border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                            {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={24}/>}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
                             <input
                               value={item.name}
                               onChange={e => {
@@ -1143,6 +1149,7 @@ export default function BillingPage() {
                           ) : (
                             <p className="text-xs text-emerald-600 flex items-center gap-1 mt-1"><CheckCircle size={12} /> AI Matched: {item.aiLabel || 'Catalog'}</p>
                           )}
+                        </div>
                         </div>
                         <button onClick={() => setReviewItems(reviewItems.filter((_, i) => i !== idx))} className="text-slate-400 hover:text-rose-500"><X size={20} /></button>
                       </div>
@@ -1178,7 +1185,8 @@ export default function BillingPage() {
                                     localName: sug.localName,
                                     price: sug.price,
                                     baseUnit: sug.baseUnit,
-                                    baseQuantity: sug.baseQuantity
+                                    baseQuantity: sug.baseQuantity,
+                                    imageUrl: sug.imageUrl
                                   };
                                   
                                   if (item.aiLabel) {
@@ -1192,13 +1200,18 @@ export default function BillingPage() {
                                   };
                                   setReviewItems(newItems);
                                 }}
-                                className="flex-shrink-0 bg-white border border-indigo-100 rounded-lg p-2 text-left hover:bg-indigo-50 hover:border-indigo-300 transition-colors w-36"
+                                className="flex-shrink-0 bg-white border border-indigo-100 rounded-lg p-2 text-left hover:bg-indigo-50 hover:border-indigo-300 transition-colors w-44 flex items-center gap-2"
                               >
-                                <p className="text-xs font-bold text-slate-800 line-clamp-1">{sug.name}</p>
-                                <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">
-                                  ₹{(sug.price || 0).toFixed(2)} / {sug.baseQuantity || 1} {(sug.baseUnit || sug.unit) === 'pkt' ? 'packet' : (sug.baseUnit || sug.unit || 'pc')}
-                                  {sug.packetWeight ? ` (${sug.packetWeight}${sug.packetUnit || 'g'})` : ''}
-                                </p>
+                                <div className="w-8 h-8 rounded bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center">
+                                  {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={14}/>}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 line-clamp-1">{sug.name}</p>
+                                  <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">
+                                    ₹{(sug.price || 0).toFixed(2)} / {sug.baseQuantity || 1} {(sug.baseUnit || sug.unit) === 'pkt' ? 'packet' : (sug.baseUnit || sug.unit || 'pc')}
+                                    {sug.packetWeight ? ` (${sug.packetWeight}${sug.packetUnit || 'g'})` : ''}
+                                  </p>
+                                </div>
                               </button>
                             ))}
                           </div>
@@ -1236,22 +1249,27 @@ export default function BillingPage() {
             </div>
           ) : (
             cart.map((item, idx) => (
-              <div key={idx} className="bg-slate-800 p-3 rounded-xl border border-slate-700 relative group">
-                <div className="flex justify-between items-start pr-6">
-                  <div>
-                    <p className="font-semibold text-sm line-clamp-1">
-                      {item.name} {item.localName && <span className="text-indigo-300 font-normal ml-1">({item.localName})</span>}
-                    </p>
-                    <p className="text-slate-400 text-xs mt-0.5">₹{(item.price || 0).toFixed(2)} / {item.baseQuantity === 1 ? '' : item.baseQuantity}{item.baseUnit || item.unit}</p>
-                  </div>
-                  <p className="font-bold text-indigo-300">₹{calculateItemTotal(item).toFixed(2)}</p>
+              <div key={idx} className="bg-slate-800 p-3 rounded-xl border border-slate-700 relative group flex gap-3">
+                <div className="w-12 h-12 rounded bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center border border-slate-600">
+                  {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover opacity-90" /> : <Package className="text-slate-500" size={20}/>}
                 </div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-start pr-6">
+                    <div>
+                      <p className="font-semibold text-sm line-clamp-1">
+                        {item.name} {item.localName && <span className="text-indigo-300 font-normal ml-1">({item.localName})</span>}
+                      </p>
+                      <p className="text-slate-400 text-xs mt-0.5">₹{(item.price || 0).toFixed(2)} / {item.baseQuantity === 1 ? '' : item.baseQuantity}{item.baseUnit || item.unit}</p>
+                    </div>
+                    <p className="font-bold text-indigo-300">₹{calculateItemTotal(item).toFixed(2)}</p>
+                  </div>
 
-                <div className="flex items-center justify-between mt-3">
-                  <div className="flex items-center bg-slate-900 rounded-md border border-slate-700 h-8">
-                    <button onClick={() => updateCartItem(idx, 'quantity', Math.max(0.5, item.quantity - 1))} className="px-2 py-1 text-slate-400 hover:text-white h-full">-</button>
-                    <span className="px-3 text-sm font-medium w-auto text-center tabular-nums">{item.quantity} <span className="text-slate-400 text-xs">{item.unit || item.baseUnit}</span></span>
-                    <button onClick={() => updateCartItem(idx, 'quantity', item.quantity + 1)} className="px-2 py-1 text-slate-400 hover:text-white h-full">+</button>
+                  <div className="flex items-center justify-between mt-3">
+                    <div className="flex items-center bg-slate-900 rounded-md border border-slate-700 h-8">
+                      <button onClick={() => updateCartItem(idx, 'quantity', Math.max(0.5, item.quantity - 1))} className="px-2 py-1 text-slate-400 hover:text-white h-full">-</button>
+                      <span className="px-3 text-sm font-medium w-auto text-center tabular-nums">{item.quantity} <span className="text-slate-400 text-xs">{item.unit || item.baseUnit}</span></span>
+                      <button onClick={() => updateCartItem(idx, 'quantity', item.quantity + 1)} className="px-2 py-1 text-slate-400 hover:text-white h-full">+</button>
+                    </div>
                   </div>
                 </div>
 
