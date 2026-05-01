@@ -684,14 +684,17 @@ export default function BillingPage() {
 
   const totalAmount = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
 
-  const handleGenerateBill = async () => {
+  const handleGenerateBill = async (overrideInfo?: any) => {
+    // Determine if overrideInfo is a valid object (and not a React click event)
+    const infoToUse = (overrideInfo && !overrideInfo.type) ? overrideInfo : customerInfo;
+
     if (cart.length === 0) return alert('Cart is empty!');
     setSavingBill(true);
 
     const payload = {
       shopId: shop.id,
       items: cart,
-      ...customerInfo,
+      ...infoToUse,
     };
 
     const res = await fetch('/api/bills', {
@@ -704,7 +707,7 @@ export default function BillingPage() {
       const bill = await res.json();
       
       // Generate WhatsApp message if customer phone is available
-      if (customerInfo.phone) {
+      if (infoToUse.phone) {
         // Calculate total amount
         const totalAmount = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
         
@@ -722,7 +725,7 @@ export default function BillingPage() {
         );
         
         // Open WhatsApp chat with pre-filled message
-        openWhatsAppChat(customerInfo.phone, whatsappMessage);
+        openWhatsAppChat(infoToUse.phone, whatsappMessage);
       }
       
       router.push(`/history`);
@@ -1297,9 +1300,26 @@ export default function BillingPage() {
           <div className="space-y-3">
             <input
               type="text"
+              placeholder="Customer Name (Optional)"
+              value={customerInfo.name}
+              onChange={e => setCustomerInfo({ ...customerInfo, name: e.target.value })}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+            />
+            <input
+              type="tel"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={10}
               placeholder="Customer Phone (Optional)"
               value={customerInfo.phone}
-              onChange={e => setCustomerInfo({ ...customerInfo, phone: e.target.value })}
+              onChange={e => {
+                const val = e.target.value.replace(/\D/g, '');
+                const newInfo = { ...customerInfo, phone: val };
+                setCustomerInfo(newInfo);
+                if (val.length === 10) {
+                  handleGenerateBill(newInfo);
+                }
+              }}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
             />
 
