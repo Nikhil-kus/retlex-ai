@@ -39,8 +39,8 @@ export function openWhatsAppChat(phoneNumber: string, message: string): void {
   // Ensure phone number starts with country code (default to 91 for India)
   // If it's a 10-digit number, it's a local Indian number, so unconditionally prepend 91.
   const formattedPhone = cleanPhone.length === 10 
-    ? \`91\${cleanPhone}\` 
-    : (cleanPhone.startsWith('91') && cleanPhone.length > 10 ? cleanPhone : \`91\${cleanPhone}\`);
+    ? `91${cleanPhone}` 
+    : (cleanPhone.startsWith('91') && cleanPhone.length > 10 ? cleanPhone : `91${cleanPhone}`);
 
   // Encode the message
   const encodedMessage = encodeURIComponent(message);
