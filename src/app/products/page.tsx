@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Package, Search, Plus, Pencil, Trash, X, ChevronDown } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash, X, ChevronDown, CheckSquare, Square } from 'lucide-react';
+import Image from 'next/image';
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -12,6 +13,7 @@ export default function ProductsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [updatingPriceId, setUpdatingPriceId] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -94,7 +96,6 @@ export default function ProductsPage() {
       });
 
       if (res.ok) {
-        // Update local state
         setProducts(products.map(p => 
           p.id === productId ? { ...p, price: parseFloat(newPrice) } : p
         ));
@@ -140,6 +141,7 @@ export default function ProductsPage() {
       const data = await res.json();
       alert(`✅ Successfully deleted ${data.deletedCount} product(s)`);
       setSelectedProducts(new Set());
+      setSelectionMode(false);
       fetchProducts(shop.id, search);
     } else {
       alert('❌ Failed to delete products');
@@ -182,202 +184,219 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      {!shop && !loading && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-xl mb-6">
-          <strong>Database Error or Shop Not Found:</strong> Could not connect to Firebase, or you haven't set up a shop yet. Please configure your Firebase environment variables in `.env` and complete the shop setup!
-        </div>
-      )}
-
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-3">
-            <Package className="text-indigo-600" />
-            Product Catalog
-          </h1>
-          <p className="text-slate-500 mt-1">Manage your inventory and prices.</p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {selectedProducts.size > 0 && (
-            <button
-              onClick={handleBulkDelete}
-              disabled={bulkDeleting}
-              className="bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 transition flex items-center justify-center gap-2 font-medium disabled:opacity-50 text-sm md:text-base"
-            >
-              <Trash size={18} /> Delete {selectedProducts.size}
-            </button>
-          )}
-          <button
-            onClick={() => { resetForm(); setIsModalOpen(true); }}
-            disabled={!shop}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
-          >
-            <Plus size={18} /> Add Product
-          </button>
-        </div>
-      </div>
-
-      {/* Search */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input
-            type="text"
-            placeholder="Search by name, local name or barcode..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm md:text-base"
-          />
-        </div>
-      </div>
-
-      {/* Products by Category */}
-      {loading ? (
-        <div className="text-center py-12 text-slate-500">Loading products...</div>
-      ) : products.length === 0 ? (
-        <div className="text-center py-12 text-slate-500">No products found. Add your first product!</div>
-      ) : (
-        <div className="space-y-4">
-          {categories.map((category) => (
-            <div key={category} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-              {/* Category Header */}
+      <div className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 flex items-center gap-3">
+                <Package className="text-indigo-600" size={28} />
+                Products
+              </h1>
+              <p className="text-slate-500 text-sm mt-1">Manage your inventory</p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {selectionMode && selectedProducts.size > 0 && (
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting}
+                  className="bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 transition flex items-center justify-center gap-2 font-medium disabled:opacity-50 text-sm"
+                >
+                  <Trash size={16} /> Delete {selectedProducts.size}
+                </button>
+              )}
               <button
-                onClick={() => toggleCategory(category)}
-                className="w-full px-4 md:px-6 py-4 flex items-center justify-between bg-slate-50 hover:bg-slate-100 transition border-b border-slate-100"
+                onClick={() => { resetForm(); setIsModalOpen(true); }}
+                disabled={!shop}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 font-medium disabled:opacity-50 text-sm"
               >
-                <div className="flex items-center gap-3">
-                  <ChevronDown
-                    size={20}
-                    className={`text-slate-600 transition ${expandedCategories.has(category) ? 'rotate-180' : ''}`}
-                  />
-                  <h2 className="font-bold text-slate-900 text-sm md:text-base">{category}</h2>
-                  <span className="bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full text-xs font-semibold">
-                    {groupedProducts[category].length}
-                  </span>
-                </div>
+                <Plus size={16} /> Add
               </button>
+            </div>
+          </div>
 
-              {/* Products Grid */}
-              {expandedCategories.has(category) && (
-                <div className="p-4 md:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {groupedProducts[category].map((p) => (
-                    <div
-                      key={p.id}
-                      className={`border-2 rounded-lg p-4 transition ${
-                        selectedProducts.has(p.id)
-                          ? 'border-indigo-500 bg-indigo-50'
-                          : 'border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      {/* Checkbox */}
-                      <div className="flex items-start gap-3 mb-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedProducts.has(p.id)}
-                          onChange={() => toggleProductSelection(p.id)}
-                          className="w-5 h-5 rounded border-slate-300 cursor-pointer mt-0.5"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-slate-900 text-sm md:text-base line-clamp-2">{p.name}</h3>
-                          {p.localName && (
-                            <p className="text-xs text-slate-500 mt-0.5">{p.localName}</p>
+          {/* Search and Selection Toggle */}
+          <div className="flex gap-3 mt-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
+              />
+            </div>
+            <button
+              onClick={() => {
+                setSelectionMode(!selectionMode);
+                if (selectionMode) setSelectedProducts(new Set());
+              }}
+              className={`px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-2 ${
+                selectionMode
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+              }`}
+            >
+              {selectionMode ? <CheckSquare size={16} /> : <Square size={16} />}
+              Select
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-8">
+        {!shop && !loading && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-xl mb-6">
+            <strong>Database Error:</strong> Could not connect to Firebase. Please configure your environment variables.
+          </div>
+        )}
+
+        {loading ? (
+          <div className="text-center py-16">
+            <div className="inline-flex items-center gap-2 text-slate-500">
+              <div className="w-4 h-4 bg-indigo-600 rounded-full animate-bounce"></div>
+              <span>Loading products...</span>
+            </div>
+          </div>
+        ) : products.length === 0 ? (
+          <div className="text-center py-16">
+            <Package className="mx-auto text-slate-300 mb-4" size={48} />
+            <p className="text-slate-500 text-lg">No products found</p>
+            <p className="text-slate-400 text-sm mt-1">Add your first product to get started</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {categories.map((category) => (
+              <div key={category}>
+                {/* Category Header */}
+                <button
+                  onClick={() => toggleCategory(category)}
+                  className="w-full px-4 py-3 flex items-center justify-between bg-white rounded-lg border border-slate-200 hover:border-slate-300 transition mb-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <ChevronDown
+                      size={18}
+                      className={`text-slate-600 transition ${expandedCategories.has(category) ? 'rotate-180' : ''}`}
+                    />
+                    <h2 className="font-semibold text-slate-900 text-sm md:text-base">{category}</h2>
+                    <span className="bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full text-xs font-semibold">
+                      {groupedProducts[category].length}
+                    </span>
+                  </div>
+                </button>
+
+                {/* Products Grid */}
+                {expandedCategories.has(category) && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {groupedProducts[category].map((p) => (
+                      <div
+                        key={p.id}
+                        className={`bg-white rounded-lg border-2 overflow-hidden transition hover:shadow-lg ${
+                          selectedProducts.has(p.id)
+                            ? 'border-indigo-500 shadow-md'
+                            : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        {/* Selection Checkbox */}
+                        {selectionMode && (
+                          <div className="absolute top-2 left-2 z-10">
+                            <input
+                              type="checkbox"
+                              checked={selectedProducts.has(p.id)}
+                              onChange={() => toggleProductSelection(p.id)}
+                              className="w-5 h-5 rounded border-slate-300 cursor-pointer"
+                            />
+                          </div>
+                        )}
+
+                        {/* Product Image */}
+                        <div className="relative w-full h-32 bg-slate-100 overflow-hidden">
+                          {p.imageUrl ? (
+                            <Image
+                              src={p.imageUrl}
+                              alt={p.name}
+                              fill
+                              className="object-cover hover:scale-105 transition"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+                              <Package className="text-slate-400" size={32} />
+                            </div>
                           )}
                         </div>
-                      </div>
 
-                      {/* Price - Prominent Display */}
-                      <div className="mb-3 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-                        {quickPriceEdit?.id === p.id ? (
-                          <div className="flex gap-2">
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={quickPriceEdit.price}
-                              onChange={(e) => setQuickPriceEdit({ ...quickPriceEdit, price: e.target.value })}
-                              className="flex-1 border border-slate-300 rounded px-2 py-1 text-sm"
-                              autoFocus
-                            />
+                        {/* Product Info */}
+                        <div className="p-3">
+                          {/* Name */}
+                          <h3 className="font-semibold text-slate-900 text-sm line-clamp-2 mb-1">
+                            {p.name}
+                          </h3>
+                          {p.localName && (
+                            <p className="text-xs text-slate-500 mb-2 line-clamp-1">{p.localName}</p>
+                          )}
+
+                          {/* Price */}
+                          <div className="mb-2">
+                            {quickPriceEdit?.id === p.id ? (
+                              <div className="flex gap-1">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={quickPriceEdit.price}
+                                  onChange={(e) => setQuickPriceEdit({ ...quickPriceEdit, price: e.target.value })}
+                                  className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => handleQuickPriceUpdate(p.id, quickPriceEdit.price)}
+                                  disabled={updatingPriceId === p.id}
+                                  className="bg-emerald-600 text-white px-2 py-1 rounded text-xs hover:bg-emerald-700 disabled:opacity-50"
+                                >
+                                  ✓
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setQuickPriceEdit({ id: p.id, price: p.price?.toString() || '' })}
+                                className="w-full text-left hover:opacity-70 transition"
+                              >
+                                <div className="text-lg font-bold text-emerald-600">₹{(p.price || 0).toFixed(2)}</div>
+                                <div className="text-xs text-slate-500">{p.unit || p.baseUnit || 'pc'}</div>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex gap-2 pt-2 border-t border-slate-100">
                             <button
-                              onClick={() => handleQuickPriceUpdate(p.id, quickPriceEdit.price)}
-                              disabled={updatingPriceId === p.id}
-                              className="bg-emerald-600 text-white px-3 py-1 rounded text-sm hover:bg-emerald-700 disabled:opacity-50"
+                              onClick={() => handleOpenEdit(p)}
+                              className="flex-1 p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition flex items-center justify-center gap-1 text-xs"
                             >
-                              Save
+                              <Pencil size={14} /> Edit
+                            </button>
+                            <button
+                              onClick={() => handleDelete(p.id)}
+                              className="flex-1 p-1.5 text-rose-600 hover:bg-rose-50 rounded transition flex items-center justify-center gap-1 text-xs"
+                            >
+                              <Trash size={14} /> Delete
                             </button>
                           </div>
-                        ) : (
-                          <button
-                            onClick={() => setQuickPriceEdit({ id: p.id, price: p.price?.toString() || '' })}
-                            className="w-full text-left hover:opacity-70 transition"
-                          >
-                            <div className="text-xs text-slate-600 mb-1">Selling Price</div>
-                            <div className="text-2xl font-bold text-emerald-700">₹{(p.price || 0).toFixed(2)}</div>
-                          </button>
-                        )}
+                        </div>
                       </div>
-
-                      {/* Details */}
-                      <div className="space-y-2 mb-4 text-xs text-slate-600">
-                        <div className="flex justify-between">
-                          <span>Unit:</span>
-                          <span className="font-medium">{p.unit || p.baseUnit || 'pc'}</span>
-                        </div>
-                        {p.barcode && (
-                          <div className="flex justify-between">
-                            <span>Barcode:</span>
-                            <span className="font-medium">{p.barcode}</span>
-                          </div>
-                        )}
-                        {p.costPrice && (
-                          <div className="flex justify-between">
-                            <span>Cost:</span>
-                            <span className="font-medium">₹{(p.costPrice || 0).toFixed(2)}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Actions - Only show when selected or on hover */}
-                      {selectedProducts.has(p.id) && (
-                        <div className="flex gap-2 pt-3 border-t border-slate-200">
-                          <button
-                            onClick={() => handleOpenEdit(p)}
-                            className="flex-1 p-2 text-indigo-600 hover:bg-indigo-50 rounded transition flex items-center justify-center gap-1 text-sm"
-                          >
-                            <Pencil size={14} /> Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(p.id)}
-                            className="flex-1 p-2 text-rose-600 hover:bg-rose-50 rounded transition flex items-center justify-center gap-1 text-sm"
-                          >
-                            <Trash size={14} /> Delete
-                          </button>
-                        </div>
-                      )}
-                      {!selectedProducts.has(p.id) && (
-                        <div className="flex gap-2 pt-3 border-t border-slate-200 opacity-0 hover:opacity-100 transition">
-                          <button
-                            onClick={() => handleOpenEdit(p)}
-                            className="flex-1 p-2 text-indigo-600 hover:bg-indigo-50 rounded transition flex items-center justify-center gap-1 text-sm"
-                          >
-                            <Pencil size={14} /> Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(p.id)}
-                            className="flex-1 p-2 text-rose-600 hover:bg-rose-50 rounded transition flex items-center justify-center gap-1 text-sm"
-                          >
-                            <Trash size={14} /> Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Edit Modal */}
       {isModalOpen && (
@@ -392,23 +411,23 @@ export default function ProductsPage() {
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Name *</label>
-                  <input required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="e.g. Tata Salt 1kg" />
+                  <input required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Tata Salt 1kg" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Local/Hindi Name</label>
-                  <input value={formData.localName} onChange={e => setFormData({ ...formData, localName: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="e.g. टाटा नमक" />
+                  <input value={formData.localName} onChange={e => setFormData({ ...formData, localName: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. टाटा नमक" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Selling Price (₹) *</label>
-                  <input required type="number" step="0.01" value={formData.sellingPrice} onChange={e => setFormData({ ...formData, sellingPrice: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2" />
+                  <input required type="number" step="0.01" value={formData.sellingPrice} onChange={e => setFormData({ ...formData, sellingPrice: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Cost Price (₹)</label>
-                  <input type="number" step="0.01" value={formData.costPrice} onChange={e => setFormData({ ...formData, costPrice: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2" />
+                  <input type="number" step="0.01" value={formData.costPrice} onChange={e => setFormData({ ...formData, costPrice: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Unit Type *</label>
-                  <select required value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <select required value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     <option value="pc">Piece (pc)</option>
                     <option value="kg">Kilogram (kg)</option>
                     <option value="pkt">Packet (pkt)</option>
@@ -416,40 +435,40 @@ export default function ProductsPage() {
                     <option value="g">Gram (g)</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                  <input value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Grocery" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Barcode</label>
+                  <input value={formData.barcode} onChange={e => setFormData({ ...formData, barcode: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Scan or type barcode" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Image URL</label>
+                  <input value={formData.imageUrl} onChange={e => setFormData({ ...formData, imageUrl: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="https://..." />
+                </div>
                 {formData.unit === 'pkt' && (
-                  <div className="md:col-span-2 grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Packet Weight/Volume</label>
-                      <input type="number" step="0.01" value={formData.packetWeight} onChange={e => setFormData({ ...formData, packetWeight: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="e.g. 84" />
+                      <input type="number" step="0.01" value={formData.packetWeight} onChange={e => setFormData({ ...formData, packetWeight: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. 84" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Packet Unit</label>
-                      <select value={formData.packetUnit} onChange={e => setFormData({ ...formData, packetUnit: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none">
+                      <select value={formData.packetUnit} onChange={e => setFormData({ ...formData, packetUnit: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none">
                         <option value="g">Gram (g)</option>
                         <option value="ml">Milliliter (ml)</option>
                         <option value="kg">Kilogram (kg)</option>
                         <option value="ltr">Liter (ltr)</option>
                       </select>
                     </div>
-                  </div>
+                  </>
                 )}
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Barcode</label>
-                  <input value={formData.barcode} onChange={e => setFormData({ ...formData, barcode: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Scan or type barcode" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
-                  <input value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="e.g. Grocery" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Image URL (For AI Vision)</label>
-                  <input value={formData.imageUrl} onChange={e => setFormData({ ...formData, imageUrl: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="https://..." />
-                </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 flex justify-end gap-3 mt-4 text-sm font-medium">
+              <div className="pt-4 border-t border-slate-100 flex justify-end gap-3 text-sm font-medium">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg transition">Cancel</button>
-                <button type="submit" className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition shadow-sm">{editingId ? 'Update Product' : 'Add Product'}</button>
+                <button type="submit" className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition shadow-sm">{editingId ? 'Update' : 'Add'}</button>
               </div>
             </form>
           </div>
