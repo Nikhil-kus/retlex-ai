@@ -14,6 +14,7 @@ export default function BillingPage() {
   const globalTranscriptRef = useRef("");
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
+  const itemOverridesRef = useRef<Record<string, any>>({});
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
     if (!s1) return s2 || "";
@@ -439,6 +440,7 @@ export default function BillingPage() {
     }
 
     baseReviewItemsRef.current = [...reviewItems];
+    itemOverridesRef.current = {};
     globalTranscriptRef.current = "";
     currentBreathRef.current = "";
     setFinalTranscript("");
@@ -469,10 +471,16 @@ export default function BillingPage() {
             if (fullText.length > 1) {
                 const newParsedItems = processVoiceTextToItems(fullText);
                 if (newParsedItems.length > 0) {
-                    const enrichedItems = newParsedItems.map((item: any) => ({
-                        ...item,
-                        suggestions: getSuggestions(item)
-                    }));
+                    const enrichedItems = newParsedItems.map((item: any) => {
+                        let finalItem = item;
+                        if (item.aiLabel && itemOverridesRef.current[item.aiLabel]) {
+                            finalItem = { ...finalItem, ...itemOverridesRef.current[item.aiLabel] };
+                        }
+                        return {
+                            ...finalItem,
+                            suggestions: getSuggestions(finalItem)
+                        };
+                    });
                     
                     const allItems = [...baseReviewItemsRef.current, ...enrichedItems];
                     
@@ -1164,15 +1172,23 @@ export default function BillingPage() {
                               <button
                                 key={sIdx}
                                 onClick={() => {
-                                  const newItems = [...reviewItems];
-                                  newItems[idx] = {
-                                    ...newItems[idx],
+                                  const overrides = {
                                     productId: sug.id,
                                     name: sug.name,
                                     localName: sug.localName,
                                     price: sug.price,
                                     baseUnit: sug.baseUnit,
                                     baseQuantity: sug.baseQuantity
+                                  };
+                                  
+                                  if (item.aiLabel) {
+                                      itemOverridesRef.current[item.aiLabel] = overrides;
+                                  }
+
+                                  const newItems = [...reviewItems];
+                                  newItems[idx] = {
+                                    ...newItems[idx],
+                                    ...overrides
                                   };
                                   setReviewItems(newItems);
                                 }}
