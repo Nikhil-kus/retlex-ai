@@ -402,6 +402,8 @@ export default function BillingPage() {
         unit: finalUnit,
         baseUnit: match.baseUnit,
         baseQuantity: match.baseQuantity,
+        packetWeight: match.packetWeight,
+        packetUnit: match.packetUnit,
         price: match.price,
         costPrice: match.costPrice,
         confidence: 'high',
@@ -645,6 +647,8 @@ export default function BillingPage() {
         unit: product.baseUnit || 'pc',
         baseUnit: product.baseUnit || 'pc',
         baseQuantity: product.baseQuantity || 1,
+        packetWeight: product.packetWeight || null,
+        packetUnit: product.packetUnit || null,
         quantity: qty
       }];
     });
@@ -671,7 +675,18 @@ export default function BillingPage() {
       return item.quantity * price;
     }
 
-    if (baseUnit === 'pc' || scannedUnit === 'pc') return item.quantity * price;
+    if (baseUnit === 'pkt' && item.packetWeight && (scannedUnit === 'kg' || scannedUnit === 'g' || scannedUnit === 'l' || scannedUnit === 'ml' || scannedUnit === 'ltr')) {
+       let qBase = item.quantity;
+       if (scannedUnit === 'kg' || scannedUnit === 'ltr' || scannedUnit === 'l') qBase *= 1000;
+
+       let pktWeightBase = item.packetWeight;
+       if (item.packetUnit === 'kg' || item.packetUnit === 'ltr' || item.packetUnit === 'l') pktWeightBase *= 1000;
+
+       const packetsNeeded = qBase / pktWeightBase;
+       return packetsNeeded * price;
+    }
+
+    if (baseUnit === 'pc' || scannedUnit === 'pc' || baseUnit === 'pkt' || scannedUnit === 'pkt') return item.quantity * price;
 
     let qBase = item.quantity;
     if (scannedUnit === 'kg' || scannedUnit === 'ltr') qBase *= 1000;
@@ -1189,6 +1204,8 @@ export default function BillingPage() {
                                     price: sug.price,
                                     baseUnit: sug.baseUnit,
                                     baseQuantity: sug.baseQuantity,
+                                    packetWeight: sug.packetWeight,
+                                    packetUnit: sug.packetUnit,
                                     imageUrl: sug.imageUrl
                                   };
                                   
