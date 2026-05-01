@@ -666,35 +666,43 @@ export default function BillingPage() {
 
   const calculateItemTotal = (item: any) => {
     const isTentHouse = shop?.businessType?.name === 'Tent House';
-    const baseUnit = item.baseUnit || 'pc';
-    const scannedUnit = item.unit || baseUnit;
-    const baseQuantity = item.baseQuantity || 1;
-    const price = item.price || 0;
-
+    const price = Number(item.price) || 0;
+    
     if (isTentHouse) {
       return item.quantity * price;
     }
 
-    if (baseUnit === 'pkt' && item.packetWeight && (scannedUnit === 'kg' || scannedUnit === 'g' || scannedUnit === 'l' || scannedUnit === 'ml' || scannedUnit === 'ltr')) {
-       let qBase = item.quantity;
-       if (scannedUnit === 'kg' || scannedUnit === 'ltr' || scannedUnit === 'l') qBase *= 1000;
+    const baseUnit = (item.baseUnit || 'pc').toString().trim().toLowerCase();
+    const scannedUnit = (item.unit || baseUnit).toString().trim().toLowerCase();
+    const baseQuantity = Number(item.baseQuantity) || 1;
 
-       let pktWeightBase = item.packetWeight;
-       if (item.packetUnit === 'kg' || item.packetUnit === 'ltr' || item.packetUnit === 'l') pktWeightBase *= 1000;
+    const isPktBase = ['pkt', 'packet', 'pack', 'pc', 'pcs', 'piece'].includes(baseUnit);
+    const isPktScanned = ['pkt', 'packet', 'pack', 'pc', 'pcs', 'piece'].includes(scannedUnit);
+    const isWeightScanned = ['kg', 'g', 'gram', 'l', 'ml', 'ltr', 'liter', 'kilo'].includes(scannedUnit);
+    const isWeightScanned1000 = ['kg', 'kilo', 'l', 'ltr', 'liter'].includes(scannedUnit);
+
+    if (isPktBase && item.packetWeight && isWeightScanned) {
+       let qBase = Number(item.quantity) || 0;
+       if (isWeightScanned1000) qBase *= 1000;
+
+       let pktWeightBase = Number(item.packetWeight) || 1;
+       const pUnit = (item.packetUnit || 'g').toString().trim().toLowerCase();
+       if (['kg', 'kilo', 'l', 'ltr', 'liter'].includes(pUnit)) pktWeightBase *= 1000;
 
        const packetsNeeded = qBase / pktWeightBase;
        return packetsNeeded * price;
     }
 
-    if (baseUnit === 'pc' || scannedUnit === 'pc' || baseUnit === 'pkt' || scannedUnit === 'pkt') return item.quantity * price;
+    if (isPktBase || isPktScanned) return (Number(item.quantity) || 0) * price;
 
-    let qBase = item.quantity;
-    if (scannedUnit === 'kg' || scannedUnit === 'ltr') qBase *= 1000;
+    let qBase = Number(item.quantity) || 0;
+    if (isWeightScanned1000) qBase *= 1000;
 
     let bBase = baseQuantity;
-    if (baseUnit === 'kg' || baseUnit === 'ltr') bBase *= 1000;
+    const isBaseWeight1000 = ['kg', 'kilo', 'l', 'ltr', 'liter'].includes(baseUnit);
+    if (isBaseWeight1000) bBase *= 1000;
 
-    return (qBase / bBase) * price;
+    return bBase > 0 ? (qBase / bBase) * price : 0;
   };
 
   const totalAmount = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
