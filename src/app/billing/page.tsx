@@ -800,6 +800,10 @@ export default function BillingPage() {
     setFile(null);
     setPreviewUrl(null);
     setReviewItems([]);
+    
+    if (isListeningRef.current) {
+      stopVoiceInput();
+    }
   };
 
   if (!shop) return <div className="p-8 text-center mt-20">Loading...</div>;
