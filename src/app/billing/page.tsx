@@ -1167,7 +1167,8 @@ export default function BillingPage() {
                               >
                                 <p className="text-xs font-bold text-slate-800 line-clamp-1">{sug.name}</p>
                                 <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">
-                                  ₹{(sug.price || 0).toFixed(2)} / {sug.baseQuantity || 1} {(sug.baseUnit || sug.unit) === 'pc' ? 'packet' : (sug.baseUnit || sug.unit)}
+                                  ₹{(sug.price || 0).toFixed(2)} / {sug.baseQuantity || 1} {(sug.baseUnit || sug.unit) === 'pkt' ? 'packet' : (sug.baseUnit || sug.unit || 'pc')}
+                                  {sug.packetWeight ? ` (${sug.packetWeight}${sug.packetUnit || 'g'})` : ''}
                                 </p>
                               </button>
                             ))}
