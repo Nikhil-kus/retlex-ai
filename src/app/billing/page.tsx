@@ -3,7 +3,7 @@ import Fuse from 'fuse.js';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X } from 'lucide-react';
+import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 
 export default function BillingPage() {
@@ -844,36 +844,125 @@ export default function BillingPage() {
                   />
                 </div>
                 
+                {/* Blinkit-style Grid Layout */}
                 <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden max-h-[50vh] overflow-y-auto">
-                    {(search.length > 1 ? searchResults : catalog.slice(0, 50)).length === 0 ? (
-                      <div className="p-4 text-slate-500 text-center">No products found.</div>
-                    ) : (
-                      (search.length > 1 ? searchResults : catalog.slice(0, 50)).map(p => {
-                        const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
-                        const qty = cartItem ? cartItem.quantity : 0;
-                        return (
-                        <div key={p.id} className="flex justify-between items-center p-4 hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors">
-                          <div className="flex-1 cursor-pointer" onClick={() => qty === 0 && addToCart(p)}>
-                            <p className="font-semibold text-slate-800">
-                              {p.name} {p.localName && <span className="text-slate-500 font-normal ml-1">({p.localName})</span>}
-                            </p>
-                            <p className="text-xs text-slate-500">₹{(p.price || 0).toFixed(2)} / {p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit} • {p.category || 'General'}</p>
+                  {(() => {
+                    const productsToDisplay = search.length > 1 ? searchResults : catalog.slice(0, 100);
+                    
+                    if (productsToDisplay.length === 0) {
+                      return <div className="p-8 text-slate-500 text-center">No products found.</div>;
+                    }
+
+                    // Group products by category
+                    const groupedByCategory = productsToDisplay.reduce((acc, product) => {
+                      const category = product.category || 'Uncategorized';
+                      if (!acc[category]) acc[category] = [];
+                      acc[category].push(product);
+                      return acc;
+                    }, {} as Record<string, any[]>);
+
+                    const categories = Object.keys(groupedByCategory).sort();
+
+                    return (
+                      <div className="space-y-6 p-4">
+                        {categories.map((category) => (
+                          <div key={category}>
+                            {/* Category Header */}
+                            <h3 className="text-sm font-bold text-slate-900 mb-3 px-2">{category}</h3>
+                            
+                            {/* Products Grid */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                              {groupedByCategory[category].map((p) => {
+                                const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
+                                const qty = cartItem ? cartItem.quantity : 0;
+                                
+                                return (
+                                  <div
+                                    key={p.id}
+                                    className="bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-all hover:border-slate-300"
+                                  >
+                                    {/* Product Image */}
+                                    <div className="relative w-full h-24 bg-slate-100 overflow-hidden flex items-center justify-center">
+                                      {p.imageUrl ? (
+                                        <img
+                                          src={p.imageUrl}
+                                          alt={p.name}
+                                          className="w-full h-full object-cover hover:scale-105 transition"
+                                          onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                          }}
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+                                          <Package className="text-slate-400" size={24} />
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Product Info */}
+                                    <div className="p-2.5">
+                                      {/* Name */}
+                                      <h4 className="font-semibold text-slate-900 text-xs line-clamp-2 mb-1">
+                                        {p.name}
+                                      </h4>
+
+                                      {/* Price */}
+                                      <div className="mb-2">
+                                        <div className="text-sm font-bold text-emerald-600">
+                                          ₹{(p.price || 0).toFixed(2)}
+                                        </div>
+                                        <div className="text-xs text-slate-500">
+                                          {p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}
+                                        </div>
+                                      </div>
+
+                                      {/* Add/Quantity Button */}
+                                      {qty > 0 ? (
+                                        <div className="flex items-center gap-1 bg-indigo-50 px-1.5 py-1 rounded-lg border border-indigo-100 shadow-inner">
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const i = cart.indexOf(cartItem);
+                                              qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1);
+                                            }}
+                                            className="w-6 h-6 flex items-center justify-center bg-white text-indigo-600 rounded text-xs font-bold hover:bg-indigo-100 transition"
+                                          >
+                                            −
+                                          </button>
+                                          <span className="font-semibold text-xs text-center flex-1 text-indigo-900">
+                                            {qty}
+                                          </span>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1);
+                                            }}
+                                            className="w-6 h-6 flex items-center justify-center bg-indigo-600 text-white rounded text-xs font-bold hover:bg-indigo-700 transition"
+                                          >
+                                            +
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            addToCart(p);
+                                          }}
+                                          className="w-full text-indigo-600 bg-indigo-50 px-2 py-1.5 rounded-lg font-semibold hover:bg-indigo-100 transition-colors text-xs flex items-center justify-center gap-1"
+                                        >
+                                          <Plus size={14} /> Add
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                          
-                          {qty > 0 ? (
-                              <div className="flex items-center gap-3 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 shadow-inner">
-                                <button onClick={(e) => { e.stopPropagation(); const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }} className="w-8 h-8 flex items-center justify-center bg-white text-indigo-600 rounded-md shadow-sm font-bold hover:bg-indigo-100 transition">-</button>
-                                <span className="font-semibold w-6 text-center text-indigo-900">{qty}</span>
-                                <button onClick={(e) => { e.stopPropagation(); updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1); }} className="w-8 h-8 flex items-center justify-center bg-indigo-600 text-white rounded-md shadow-sm font-bold hover:bg-indigo-700 transition">+</button>
-                              </div>
-                          ) : (
-                              <button onClick={(e) => { e.stopPropagation(); addToCart(p); }} className="text-indigo-600 bg-indigo-50 px-4 py-2 rounded-lg font-semibold hover:bg-indigo-100 transition-colors flex items-center gap-1">
-                                <Plus size={16}/> Add
-                              </button>
-                          )}
-                        </div>
-                      )})
-                    )}
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
