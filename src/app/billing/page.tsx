@@ -473,7 +473,16 @@ export default function BillingPage() {
                         ...item,
                         suggestions: getSuggestions(item)
                     }));
-                    setReviewItems([...baseReviewItemsRef.current, ...enrichedItems]);
+                    
+                    const allItems = [...baseReviewItemsRef.current, ...enrichedItems];
+                    
+                    // Only keep suggestions for the most recently spoken item
+                    const finalItems = allItems.map((item, idx) => {
+                        if (idx === allItems.length - 1) return item;
+                        return { ...item, suggestions: [] };
+                    });
+
+                    setReviewItems(finalItems);
                     setIsReviewing(true);
                 }
             }
