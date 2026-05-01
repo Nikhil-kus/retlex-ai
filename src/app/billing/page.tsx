@@ -1166,7 +1166,9 @@ export default function BillingPage() {
                                 className="flex-shrink-0 bg-white border border-indigo-100 rounded-lg p-2 text-left hover:bg-indigo-50 hover:border-indigo-300 transition-colors w-36"
                               >
                                 <p className="text-xs font-bold text-slate-800 line-clamp-1">{sug.name}</p>
-                                <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">₹{(sug.price || 0).toFixed(2)} / {sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
+                                <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">
+                                  ₹{(sug.price || 0).toFixed(2)} / {sug.baseQuantity || 1} {(sug.baseUnit || sug.unit) === 'pc' ? 'packet' : (sug.baseUnit || sug.unit)}
+                                </p>
                               </button>
                             ))}
                           </div>
