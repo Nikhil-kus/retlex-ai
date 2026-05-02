@@ -1130,10 +1130,10 @@ export default function BillingPage() {
                         <div
                           key={bill.id}
                           onClick={() => setSelectedBill(bill)}
-                          className="group relative flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-amber-300 hover:shadow-md hover:shadow-amber-50 transition-all"
+                          className="group relative flex items-center gap-4 p-4 bg-rose-50/60 border border-rose-200 rounded-xl cursor-pointer hover:border-rose-400 hover:shadow-md hover:shadow-rose-100 transition-all"
                         >
-                          <div className="w-10 h-10 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
-                            <span className="text-amber-500 text-lg">🕐</span>
+                          <div className="w-10 h-10 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center shrink-0">
+                            <span className="text-rose-500 text-lg">🕐</span>
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-slate-900 text-sm truncate">{getBillLabel(bill)}</p>
@@ -1141,9 +1141,9 @@ export default function BillingPage() {
                           </div>
                           <div className="text-right shrink-0">
                             <p className="font-bold text-slate-900 text-sm">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md">Pending</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded-md">Pending</span>
                           </div>
-                          <div className="absolute inset-y-0 left-0 w-0.5 bg-amber-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <div className="absolute inset-y-0 left-0 w-0.5 bg-rose-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>
                       ))}
                     </div>
@@ -1447,6 +1447,7 @@ export default function BillingPage() {
       </div>
 
       {/* Right Panel: Current Bill / Cart */}
+      {mode !== 'PENDING' && (
       <div className="w-full lg:w-96 flex flex-col bg-slate-900 rounded-2xl shadow-xl overflow-hidden text-white flex-shrink-0">
         <div className="p-6 bg-slate-800 border-b border-slate-700/50 flex justify-between items-center">
           <h2 className="text-xl font-bold flex items-center gap-2"><ShoppingCart size={20} className="text-indigo-400" /> Current Bill</h2>
@@ -1558,6 +1559,7 @@ export default function BillingPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Bill Detail Modal */}
       {selectedBill && (
