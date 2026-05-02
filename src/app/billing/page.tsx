@@ -894,27 +894,10 @@ export default function BillingPage() {
           </div>
 
           <div className="p-6">
-            {/* 🎤 Voice Button Container (Always Visible) */}
-            <div className="mb-6 space-y-3">
-              <button
-                onClick={isListening ? stopVoiceInput : startVoiceInput}
-                className={`w-full text-white font-semibold py-4 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 ${
-                  isListening 
-                    ? 'bg-rose-500 hover:bg-rose-600 shadow-[0_0_15px_rgba(244,63,94,0.3)] animate-pulse' 
-                    : 'bg-green-600 hover:bg-green-700'
-                }`}
-              >
-                {isListening ? (
-                  <>⏹ Stop Listening</>
-                ) : (
-                  <>🎤 Start Speaking</>
-                )}
-              </button>
-              
-              {isListening && finalTranscript && (
-                <div className="relative overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-br from-rose-50 via-white to-orange-50 shadow-sm">
-                  {/* Animated top bar */}
-                  <div className="h-0.5 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400 bg-[length:200%_100%] animate-[shimmer_2s_linear_infinite]" style={{backgroundSize:'200% 100%', animation:'shimmer 2s linear infinite'}} />
+            {/* Live transcript (shown when listening) */}
+            {isListening && finalTranscript && (
+                <div className="mb-4 relative overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-br from-rose-50 via-white to-orange-50 shadow-sm">
+                  <div className="h-0.5 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400" style={{backgroundSize:'200% 100%', animation:'shimmer 2s linear infinite'}} />
                   <div className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="relative flex h-2.5 w-2.5">
@@ -927,7 +910,6 @@ export default function BillingPage() {
                   </div>
                 </div>
               )}
-            </div>
 
             {mode === 'MANUAL' && (
               <div className="space-y-4">
@@ -1130,10 +1112,10 @@ export default function BillingPage() {
                         <div
                           key={bill.id}
                           onClick={() => setSelectedBill(bill)}
-                          className="group relative flex items-center gap-4 p-4 bg-rose-50/60 border border-rose-200 rounded-xl cursor-pointer hover:border-rose-400 hover:shadow-md hover:shadow-rose-100 transition-all"
+                          className="group relative flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-orange-300 hover:shadow-md hover:shadow-orange-50 transition-all"
                         >
-                          <div className="w-10 h-10 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center shrink-0">
-                            <span className="text-rose-500 text-lg">🕐</span>
+                          <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0">
+                            <span className="text-orange-500 text-lg">🕐</span>
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-slate-900 text-sm truncate">{getBillLabel(bill)}</p>
@@ -1141,9 +1123,9 @@ export default function BillingPage() {
                           </div>
                           <div className="text-right shrink-0">
                             <p className="font-bold text-slate-900 text-sm">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded-md">Pending</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md">Pending</span>
                           </div>
-                          <div className="absolute inset-y-0 left-0 w-0.5 bg-rose-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <div className="absolute inset-y-0 left-0 w-1 bg-orange-400 rounded-full" />
                         </div>
                       ))}
                     </div>
@@ -1445,6 +1427,32 @@ export default function BillingPage() {
           </div>
         </div>
       </div>
+
+      {/* 🎤 Floating Voice Button — fixed bottom center, visible on all tabs */}
+      <button
+        onClick={isListening ? stopVoiceInput : startVoiceInput}
+        className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-6 py-3.5 rounded-full font-bold text-white shadow-2xl transition-all duration-300 ${
+          isListening
+            ? 'bg-rose-500 shadow-rose-400/50 scale-105 animate-pulse pr-5'
+            : 'bg-gradient-to-r from-green-500 to-emerald-600 shadow-emerald-500/40 hover:scale-105 hover:shadow-emerald-500/60'
+        }`}
+        style={{ minWidth: '180px', justifyContent: 'center' }}
+      >
+        {isListening ? (
+          <>
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-60"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
+            </span>
+            Stop Listening
+          </>
+        ) : (
+          <>
+            <span className="text-lg leading-none">🎤</span>
+            Start Speaking
+          </>
+        )}
+      </button>
 
       {/* Right Panel: Current Bill / Cart */}
       {mode !== 'PENDING' && (
