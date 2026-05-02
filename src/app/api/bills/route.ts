@@ -13,7 +13,16 @@ export async function POST(request: Request) {
     const shop: any = shopDoc.exists() ? shopDoc.data() : null;
     const isTentHouse = shop?.businessType?.name === 'Tent House';
 
-    const billNumber = `BILL-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
+    // Generate daily bill number
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    const q = query(
+      collection(db, "bills"),
+      where("shopId", "==", data.shopId),
+      where("createdAt", ">=", today + "T00:00:00"),
+      where("createdAt", "<", today + "T23:59:59")
+    );
+    const todaysBills = await getDocs(q);
+    const billNumber = todaysBills.size + 1;
 
     let totalAmount = 0;
     let totalProfit = 0;

@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
+import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
 
 export default function BillingPage() {
   const [isListening, setIsListening] = useState(false);
@@ -1115,7 +1116,7 @@ export default function BillingPage() {
                       >
                         <div className="flex justify-between items-start mb-2">
                           <div>
-                            <p className="font-semibold text-slate-900">{bill.billNumber}</p>
+                            <p className="font-semibold text-slate-900">{getBillLabel(bill)}</p>
                             <p className="text-xs text-slate-500">{new Date(bill.createdAt).toLocaleTimeString()}</p>
                           </div>
                           <span className="bg-amber-500 text-white px-2.5 py-1 rounded-full text-xs font-semibold">PENDING</span>
@@ -1143,7 +1144,7 @@ export default function BillingPage() {
                         >
                           <div className="flex justify-between items-start">
                             <div>
-                              <p className="font-medium text-slate-900 text-sm">{bill.billNumber}</p>
+                              <p className="font-medium text-slate-900 text-sm">{getBillLabel(bill)}</p>
                               <p className="text-xs text-slate-500">{new Date(bill.createdAt).toLocaleTimeString()}</p>
                             </div>
                             <span className="bg-emerald-500 text-white px-2 py-0.5 rounded text-xs font-semibold">✓ DONE</span>
@@ -1186,7 +1187,7 @@ export default function BillingPage() {
                         >
                           <div className="flex justify-between items-start">
                             <div>
-                              <p className="font-medium text-slate-900 text-sm">{bill.billNumber}</p>
+                              <p className="font-medium text-slate-900 text-sm">{getBillLabel(bill)}</p>
                               <p className="text-xs text-slate-500">{new Date(bill.createdAt).toLocaleTimeString()}</p>
                             </div>
                             <span className="bg-rose-500 text-white px-2 py-0.5 rounded text-xs font-semibold">⚠ UNPAID</span>
@@ -1505,7 +1506,7 @@ export default function BillingPage() {
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-slate-400 uppercase font-semibold">Bill Info</p>
-                  <p className="font-medium text-slate-900 mt-1">{selectedBill.billNumber}</p>
+                  <p className="font-medium text-slate-900 mt-1">{getBillNumber(selectedBill)}</p>
                   <p className="text-slate-600 text-sm">{new Date(selectedBill.createdAt).toLocaleString()}</p>
                   <p className={`text-xs mt-1 font-bold ${selectedBill.status === 'PAID' ? 'text-emerald-500' : 'text-rose-500'}`}>
                     {selectedBill.status}
