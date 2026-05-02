@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { CheckCircle, Clock, X, Check } from 'lucide-react';
+import { getBillLabel } from '@/lib/bill-utils';
 
 export default function WorkerPage() {
   const [bills, setBills] = useState<any[]>([]);
@@ -164,7 +165,7 @@ export default function WorkerPage() {
                       }`}
                     >
                       <div className="flex justify-between items-start mb-2">
-                        <h3 className="text-white font-bold text-sm">{bill.billNumber}</h3>
+                        <h3 className="text-white font-bold text-sm">{getBillLabel(bill)}</h3>
                         <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded text-xs font-semibold">
                           {bill.items?.length || 0} items
                         </span>
@@ -195,7 +196,7 @@ export default function WorkerPage() {
                 <div className="bg-slate-700/50 p-6 border-b border-slate-700">
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h2 className="text-2xl font-bold text-white">{selectedBill.billNumber}</h2>
+                      <h2 className="text-2xl font-bold text-white">{getBillLabel(selectedBill)}</h2>
                       <p className="text-slate-400 text-sm mt-1">
                         {new Date(selectedBill.createdAt).toLocaleString()}
                       </p>

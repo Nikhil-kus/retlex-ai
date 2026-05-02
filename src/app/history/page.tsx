@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { History as HistoryIcon, Search, Eye, Download, CheckCircle } from 'lucide-react';
+import { getBillLabel } from '@/lib/bill-utils';
 
 export default function HistoryPage() {
   const [bills, setBills] = useState<any[]>([]);
@@ -78,7 +79,7 @@ export default function HistoryPage() {
                 filteredBills.map((b) => (
                   <tr key={b.id} className="hover:bg-slate-50/50">
                     <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-900">{b.billNumber}</div>
+                      <div className="font-semibold text-slate-900">{getBillLabel(b)}</div>
                       <div className="text-xs text-slate-500">{new Date(b.createdAt).toLocaleString()}</div>
                     </td>
                     <td className="px-6 py-4">
