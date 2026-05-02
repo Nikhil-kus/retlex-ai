@@ -15,6 +15,7 @@ export default function BillingPage() {
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
+  const removedVoiceItemsRef = useRef<any[]>([]);
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
     if (!s1) return s2 || "";
@@ -444,6 +445,7 @@ export default function BillingPage() {
 
     baseReviewItemsRef.current = [...reviewItems];
     itemOverridesRef.current = {};
+    removedVoiceItemsRef.current = [];
     globalTranscriptRef.current = "";
     currentBreathRef.current = "";
     setFinalTranscript("");
@@ -485,7 +487,23 @@ export default function BillingPage() {
                         };
                     });
                     
-                    const allItems = [...baseReviewItemsRef.current, ...enrichedItems];
+                    let filteredEnrichedItems = [];
+                    let removedPool = [...removedVoiceItemsRef.current];
+                    
+                    for (let i = 0; i < enrichedItems.length; i++) {
+                         const item = enrichedItems[i];
+                         const removedIdx = removedPool.findIndex(r => 
+                             r.name === item.name && 
+                             r.productId === item.productId
+                         );
+                         if (removedIdx !== -1) {
+                             removedPool.splice(removedIdx, 1);
+                         } else {
+                             filteredEnrichedItems.push(item);
+                         }
+                    }
+                    
+                    const allItems = [...baseReviewItemsRef.current, ...filteredEnrichedItems];
                     
                     // Only keep suggestions for the most recently spoken item
                     const finalItems = allItems.map((item, idx) => {
@@ -712,7 +730,28 @@ export default function BillingPage() {
     const infoToUse = (overrideInfo && !overrideInfo.type) ? overrideInfo : customerInfo;
 
     if (cart.length === 0) return alert('Cart is empty!');
-    setSavingBill(true);
+
+    // Generate WhatsApp message if customer phone is available
+    if (infoToUse.phone) {
+      // Calculate total amount
+      const totalAmount = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
+      
+      // Prepare cart items with calculated totals for message
+      const cartItemsForMessage = cart.map(item => ({
+        ...item,
+        itemTotal: calculateItemTotal(item)
+      }));
+      
+      // Generate the WhatsApp message
+      const whatsappMessage = generateWhatsAppMessage(
+        shop.name || 'Kirana Store',
+        cartItemsForMessage,
+        totalAmount
+      );
+      
+      // Open WhatsApp chat with pre-filled message (as fast as possible)
+      openWhatsAppChat(infoToUse.phone, whatsappMessage);
+    }
 
     const payload = {
       shopId: shop.id,
@@ -720,42 +759,27 @@ export default function BillingPage() {
       ...infoToUse,
     };
 
-    const res = await fetch('/api/bills', {
+    // Instantly update UI without waiting for save
+    setCart([]);
+    setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' });
+    setMode('PENDING'); // Switch to pending orders instead of history page
+
+    // Save in background
+    fetch('/api/bills', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    });
-
-    if (res.ok) {
-      const bill = await res.json();
-      
-      // Generate WhatsApp message if customer phone is available
-      if (infoToUse.phone) {
-        // Calculate total amount
-        const totalAmount = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
-        
-        // Prepare cart items with calculated totals for message
-        const cartItemsForMessage = cart.map(item => ({
-          ...item,
-          itemTotal: calculateItemTotal(item)
-        }));
-        
-        // Generate the WhatsApp message
-        const whatsappMessage = generateWhatsAppMessage(
-          shop.name || 'Kirana Store',
-          cartItemsForMessage,
-          totalAmount
-        );
-        
-        // Open WhatsApp chat with pre-filled message
-        openWhatsAppChat(infoToUse.phone, whatsappMessage);
+    }).then(res => {
+      if (res.ok) {
+        // Refresh bills to show the new one in the pending tab
+        fetchBills(shop.id);
+      } else {
+        alert('Failed to save bill on server.');
       }
-      
-      router.push(`/history`);
-    } else {
-      alert('Failed to generate bill');
-    }
-    setSavingBill(false);
+    }).catch(err => {
+      console.error("Failed to save bill", err);
+      alert('Network error while saving bill.');
+    });
   };
 
   // AI & OCR Common Logic
@@ -943,7 +967,7 @@ export default function BillingPage() {
                             
                             {/* Products Grid */}
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                              {groupedByCategory[category].map((p) => {
+                              {groupedByCategory[category].map((p: any) => {
                                 const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
                                 const qty = cartItem ? cartItem.quantity : 0;
                                 
@@ -1177,7 +1201,15 @@ export default function BillingPage() {
                           )}
                         </div>
                         </div>
-                        <button onClick={() => setReviewItems(reviewItems.filter((_, i) => i !== idx))} className="text-slate-400 hover:text-rose-500"><X size={20} /></button>
+                        <button onClick={() => {
+                          const itemToRemove = reviewItems[idx];
+                          if (idx < baseReviewItemsRef.current.length) {
+                              baseReviewItemsRef.current.splice(idx, 1);
+                          } else {
+                              removedVoiceItemsRef.current.push(itemToRemove);
+                          }
+                          setReviewItems(reviewItems.filter((_, i) => i !== idx));
+                        }} className="text-slate-400 hover:text-rose-500"><X size={20} /></button>
                       </div>
                       <div className="flex gap-4 items-center">
                         <div className="flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden shrink-0">
