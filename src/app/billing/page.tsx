@@ -488,17 +488,19 @@ export default function BillingPage() {
                     });
                     
                     let filteredEnrichedItems = [];
-                    let removedPool = [...removedVoiceItemsRef.current];
                     
                     for (let i = 0; i < enrichedItems.length; i++) {
                          const item = enrichedItems[i];
-                         const removedIdx = removedPool.findIndex(r => 
-                             r.name === item.name && 
-                             r.productId === item.productId
-                         );
-                         if (removedIdx !== -1) {
-                             removedPool.splice(removedIdx, 1);
-                         } else {
+                         
+                         // Use a robust check to ensure removed items stay gone, even if Android mic repeats text
+                         const isRemoved = removedVoiceItemsRef.current.some(r => {
+                             if (r.productId && item.productId && r.productId === item.productId) return true;
+                             if (r.aiLabel && item.aiLabel && r.aiLabel === item.aiLabel) return true;
+                             if (r.name && item.name && r.name.trim().toLowerCase() === item.name.trim().toLowerCase()) return true;
+                             return false;
+                         });
+                         
+                         if (!isRemoved) {
                              filteredEnrichedItems.push(item);
                          }
                     }
