@@ -1431,12 +1431,16 @@ export default function BillingPage() {
       {/* 🎤 Floating Voice Button — fixed bottom center, visible on all tabs */}
       <button
         onClick={isListening ? stopVoiceInput : startVoiceInput}
-        className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-6 py-3.5 rounded-full font-bold text-white shadow-2xl transition-all duration-300 ${
+        className={`fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-6 py-3.5 rounded-full font-bold text-white shadow-2xl transition-all duration-500 ${
           isListening
             ? 'bg-rose-500 shadow-rose-400/50 scale-105 animate-pulse pr-5'
             : 'bg-gradient-to-r from-green-500 to-emerald-600 shadow-emerald-500/40 hover:scale-105 hover:shadow-emerald-500/60'
         }`}
-        style={{ minWidth: '180px', justifyContent: 'center' }}
+        style={{
+          minWidth: '180px',
+          justifyContent: 'center',
+          bottom: cart.length > 0 ? '22rem' : '1.5rem',
+        }}
       >
         {isListening ? (
           <>
