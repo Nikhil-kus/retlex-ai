@@ -1384,7 +1384,7 @@ export default function BillingPage() {
                         {item.suggestions && item.suggestions.length > 0 && (
                           <div className="mt-4 pt-3 border-t border-slate-100">
                             <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">Similar products</p>
-                            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                            <div className="grid grid-cols-3 gap-2">
                               {item.suggestions.map((sug: any, sIdx: number) => (
                                 <button
                                   key={sIdx}
@@ -1405,18 +1405,21 @@ export default function BillingPage() {
                                     newItems[idx] = { ...newItems[idx], ...overrides };
                                     setReviewItems(newItems);
                                   }}
-                                  className="group/sug flex-shrink-0 flex items-center gap-2.5 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 rounded-xl p-2.5 transition-all w-44 text-left shadow-sm hover:shadow-md"
+                                  className="group/sug flex flex-col bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-50 rounded-xl overflow-hidden transition-all text-left"
                                 >
-                                  <div className="w-9 h-9 rounded-lg bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center border border-slate-200 group-hover/sug:border-indigo-200 transition-colors">
+                                  {/* Product image */}
+                                  <div className="w-full aspect-square bg-slate-50 overflow-hidden flex items-center justify-center border-b border-slate-100 group-hover/sug:bg-indigo-50/40 transition-colors">
                                     {sug.imageUrl
-                                      ? <img src={sug.imageUrl} className="w-full h-full object-cover" />
-                                      : <Package className="text-slate-300" size={14} />
+                                      ? <img src={sug.imageUrl} className="w-full h-full object-cover group-hover/sug:scale-105 transition-transform duration-200" />
+                                      : <Package className="text-slate-300 group-hover/sug:text-indigo-300 transition-colors" size={20} />
                                     }
                                   </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-bold text-slate-800 line-clamp-1 group-hover/sug:text-indigo-700 transition-colors">{sug.name}</p>
-                                    <p className="text-[10px] text-slate-500 mt-0.5 font-medium">
-                                      ₹{(sug.price || 0).toFixed(0)} · {sug.baseQuantity || 1}{(sug.baseUnit || 'pc') === 'pkt' ? ' pkt' : ` ${sug.baseUnit || 'pc'}`}
+                                  {/* Info */}
+                                  <div className="p-2">
+                                    <p className="text-[11px] font-bold text-slate-800 line-clamp-2 leading-tight group-hover/sug:text-indigo-700 transition-colors">{sug.name}</p>
+                                    <p className="text-[11px] font-bold text-emerald-600 mt-1">₹{(sug.price || 0).toFixed(0)}</p>
+                                    <p className="text-[9px] text-slate-400 font-medium leading-tight">
+                                      {sug.baseQuantity || 1}{(sug.baseUnit || 'pc') === 'pkt' ? ' pkt' : ` ${sug.baseUnit || 'pc'}`}
                                     </p>
                                   </div>
                                 </button>
