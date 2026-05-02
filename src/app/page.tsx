@@ -3,6 +3,7 @@ import { db } from "@/lib/firebase";
 export const dynamic = 'force-dynamic';
 import Link from "next/link"
 import { ArrowRight, Package, Receipt, IndianRupee, Store, History } from "lucide-react"
+import { getBillLabel } from "@/lib/bill-utils";
 export default async function Dashboard() {
   const querySnapshot = await getDocs(collection(db, "shops"));
   const shop = querySnapshot.empty ? null : { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as any;
@@ -82,7 +83,7 @@ export default async function Dashboard() {
               {todayBills.slice(0, 5).map((b: any) => (
                 <div key={b.id} className="flex justify-between items-center pb-2 border-b border-slate-50 last:border-0 text-sm">
                   <div>
-                    <span className="font-medium">{b.billNumber}</span>
+                    <span className="font-medium">{getBillLabel(b)}</span>
                     <p className="text-slate-500 text-xs">{b.date.toLocaleTimeString()}</p>
                   </div>
                   <div className="text-right">

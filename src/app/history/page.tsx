@@ -29,7 +29,7 @@ export default function HistoryPage() {
   };
 
   const filteredBills = bills.filter(b => 
-    b.billNumber.toLowerCase().includes(search.toLowerCase()) || 
+    getBillLabel(b).toLowerCase().includes(search.toLowerCase()) || 
     (b.customerPhone && b.customerPhone.includes(search))
   );
 

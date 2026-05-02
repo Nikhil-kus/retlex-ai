@@ -13,12 +13,17 @@ export async function POST(request: Request) {
     const shop: any = shopDoc.exists() ? shopDoc.data() : null;
     const isTentHouse = shop?.businessType?.name === 'Tent House';
 
-    // Generate daily bill number
+    // Generate daily bill number (IST timezone)
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-    const startOfDayISO = startOfDay.toISOString();
-    const endOfDayISO = endOfDay.toISOString();
+    // Offset for IST is +5:30
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istTime = new Date(now.getTime() + istOffset);
+    
+    const startOfIstDayUTC = new Date(Date.UTC(istTime.getUTCFullYear(), istTime.getUTCMonth(), istTime.getUTCDate()));
+    const endOfIstDayUTC = new Date(Date.UTC(istTime.getUTCFullYear(), istTime.getUTCMonth(), istTime.getUTCDate() + 1));
+    
+    const startOfDayISO = new Date(startOfIstDayUTC.getTime() - istOffset).toISOString();
+    const endOfDayISO = new Date(endOfIstDayUTC.getTime() - istOffset).toISOString();
     
     // Get all bills for this shop and filter by date on client side
     const q = query(collection(db, "bills"), where("shopId", "==", data.shopId));

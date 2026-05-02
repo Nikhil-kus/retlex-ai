@@ -3,6 +3,7 @@ import { db } from "@/lib/firebase";
 export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { Store, Receipt, Clock, Download } from 'lucide-react';
+import { getBillLabel } from '@/lib/bill-utils';
 
 export default async function CustomerQRPage({ params }: { params: Promise<{ shopId: string }> }) {
   const { shopId } = await params;
@@ -69,7 +70,7 @@ export default async function CustomerQRPage({ params }: { params: Promise<{ sho
                 <div key={bill.id} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                   <div className="bg-slate-50 p-4 flex justify-between items-center border-b border-slate-200">
                     <div>
-                      <p className="font-bold text-slate-900">{bill.billNumber}</p>
+                      <p className="font-bold text-slate-900">{getBillLabel(bill)}</p>
                       <p className="text-xs text-slate-500">{new Date(bill.date).toLocaleTimeString()}</p>
                     </div>
                     <div className="text-right">

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { FileText, Eye, CheckCircle } from 'lucide-react';
+import { getBillLabel } from '@/lib/bill-utils';
 
 export default function UnpaidBillsPage() {
   const [bills, setBills] = useState<any[]>([]);
@@ -69,7 +70,7 @@ export default function UnpaidBillsPage() {
             <div key={b.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between hover:border-rose-200 transition">
               <div>
                 <div className="flex justify-between items-start mb-3">
-                  <span className="font-semibold text-slate-900">{b.billNumber}</span>
+                  <span className="font-semibold text-slate-900">{getBillLabel(b)}</span>
                   <span className="text-xs text-slate-400">{new Date(b.date).toLocaleDateString()}</span>
                 </div>
                 <div className="mb-4">

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Printer, Share2 } from 'lucide-react';
+import { getBillNumber } from '@/lib/bill-utils';
 
 export default function BillViewPage() {
   const params = useParams();
@@ -26,7 +27,7 @@ export default function BillViewPage() {
   const handleWhatsAppShare = () => {
     // Generate text for WhatsApp
     let text = `*${bill.shop?.name || 'Kirana Store'}*\n`;
-    text += `Bill No: ${bill.billNumber}\n`;
+    text += `Bill No: ${getBillNumber(bill)}\n`;
     text += `Date: ${new Date(bill.date).toLocaleString()}\n\n`;
     text += `*Items:*\n`;
     bill.items.forEach((item: any) => {
@@ -71,7 +72,7 @@ export default function BillViewPage() {
           </div>
           <div className="text-right">
             <p className="text-xs text-slate-400 uppercase font-semibold">Bill Info</p>
-            <p className="font-medium text-slate-900 mt-1">{bill.billNumber}</p>
+            <p className="font-medium text-slate-900 mt-1">{getBillNumber(bill)}</p>
             <p className="text-slate-600 text-sm">{new Date(bill.date).toLocaleString()}</p>
             <p className={`text-xs mt-1 font-bold ${bill.status === 'PAID' ? 'text-emerald-500' : 'text-rose-500'}`}>{bill.status}</p>
           </div>

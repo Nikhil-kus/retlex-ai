@@ -1,14 +1,13 @@
 /**
  * Get the display label for a bill
- * Shows: "Bill #1 - Customer Name" if name exists, otherwise "Bill #1"
+ * Shows: Customer Name if exists, otherwise "Bill #1"
  */
 export function getBillLabel(bill: any): string {
-  const billNum = bill.billNumber || 'N/A';
   const customerName = bill.customerName?.trim();
-  
   if (customerName) {
-    return `Bill #${billNum} - ${customerName}`;
+    return customerName;
   }
+  const billNum = bill.billNumber || 'N/A';
   return `Bill #${billNum}`;
 }
 
@@ -23,13 +22,8 @@ export function getBillNumber(bill: any): string {
 
 /**
  * Get the customer identifier
- * Shows: "Customer Name" if exists, otherwise "Bill #1"
+ * Alias for getBillLabel
  */
 export function getBillIdentifier(bill: any): string {
-  const customerName = bill.customerName?.trim();
-  if (customerName) {
-    return customerName;
-  }
-  const billNum = bill.billNumber || 'N/A';
-  return `Bill #${billNum}`;
+  return getBillLabel(bill);
 }
