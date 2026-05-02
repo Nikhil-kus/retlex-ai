@@ -1439,7 +1439,7 @@ export default function BillingPage() {
         style={{
           minWidth: '180px',
           justifyContent: 'center',
-          bottom: cart.length > 0 ? '22rem' : '1.5rem',
+          bottom: cart.length > 0 ? 'calc(100vh - 7rem)' : '1.5rem',
         }}
       >
         {isListening ? (
