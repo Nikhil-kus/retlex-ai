@@ -15,7 +15,6 @@ export default function BillingPage() {
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
-  const removedVoiceItemsRef = useRef<any[]>([]);
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
     if (!s1) return s2 || "";
@@ -445,7 +444,6 @@ export default function BillingPage() {
 
     baseReviewItemsRef.current = [...reviewItems];
     itemOverridesRef.current = {};
-    removedVoiceItemsRef.current = [];
     globalTranscriptRef.current = "";
     currentBreathRef.current = "";
     setFinalTranscript("");
@@ -487,25 +485,7 @@ export default function BillingPage() {
                         };
                     });
                     
-                    let filteredEnrichedItems = [];
-                    
-                    for (let i = 0; i < enrichedItems.length; i++) {
-                         const item = enrichedItems[i];
-                         
-                         // Use a robust check to ensure removed items stay gone, even if Android mic repeats text
-                         const isRemoved = removedVoiceItemsRef.current.some(r => {
-                             if (r.productId && item.productId && r.productId === item.productId) return true;
-                             if (r.aiLabel && item.aiLabel && r.aiLabel === item.aiLabel) return true;
-                             if (r.name && item.name && r.name.trim().toLowerCase() === item.name.trim().toLowerCase()) return true;
-                             return false;
-                         });
-                         
-                         if (!isRemoved) {
-                             filteredEnrichedItems.push(item);
-                         }
-                    }
-                    
-                    const allItems = [...baseReviewItemsRef.current, ...filteredEnrichedItems];
+                    const allItems = [...baseReviewItemsRef.current, ...enrichedItems];
                     
                     // Only keep suggestions for the most recently spoken item
                     const finalItems = allItems.map((item, idx) => {
@@ -1204,13 +1184,24 @@ export default function BillingPage() {
                         </div>
                         </div>
                         <button onClick={() => {
-                          const itemToRemove = reviewItems[idx];
-                          if (idx < baseReviewItemsRef.current.length) {
-                              baseReviewItemsRef.current.splice(idx, 1);
-                          } else {
-                              removedVoiceItemsRef.current.push(itemToRemove);
+                          // 1. Remove the item from the current view
+                          const newItems = reviewItems.filter((_, i) => i !== idx);
+                          
+                          // 2. Set this exact new list as the absolute ground truth
+                          baseReviewItemsRef.current = newItems;
+                          
+                          // 3. Completely flush the transcript history so old words aren't re-parsed
+                          globalTranscriptRef.current = "";
+                          currentBreathRef.current = "";
+                          setFinalTranscript("");
+                          
+                          // 4. Force the browser's mic to restart to clear its internal text buffer
+                          if (recognitionRef.current) {
+                              try { recognitionRef.current.stop(); } catch(e) {}
                           }
-                          setReviewItems(reviewItems.filter((_, i) => i !== idx));
+                          
+                          // 5. Update UI instantly
+                          setReviewItems(newItems);
                         }} className="text-slate-400 hover:text-rose-500"><X size={20} /></button>
                       </div>
                       <div className="flex gap-4 items-center">
