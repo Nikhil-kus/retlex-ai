@@ -564,8 +564,13 @@ export default function BillingPage() {
   // Pending Bills state
   const [pendingBills, setPendingBills] = useState<any[]>([]);
   const [completedBills, setCompletedBills] = useState<any[]>([]);
+  const [unpaidBills, setUnpaidBills] = useState<any[]>([]);
+  const [allCompletedBills, setAllCompletedBills] = useState<any[]>([]);
+  const [allUnpaidBills, setAllUnpaidBills] = useState<any[]>([]);
   const [loadingBills, setLoadingBills] = useState(false);
   const [selectedBill, setSelectedBill] = useState<any>(null);
+  const [showMoreCompleted, setShowMoreCompleted] = useState(false);
+  const [showMoreUnpaid, setShowMoreUnpaid] = useState(false);
 
   // AI/OCR state
   const [file, setFile] = useState<File | null>(null);
@@ -608,9 +613,16 @@ export default function BillingPage() {
       if (res.ok) {
         const allBills = await res.json();
         const pending = allBills.filter((b: any) => b.orderStatus === 'PENDING');
-        const completed = allBills.filter((b: any) => b.orderStatus === 'COMPLETED').slice(0, 3);
+        const completed = allBills.filter((b: any) => b.orderStatus === 'COMPLETED');
+        const unpaid = allBills.filter((b: any) => b.status === 'UNPAID');
+        
         setPendingBills(pending);
-        setCompletedBills(completed);
+        setCompletedBills(completed.slice(0, 3));
+        setAllCompletedBills(completed);
+        setUnpaidBills(unpaid.slice(0, 3));
+        setAllUnpaidBills(unpaid);
+        setShowMoreCompleted(false);
+        setShowMoreUnpaid(false);
       }
     } catch (error) {
       console.error('Failed to fetch bills:', error);
@@ -1116,13 +1128,14 @@ export default function BillingPage() {
                   </div>
                 )}
 
+                {/* Recent Completed Orders Section */}
                 <div className="border-t border-slate-200 pt-6">
                   <h4 className="text-sm font-semibold text-slate-700 mb-3">Recent Completed Orders</h4>
                   {completedBills.length === 0 ? (
                     <div className="text-center py-4 text-slate-500 text-sm">No completed orders yet</div>
                   ) : (
                     <div className="space-y-2">
-                      {completedBills.map((bill) => (
+                      {(showMoreCompleted ? allCompletedBills : completedBills).map((bill) => (
                         <div 
                           key={bill.id} 
                           onClick={() => setSelectedBill(bill)}
@@ -1138,6 +1151,65 @@ export default function BillingPage() {
                           <p className="text-xs text-slate-600 mt-1">₹{bill.totalAmount?.toFixed(2) || '0.00'}</p>
                         </div>
                       ))}
+                      {!showMoreCompleted && allCompletedBills.length > 3 && (
+                        <button
+                          onClick={() => setShowMoreCompleted(true)}
+                          className="w-full mt-3 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg text-sm font-medium transition"
+                        >
+                          Show More Completed Orders ({allCompletedBills.length - 3} more)
+                        </button>
+                      )}
+                      {showMoreCompleted && allCompletedBills.length > 3 && (
+                        <button
+                          onClick={() => setShowMoreCompleted(false)}
+                          className="w-full mt-3 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg text-sm font-medium transition"
+                        >
+                          Show Less
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Recent Unpaid Bills Section */}
+                <div className="border-t border-slate-200 pt-6">
+                  <h4 className="text-sm font-semibold text-slate-700 mb-3">Recent Unpaid Bills</h4>
+                  {unpaidBills.length === 0 ? (
+                    <div className="text-center py-4 text-slate-500 text-sm">No unpaid bills</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {(showMoreUnpaid ? allUnpaidBills : unpaidBills).map((bill) => (
+                        <div 
+                          key={bill.id} 
+                          onClick={() => setSelectedBill(bill)}
+                          className="p-3 border border-rose-200 bg-rose-50 rounded-lg cursor-pointer hover:bg-rose-100 hover:border-rose-300 transition"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium text-slate-900 text-sm">{bill.billNumber}</p>
+                              <p className="text-xs text-slate-500">{new Date(bill.createdAt).toLocaleTimeString()}</p>
+                            </div>
+                            <span className="bg-rose-500 text-white px-2 py-0.5 rounded text-xs font-semibold">⚠ UNPAID</span>
+                          </div>
+                          <p className="text-xs text-slate-600 mt-1">₹{bill.totalAmount?.toFixed(2) || '0.00'}</p>
+                        </div>
+                      ))}
+                      {!showMoreUnpaid && allUnpaidBills.length > 3 && (
+                        <button
+                          onClick={() => setShowMoreUnpaid(true)}
+                          className="w-full mt-3 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg text-sm font-medium transition"
+                        >
+                          Show More Unpaid Bills ({allUnpaidBills.length - 3} more)
+                        </button>
+                      )}
+                      {showMoreUnpaid && allUnpaidBills.length > 3 && (
+                        <button
+                          onClick={() => setShowMoreUnpaid(false)}
+                          className="w-full mt-3 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg text-sm font-medium transition"
+                        >
+                          Show Less
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
