@@ -450,6 +450,7 @@ export default function BillingPage() {
     setFinalTranscript("");
     isListeningRef.current = true;
     setIsListening(true);
+    setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
     const initMic = () => {
         if (!isListeningRef.current) return;
@@ -581,12 +582,23 @@ export default function BillingPage() {
   const [isReviewing, setIsReviewing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reviewEndRef = useRef<HTMLDivElement>(null);
+  const sliderRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (reviewEndRef.current) {
         reviewEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [reviewItems.length]);
+
+  const modeIndex = mode === 'MANUAL' ? 0 : mode === 'OCR' ? 1 : 2;
+  useEffect(() => {
+    if (sliderRef.current) {
+      sliderRef.current.scrollTo({
+        left: modeIndex * sliderRef.current.offsetWidth,
+        behavior: 'smooth',
+      });
+    }
+  }, [modeIndex]);
 
   useEffect(() => {
     fetch('/api/shop').then(r => r.json()).then(data => {
@@ -893,26 +905,248 @@ export default function BillingPage() {
             <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
           </div>
 
-          <div className="p-6">
-            {/* Live transcript (shown when listening) */}
-            {isListening && finalTranscript && (
-                <div className="mb-4 relative overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-br from-rose-50 via-white to-orange-50 shadow-sm">
-                  <div className="h-0.5 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400" style={{backgroundSize:'200% 100%', animation:'shimmer 2s linear infinite'}} />
-                  <div className="p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                      </span>
-                      <span className="text-xs font-bold uppercase tracking-widest text-rose-500">Listening</span>
+          {/* Transcript card — always above the slider */}
+          {isListening && finalTranscript && (
+            <div className="mx-6 mt-4 relative overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-br from-rose-50 via-white to-orange-50 shadow-sm">
+              <div className="h-0.5 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400" />
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                  </span>
+                  <span className="text-xs font-bold uppercase tracking-widest text-rose-500">Listening</span>
+                </div>
+                <p className="text-slate-800 text-base leading-relaxed font-medium">{finalTranscript}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Swipeable slider — 3 panels side by side */}
+          <div
+            ref={sliderRef}
+            className="flex overflow-x-auto snap-x snap-mandatory"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              const idx = Math.round(el.scrollLeft / el.offsetWidth);
+              const modes: Array<'MANUAL' | 'OCR' | 'PENDING'> = ['MANUAL', 'OCR', 'PENDING'];
+              if (modes[idx] && modes[idx] !== mode) setMode(modes[idx]);
+            }}
+          >
+            {/* Slide 0 — Manual Search */}
+            <div className="w-full shrink-0 snap-start p-6 space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <input type="text" placeholder="Search catalog by name or barcode... (e.g. Tata Salt)" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg shadow-sm" />
+              </div>
+              <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden max-h-[50vh] overflow-y-auto">
+                {(() => {
+                  const productsToDisplay = search.length > 1 ? searchResults : catalog.slice(0, 100);
+                  if (productsToDisplay.length === 0) return <div className="p-8 text-slate-500 text-center">No products found.</div>;
+                  const groupedByCategory = productsToDisplay.reduce((acc, product) => { const category = product.category || 'Uncategorized'; if (!acc[category]) acc[category] = []; acc[category].push(product); return acc; }, {} as Record<string, any[]>);
+                  const categories = Object.keys(groupedByCategory).sort();
+                  return (
+                    <div className="space-y-6 p-4">
+                      {categories.map((category) => (
+                        <div key={category}>
+                          <h3 className="text-sm font-bold text-slate-900 mb-3 px-2">{category}</h3>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            {groupedByCategory[category].map((p: any) => {
+                              const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
+                              const qty = cartItem ? cartItem.quantity : 0;
+                              return (
+                                <div key={p.id} className="bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-all hover:border-slate-300">
+                                  <div className="relative w-full h-24 bg-slate-100 overflow-hidden flex items-center justify-center">
+                                    {p.imageUrl ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover hover:scale-105 transition" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200"><Package className="text-slate-400" size={24} /></div>}
+                                  </div>
+                                  <div className="p-2.5">
+                                    <h4 className="font-semibold text-slate-900 text-xs line-clamp-2 mb-1">{p.name}</h4>
+                                    <div className="mb-2">
+                                      <div className="text-sm font-bold text-emerald-600">₹{(p.price || 0).toFixed(2)}</div>
+                                      <div className="text-xs text-slate-500">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</div>
+                                    </div>
+                                    {qty > 0 ? (
+                                      <div className="flex items-center gap-1 bg-indigo-50 px-1.5 py-1 rounded-lg border border-indigo-100 shadow-inner">
+                                        <button onClick={(e) => { e.stopPropagation(); const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }} className="w-6 h-6 flex items-center justify-center bg-white text-indigo-600 rounded text-xs font-bold hover:bg-indigo-100 transition">−</button>
+                                        <span className="font-semibold text-xs text-center flex-1 text-indigo-900">{qty}</span>
+                                        <button onClick={(e) => { e.stopPropagation(); updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1); }} className="w-6 h-6 flex items-center justify-center bg-indigo-600 text-white rounded text-xs font-bold hover:bg-indigo-700 transition">+</button>
+                                      </div>
+                                    ) : (
+                                      <button onClick={(e) => { e.stopPropagation(); addToCart(p); }} className="w-full text-indigo-600 bg-indigo-50 px-2 py-1.5 rounded-lg font-semibold hover:bg-indigo-100 transition-colors text-xs flex items-center justify-center gap-1"><Plus size={14} /> Add</button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <p className="text-slate-800 text-base leading-relaxed font-medium">{finalTranscript}</p>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Slide 1 — Scan Slip / Review */}
+            <div className="w-full shrink-0 snap-start p-6">
+              {!isReviewing ? (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold">Upload Customer List slip</h3>
+                    <p className="text-slate-500 text-sm mb-4">We'll read handwritten or printed text and match it.</p>
                   </div>
+                  <div className="border-2 border-dashed border-indigo-200 rounded-2xl p-8 bg-indigo-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 transition" onClick={() => fileInputRef.current?.click()}>
+                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleFileChange} />
+                    {previewUrl ? <img src={previewUrl} alt="Preview" className="max-h-64 rounded-xl shadow-sm" /> : <div className="flex flex-col items-center gap-3 text-indigo-600"><Camera size={48} /><span className="font-semibold">Tap to capture or upload image</span></div>}
+                  </div>
+                  {file && <button disabled={isProcessing} onClick={processImage} className="w-full bg-indigo-600 text-white font-semibold py-4 rounded-xl hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-50">{isProcessing ? 'Processing AI...' : 'Analyze Image'}</button>}
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center"><CheckCircle size={13} className="text-emerald-600" /></span>
+                        Detected Items
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5 ml-7">{reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} found</p>
+                    </div>
+                    <button onClick={() => setIsReviewing(false)} className="text-xs text-slate-400 hover:text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition font-medium">Cancel</button>
+                  </div>
+                  <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                    {reviewItems.map((item, idx) => (
+                      <div key={idx} className={`relative rounded-2xl border overflow-hidden transition-all ${item.isRepeated ? 'border-amber-300 shadow-[0_0_0_3px_rgba(251,191,36,0.15)]' : item.productId ? 'border-slate-200 hover:border-slate-300' : 'border-rose-200 hover:border-rose-300'}`}>
+                        <div className={`h-0.5 w-full ${item.isRepeated ? 'bg-amber-400' : item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                        <div className="p-4 bg-white">
+                          {item.isRepeated && <div className="absolute top-3 right-3 bg-amber-400 text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full shadow-sm">Repeated</div>}
+                          <div className="flex gap-3 items-start">
+                            <div className={`w-14 h-14 rounded-xl overflow-hidden shrink-0 flex items-center justify-center border ${item.productId ? 'border-slate-100 bg-slate-50' : 'border-rose-100 bg-rose-50'}`}>
+                              {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className={item.productId ? 'text-slate-300' : 'text-rose-300'} size={22} />}
+                            </div>
+                            <div className="flex-1 min-w-0 pr-6">
+                              <input value={item.name} onChange={e => { const n = [...reviewItems]; n[idx].name = e.target.value; setReviewItems(n); }} className="font-semibold text-slate-900 w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none text-sm pb-0.5 transition-colors" placeholder="Product Name" />
+                              {item.localName && <span className="text-xs text-slate-400 mt-0.5 block">({item.localName})</span>}
+                              <div className="flex items-center gap-1.5 mt-1.5">
+                                {item.confidence === 'low' ? <><span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0"></span><span className="text-[11px] text-rose-500 font-medium">Unrecognized — update details</span></> : <><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span><span className="text-[11px] text-emerald-600 font-medium">Matched: {item.aiLabel || 'Catalog'}</span></>}
+                              </div>
+                            </div>
+                            <button onClick={() => { const newItems = reviewItems.filter((_, i) => i !== idx); baseReviewItemsRef.current = newItems; globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e) {} } setReviewItems(newItems); }} className="absolute top-4 right-4 w-6 h-6 rounded-full flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors"><X size={14} /></button>
+                          </div>
+                          <div className="flex gap-3 mt-3 items-center">
+                            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden h-9 shrink-0">
+                              <button onClick={() => { const n = [...reviewItems]; n[idx].quantity = Math.max(1, n[idx].quantity - 1); setReviewItems(n); }} className="w-8 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition text-base font-bold">−</button>
+                              <input type="number" className="w-12 text-center text-sm font-bold focus:outline-none bg-transparent text-slate-800" value={item.quantity} onChange={e => { const n = [...reviewItems]; n[idx].quantity = parseFloat(e.target.value) || 1; setReviewItems(n); }} />
+                              <span className="text-[11px] text-slate-400 font-semibold pr-2">{item.unit || item.baseUnit}</span>
+                              <button onClick={() => { const n = [...reviewItems]; n[idx].quantity += 1; setReviewItems(n); }} className="w-8 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition text-base font-bold">+</button>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 h-9">
+                              <span className="text-slate-400 text-sm font-medium">₹</span>
+                              <input type="number" className="flex-1 bg-transparent focus:outline-none text-sm font-bold text-slate-800" value={item.price || item.sellingPrice || 0} onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }} />
+                            </div>
+                          </div>
+                          {item.suggestions && item.suggestions.length > 0 && (
+                            <div className="mt-4 pt-3 border-t border-slate-100">
+                              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">Similar products</p>
+                              <div className="grid grid-cols-3 gap-2">
+                                {item.suggestions.map((sug: any, sIdx: number) => (
+                                  <button key={sIdx} onClick={() => { const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl }; if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; } const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides }; setReviewItems(newItems); }} className="group/sug flex flex-col bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-50 rounded-xl overflow-hidden transition-all text-left">
+                                    <div className="w-full aspect-square bg-slate-50 overflow-hidden flex items-center justify-center border-b border-slate-100 group-hover/sug:bg-indigo-50/40 transition-colors">
+                                      {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover group-hover/sug:scale-105 transition-transform duration-200" /> : <Package className="text-slate-300 group-hover/sug:text-indigo-300 transition-colors" size={20} />}
+                                    </div>
+                                    <div className="p-2">
+                                      <p className="text-[11px] font-bold text-slate-800 line-clamp-2 leading-tight group-hover/sug:text-indigo-700 transition-colors">{sug.name}</p>
+                                      <p className="text-[11px] font-bold text-emerald-600 mt-1">₹{(sug.price || 0).toFixed(0)}</p>
+                                      <p className="text-[9px] text-slate-400 font-medium leading-tight">{sug.baseQuantity || 1}{(sug.baseUnit || 'pc') === 'pkt' ? ' pkt' : ` ${sug.baseUnit || 'pc'}`}</p>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={reviewEndRef} />
+                  </div>
+                  <button onClick={confirmReview} className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-4 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm">
+                    <CheckCircle size={18} />
+                    Add {reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} to Bill
+                  </button>
                 </div>
               )}
+            </div>
 
-            {mode === 'MANUAL' && (
-              <div className="space-y-4">
+            {/* Slide 2 — Pending Bills */}
+            <div className="w-full shrink-0 snap-start p-6 space-y-8">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Pending</h3></div>
+                  {pendingBills.length > 0 && <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pendingBills.length}</span>}
+                </div>
+                {loadingBills ? (
+                  <div className="space-y-2">{[1,2].map(i => <div key={i} className="h-16 rounded-xl bg-slate-100 animate-pulse" />)}</div>
+                ) : pendingBills.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><ShoppingCart size={28} className="opacity-30" /><p className="text-sm">No pending orders</p></div>
+                ) : (
+                  <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                    {pendingBills.map((bill) => (
+                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-orange-300 hover:shadow-md hover:shadow-orange-50 transition-all">
+                        <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0"><span className="text-orange-500 text-lg">🕐</span></div>
+                        <div className="flex-1 min-w-0"><p className="font-semibold text-slate-900 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{bill.items?.length || 0} items · {new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
+                        <div className="text-right shrink-0"><p className="font-bold text-slate-900 text-sm">₹{bill.totalAmount?.toFixed(0) || '0'}</p><span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md">Pending</span></div>
+                        <div className="absolute inset-y-0 left-0 w-1 bg-orange-400 rounded-full" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Completed</h3></div>
+                  {allCompletedBills.length > 0 && <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">{allCompletedBills.length}</span>}
+                </div>
+                {completedBills.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><p className="text-sm">No completed orders yet</p></div>
+                ) : (
+                  <div className="space-y-2">
+                    {(showMoreCompleted ? allCompletedBills : completedBills).map((bill) => (
+                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-50 transition-all">
+                        <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0"><CheckCircle size={16} className="text-emerald-500" /></div>
+                        <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
+                        <p className="font-semibold text-slate-700 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
+                        <div className="absolute inset-y-0 left-0 w-0.5 bg-emerald-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    ))}
+                    {!showMoreCompleted && allCompletedBills.length > 3 && <button onClick={() => setShowMoreCompleted(true)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show {allCompletedBills.length - 3} more</button>}
+                    {showMoreCompleted && allCompletedBills.length > 3 && <button onClick={() => setShowMoreCompleted(false)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show less</button>}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.6)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Unpaid</h3></div>
+                  {allUnpaidBills.length > 0 && <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">{allUnpaidBills.length}</span>}
+                </div>
+                {unpaidBills.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><p className="text-sm">No unpaid bills</p></div>
+                ) : (
+                  <div className="space-y-2">
+                    {(showMoreUnpaid ? allUnpaidBills : unpaidBills).map((bill) => (
+                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-rose-300 hover:shadow-md hover:shadow-rose-50 transition-all">
+                        <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0"><TriangleAlert size={15} className="text-rose-500" /></div>
+                        <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
+                        <p className="font-semibold text-rose-600 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
+                        <div className="absolute inset-y-0 left-0 w-0.5 bg-rose-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    ))}
+                    {!showMoreUnpaid && allUnpaidBills.length > 3 && <button onClick={() => setShowMoreUnpaid(true)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show {allUnpaidBills.length - 3} more</button>}
+                    {showMoreUnpaid && allUnpaidBills.length > 3 && <button onClick={() => setShowMoreUnpaid(false)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show less</button>}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                   <input
@@ -1047,383 +1281,6 @@ export default function BillingPage() {
               </div>
             )}
 
-            {(mode === 'OCR') && !isReviewing && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold">Upload Customer List slip</h3>
-                  <p className="text-slate-500 text-sm mb-4">
-                    We'll read handwritten or printed text and match it.
-                  </p>
-                </div>
-
-                <div
-                  className="border-2 border-dashed border-indigo-200 rounded-2xl p-8 bg-indigo-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 transition"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleFileChange} />
-                  {previewUrl ? (
-                    <img src={previewUrl} alt="Preview" className="max-h-64 rounded-xl shadow-sm" />
-                  ) : (
-                    <div className="flex flex-col items-center gap-3 text-indigo-600">
-                      <Camera size={48} />
-                      <span className="font-semibold">Tap to capture or upload image</span>
-                    </div>
-                  )}
-                </div>
-
-                {file && (
-                  <button
-                    disabled={isProcessing}
-                    onClick={processImage}
-                    className="w-full bg-indigo-600 text-white font-semibold py-4 rounded-xl hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {isProcessing ? 'Processing AI...' : 'Analyze Image'}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {mode === 'PENDING' && (
-              <div className="space-y-8">
-                {/* Pending Orders */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"></span>
-                      <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Pending</h3>
-                    </div>
-                    {pendingBills.length > 0 && (
-                      <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pendingBills.length}</span>
-                    )}
-                  </div>
-
-                  {loadingBills ? (
-                    <div className="space-y-2">
-                      {[1,2].map(i => <div key={i} className="h-16 rounded-xl bg-slate-100 animate-pulse" />)}
-                    </div>
-                  ) : pendingBills.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl">
-                      <ShoppingCart size={28} className="opacity-30" />
-                      <p className="text-sm">No pending orders</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-                      {pendingBills.map((bill) => (
-                        <div
-                          key={bill.id}
-                          onClick={() => setSelectedBill(bill)}
-                          className="group relative flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-orange-300 hover:shadow-md hover:shadow-orange-50 transition-all"
-                        >
-                          <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0">
-                            <span className="text-orange-500 text-lg">🕐</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-slate-900 text-sm truncate">{getBillLabel(bill)}</p>
-                            <p className="text-xs text-slate-400 mt-0.5">{bill.items?.length || 0} items · {new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="font-bold text-slate-900 text-sm">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md">Pending</span>
-                          </div>
-                          <div className="absolute inset-y-0 left-0 w-1 bg-orange-400 rounded-full" />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Completed Orders */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                      <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Completed</h3>
-                    </div>
-                    {allCompletedBills.length > 0 && (
-                      <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">{allCompletedBills.length}</span>
-                    )}
-                  </div>
-                  {completedBills.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl">
-                      <p className="text-sm">No completed orders yet</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {(showMoreCompleted ? allCompletedBills : completedBills).map((bill) => (
-                        <div
-                          key={bill.id}
-                          onClick={() => setSelectedBill(bill)}
-                          className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-50 transition-all"
-                        >
-                          <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-                            <CheckCircle size={16} className="text-emerald-500" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p>
-                            <p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
-                          </div>
-                          <p className="font-semibold text-slate-700 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
-                          <div className="absolute inset-y-0 left-0 w-0.5 bg-emerald-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                      ))}
-                      {!showMoreCompleted && allCompletedBills.length > 3 && (
-                        <button
-                          onClick={() => setShowMoreCompleted(true)}
-                          className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200"
-                        >
-                          Show {allCompletedBills.length - 3} more
-                        </button>
-                      )}
-                      {showMoreCompleted && allCompletedBills.length > 3 && (
-                        <button
-                          onClick={() => setShowMoreCompleted(false)}
-                          className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200"
-                        >
-                          Show less
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Unpaid Bills */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.6)]"></span>
-                      <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Unpaid</h3>
-                    </div>
-                    {allUnpaidBills.length > 0 && (
-                      <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">{allUnpaidBills.length}</span>
-                    )}
-                  </div>
-                  {unpaidBills.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl">
-                      <p className="text-sm">No unpaid bills</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {(showMoreUnpaid ? allUnpaidBills : unpaidBills).map((bill) => (
-                        <div
-                          key={bill.id}
-                          onClick={() => setSelectedBill(bill)}
-                          className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-rose-300 hover:shadow-md hover:shadow-rose-50 transition-all"
-                        >
-                          <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0">
-                            <TriangleAlert size={15} className="text-rose-500" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p>
-                            <p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
-                          </div>
-                          <p className="font-semibold text-rose-600 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
-                          <div className="absolute inset-y-0 left-0 w-0.5 bg-rose-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                      ))}
-                      {!showMoreUnpaid && allUnpaidBills.length > 3 && (
-                        <button
-                          onClick={() => setShowMoreUnpaid(true)}
-                          className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200"
-                        >
-                          Show {allUnpaidBills.length - 3} more
-                        </button>
-                      )}
-                      {showMoreUnpaid && allUnpaidBills.length > 3 && (
-                        <button
-                          onClick={() => setShowMoreUnpaid(false)}
-                          className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200"
-                        >
-                          Show less
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {(mode === 'OCR') && isReviewing && (
-              <div className="space-y-5">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center">
-                        <CheckCircle size={13} className="text-emerald-600" />
-                      </span>
-                      Detected Items
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5 ml-7">{reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} found</p>
-                  </div>
-                  <button onClick={() => setIsReviewing(false)} className="text-xs text-slate-400 hover:text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition font-medium">Cancel</button>
-                </div>
-
-                <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
-                  {reviewItems.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className={`relative rounded-2xl border overflow-hidden transition-all ${
-                        item.isRepeated
-                          ? 'border-amber-300 shadow-[0_0_0_3px_rgba(251,191,36,0.15)]'
-                          : item.productId
-                          ? 'border-slate-200 hover:border-slate-300'
-                          : 'border-rose-200 hover:border-rose-300'
-                      }`}
-                    >
-                      {/* Top accent bar */}
-                      <div className={`h-0.5 w-full ${item.isRepeated ? 'bg-amber-400' : item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-
-                      <div className="p-4 bg-white">
-                        {item.isRepeated && (
-                          <div className="absolute top-3 right-3 bg-amber-400 text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full shadow-sm">
-                            Repeated
-                          </div>
-                        )}
-
-                        <div className="flex gap-3 items-start">
-                          {/* Product image */}
-                          <div className={`w-14 h-14 rounded-xl overflow-hidden shrink-0 flex items-center justify-center border ${item.productId ? 'border-slate-100 bg-slate-50' : 'border-rose-100 bg-rose-50'}`}>
-                            {item.imageUrl
-                              ? <img src={item.imageUrl} className="w-full h-full object-cover" />
-                              : <Package className={item.productId ? 'text-slate-300' : 'text-rose-300'} size={22} />
-                            }
-                          </div>
-
-                          {/* Name + confidence */}
-                          <div className="flex-1 min-w-0 pr-6">
-                            <input
-                              value={item.name}
-                              onChange={e => { const n = [...reviewItems]; n[idx].name = e.target.value; setReviewItems(n); }}
-                              className="font-semibold text-slate-900 w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none text-sm pb-0.5 transition-colors"
-                              placeholder="Product Name"
-                            />
-                            {item.localName && (
-                              <span className="text-xs text-slate-400 mt-0.5 block">({item.localName})</span>
-                            )}
-                            <div className="flex items-center gap-1.5 mt-1.5">
-                              {item.confidence === 'low' ? (
-                                <>
-                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0"></span>
-                                  <span className="text-[11px] text-rose-500 font-medium">Unrecognized — update details</span>
-                                </>
-                              ) : (
-                                <>
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
-                                  <span className="text-[11px] text-emerald-600 font-medium">Matched: {item.aiLabel || 'Catalog'}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Delete */}
-                          <button
-                            onClick={() => {
-                              const newItems = reviewItems.filter((_, i) => i !== idx);
-                              baseReviewItemsRef.current = newItems;
-                              globalTranscriptRef.current = "";
-                              currentBreathRef.current = "";
-                              setFinalTranscript("");
-                              if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e) {} }
-                              setReviewItems(newItems);
-                            }}
-                            className="absolute top-4 right-4 w-6 h-6 rounded-full flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-
-                        {/* Qty + Price row */}
-                        <div className="flex gap-3 mt-3 items-center">
-                          <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden h-9 shrink-0">
-                            <button
-                              onClick={() => { const n = [...reviewItems]; n[idx].quantity = Math.max(1, n[idx].quantity - 1); setReviewItems(n); }}
-                              className="w-8 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition text-base font-bold"
-                            >−</button>
-                            <input
-                              type="number"
-                              className="w-12 text-center text-sm font-bold focus:outline-none bg-transparent text-slate-800"
-                              value={item.quantity}
-                              onChange={e => { const n = [...reviewItems]; n[idx].quantity = parseFloat(e.target.value) || 1; setReviewItems(n); }}
-                            />
-                            <span className="text-[11px] text-slate-400 font-semibold pr-2">{item.unit || item.baseUnit}</span>
-                            <button
-                              onClick={() => { const n = [...reviewItems]; n[idx].quantity += 1; setReviewItems(n); }}
-                              className="w-8 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition text-base font-bold"
-                            >+</button>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 h-9">
-                            <span className="text-slate-400 text-sm font-medium">₹</span>
-                            <input
-                              type="number"
-                              className="flex-1 bg-transparent focus:outline-none text-sm font-bold text-slate-800"
-                              value={item.price || item.sellingPrice || 0}
-                              onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Suggested products */}
-                        {item.suggestions && item.suggestions.length > 0 && (
-                          <div className="mt-4 pt-3 border-t border-slate-100">
-                            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">Similar products</p>
-                            <div className="grid grid-cols-3 gap-2">
-                              {item.suggestions.map((sug: any, sIdx: number) => (
-                                <button
-                                  key={sIdx}
-                                  onClick={() => {
-                                    const overrides = {
-                                      productId: sug.id,
-                                      name: sug.name,
-                                      localName: sug.localName,
-                                      price: sug.price,
-                                      baseUnit: sug.baseUnit,
-                                      baseQuantity: sug.baseQuantity,
-                                      packetWeight: sug.packetWeight,
-                                      packetUnit: sug.packetUnit,
-                                      imageUrl: sug.imageUrl
-                                    };
-                                    if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
-                                    const newItems = [...reviewItems];
-                                    newItems[idx] = { ...newItems[idx], ...overrides };
-                                    setReviewItems(newItems);
-                                  }}
-                                  className="group/sug flex flex-col bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-50 rounded-xl overflow-hidden transition-all text-left"
-                                >
-                                  {/* Product image */}
-                                  <div className="w-full aspect-square bg-slate-50 overflow-hidden flex items-center justify-center border-b border-slate-100 group-hover/sug:bg-indigo-50/40 transition-colors">
-                                    {sug.imageUrl
-                                      ? <img src={sug.imageUrl} className="w-full h-full object-cover group-hover/sug:scale-105 transition-transform duration-200" />
-                                      : <Package className="text-slate-300 group-hover/sug:text-indigo-300 transition-colors" size={20} />
-                                    }
-                                  </div>
-                                  {/* Info */}
-                                  <div className="p-2">
-                                    <p className="text-[11px] font-bold text-slate-800 line-clamp-2 leading-tight group-hover/sug:text-indigo-700 transition-colors">{sug.name}</p>
-                                    <p className="text-[11px] font-bold text-emerald-600 mt-1">₹{(sug.price || 0).toFixed(0)}</p>
-                                    <p className="text-[9px] text-slate-400 font-medium leading-tight">
-                                      {sug.baseQuantity || 1}{(sug.baseUnit || 'pc') === 'pkt' ? ' pkt' : ` ${sug.baseUnit || 'pc'}`}
-                                    </p>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  <div ref={reviewEndRef} />
-                </div>
-
-                <button
-                  onClick={confirmReview}
-                  className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-4 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm"
-                >
-                  <CheckCircle size={18} />
-                  Add {reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} to Bill
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </div>
