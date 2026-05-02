@@ -17,15 +17,20 @@ export async function POST(request: Request) {
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const startOfDayISO = startOfDay.toISOString();
+    const endOfDayISO = endOfDay.toISOString();
     
-    const q = query(
-      collection(db, "bills"),
-      where("shopId", "==", data.shopId),
-      where("createdAt", ">=", startOfDay.toISOString()),
-      where("createdAt", "<", endOfDay.toISOString())
-    );
-    const todaysBills = await getDocs(q);
-    const billNumber = todaysBills.size + 1;
+    // Get all bills for this shop and filter by date on client side
+    const q = query(collection(db, "bills"), where("shopId", "==", data.shopId));
+    const allBills = await getDocs(q);
+    
+    // Count bills created today
+    const todaysBillsCount = allBills.docs.filter(doc => {
+      const createdAt = doc.data().createdAt;
+      return createdAt >= startOfDayISO && createdAt < endOfDayISO;
+    }).length;
+    
+    const billNumber = todaysBillsCount + 1;
 
     let totalAmount = 0;
     let totalProfit = 0;
@@ -97,7 +102,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(bill);
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to create bill' }, { status: 500 });
+    console.error('Failed to create bill:', error);
+    return NextResponse.json({ error: 'Failed to create bill', details: String(error) }, { status: 500 });
   }
 }
 
