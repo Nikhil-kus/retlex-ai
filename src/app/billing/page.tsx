@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import Fuse from 'fuse.js';
 
 import { useState, useEffect, useRef } from 'react';
