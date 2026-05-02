@@ -905,7 +905,7 @@ export default function BillingPage() {
             <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
           </div>
 
-          {/* Transcript card — always above the slider */}
+          {/* Transcript card - always above the slider */}
           {isListening && finalTranscript && (
             <div className="mx-6 mt-4 relative overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-br from-rose-50 via-white to-orange-50 shadow-sm">
               <div className="h-0.5 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400" />
@@ -922,7 +922,7 @@ export default function BillingPage() {
             </div>
           )}
 
-          {/* Swipeable slider — 3 panels side by side */}
+          {/* Swipeable slider - 3 panels side by side */}
           <div
             ref={sliderRef}
             className="flex overflow-x-auto snap-x snap-mandatory"
@@ -934,7 +934,7 @@ export default function BillingPage() {
               if (modes[idx] && modes[idx] !== mode) setMode(modes[idx]);
             }}
           >
-            {/* Slide 0 — Manual Search */}
+            {/* Slide 0 - Manual Search */}
             <div className="w-full shrink-0 snap-start p-6 space-y-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
@@ -988,7 +988,7 @@ export default function BillingPage() {
               </div>
             </div>
 
-            {/* Slide 1 — Scan Slip / Review */}
+            {/* Slide 1 - Scan Slip / Review */}
             <div className="w-full shrink-0 snap-start p-6">
               {!isReviewing ? (
                 <div className="space-y-6">
@@ -1077,7 +1077,7 @@ export default function BillingPage() {
               )}
             </div>
 
-            {/* Slide 2 — Pending Bills */}
+            {/* Slide 2 - Pending Bills */}
             <div className="w-full shrink-0 snap-start p-6 space-y-8">
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -1285,7 +1285,7 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* 🎤 Floating Voice Button — fixed bottom center, visible on all tabs */}
+      {/* Floating Voice Button - fixed bottom center, visible on all tabs */}
       <button
         onClick={isListening ? stopVoiceInput : startVoiceInput}
         className={`fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-6 py-3.5 rounded-full font-bold text-white shadow-2xl transition-all duration-500 ${
