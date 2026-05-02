@@ -14,12 +14,15 @@ export async function POST(request: Request) {
     const isTentHouse = shop?.businessType?.name === 'Tent House';
 
     // Generate daily bill number
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    
     const q = query(
       collection(db, "bills"),
       where("shopId", "==", data.shopId),
-      where("createdAt", ">=", today + "T00:00:00"),
-      where("createdAt", "<", today + "T23:59:59")
+      where("createdAt", ">=", startOfDay.toISOString()),
+      where("createdAt", "<", endOfDay.toISOString())
     );
     const todaysBills = await getDocs(q);
     const billNumber = todaysBills.size + 1;
