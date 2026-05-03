@@ -903,11 +903,11 @@ export default function BillingPage() {
   );
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto flex flex-col lg:flex-row gap-6 h-full">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6 h-full">
 
-      {/* Left Panel: Modes & Input */}
+      {/* Main Panel */}
       <div className="flex-1 flex flex-col gap-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1">
           <div className="flex border-b border-slate-100">
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
             <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
@@ -934,8 +934,8 @@ export default function BillingPage() {
           {/* Swipeable slider - 3 panels side by side */}
           <div
             ref={sliderRef}
-            className="flex overflow-x-hidden max-h-[calc(100vh-16rem)]"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            className="flex overflow-x-hidden"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', minHeight: 0, flex: 1 }}
             onTouchStart={(e) => {
               touchStartX.current = e.touches[0].clientX;
               touchStartY.current = e.touches[0].clientY;
@@ -1427,121 +1427,6 @@ export default function BillingPage() {
             )}
           </div>
         </div>
-      )}
-
-      {/* Right Panel: Current Bill / Cart */}
-      {mode !== 'PENDING' && (
-      <div className="w-full lg:w-96 flex flex-col bg-slate-900 rounded-2xl shadow-xl overflow-hidden text-white flex-shrink-0">
-        <div className="p-6 bg-slate-800 border-b border-slate-700/50 flex justify-between items-center">
-          <h2 className="text-xl font-bold flex items-center gap-2"><ShoppingCart size={20} className="text-indigo-400" /> Current Bill</h2>
-          <span className="bg-indigo-600/20 text-indigo-400 px-3 py-1 rounded-full text-sm font-semibold">{cart.length} items</span>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-3">
-              <ShoppingCart size={48} className="opacity-20" />
-              <p>Your cart is empty.</p>
-            </div>
-          ) : (
-            cart.map((item, idx) => (
-              <div key={idx} className="bg-slate-800 p-3 rounded-xl border border-slate-700 relative group flex gap-3">
-                <div className="w-12 h-12 rounded bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center border border-slate-600">
-                  {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover opacity-90" /> : <Package className="text-slate-500" size={20}/>}
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-start pr-6">
-                    <div>
-                      <p className="font-semibold text-sm line-clamp-1">
-                        {item.name} {item.localName && <span className="text-indigo-300 font-normal ml-1">({item.localName})</span>}
-                      </p>
-                      <p className="text-slate-400 text-xs mt-0.5">₹{(item.price || 0).toFixed(2)} / {item.baseQuantity === 1 ? '' : item.baseQuantity}{item.baseUnit || item.unit}</p>
-                    </div>
-                    <p className="font-bold text-indigo-300">₹{calculateItemTotal(item).toFixed(2)}</p>
-                  </div>
-
-                  <div className="flex items-center justify-between mt-3">
-                    <div className="flex items-center bg-slate-900 rounded-md border border-slate-700 h-8">
-                      <button onClick={() => updateCartItem(idx, 'quantity', Math.max(0.5, item.quantity - 1))} className="px-2 py-1 text-slate-400 hover:text-white h-full">-</button>
-                      <span className="px-3 text-sm font-medium w-auto text-center tabular-nums">{item.quantity} <span className="text-slate-400 text-xs">{item.unit || item.baseUnit}</span></span>
-                      <button onClick={() => updateCartItem(idx, 'quantity', item.quantity + 1)} className="px-2 py-1 text-slate-400 hover:text-white h-full">+</button>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => removeFromCart(idx)}
-                  className="absolute top-3 right-3 text-slate-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <Trash size={16} />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div className="p-6 bg-slate-800 border-t border-slate-700/50 space-y-4">
-          <div className="flex justify-between items-center text-slate-400 text-sm">
-            <span>Subtotal</span>
-            <span>₹{totalAmount.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between items-center text-2xl font-bold border-b border-slate-700 pb-4">
-            <span>Total</span>
-            <span className="text-emerald-400">₹{totalAmount.toFixed(2)}</span>
-          </div>
-
-          <div className="space-y-3">
-            <input
-              type="text"
-              placeholder="Customer Name (Optional)"
-              value={customerInfo.name}
-              onChange={e => setCustomerInfo({ ...customerInfo, name: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-            />
-            <input
-              type="tel"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={10}
-              placeholder="Customer Phone (Optional)"
-              value={customerInfo.phone}
-              onChange={e => {
-                const val = e.target.value.replace(/\D/g, '');
-                const newInfo = { ...customerInfo, phone: val };
-                setCustomerInfo(newInfo);
-                if (val.length === 10) {
-                  handleGenerateBill(newInfo);
-                }
-              }}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-            />
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setCustomerInfo({ ...customerInfo, status: 'PAID' })}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${customerInfo.status === 'PAID' ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/50' : 'bg-slate-900 text-slate-400 border border-slate-700 hover:bg-slate-700'}`}
-              >
-                Mark Paid
-              </button>
-              <button
-                onClick={() => setCustomerInfo({ ...customerInfo, status: 'UNPAID' })}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${customerInfo.status === 'UNPAID' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/50' : 'bg-slate-900 text-slate-400 border border-slate-700 hover:bg-slate-700'}`}
-              >
-                Unpaid
-              </button>
-            </div>
-
-            <button
-              disabled={savingBill || cart.length === 0}
-              onClick={handleGenerateBill}
-              className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl hover:bg-indigo-500 transition shadow-lg shadow-indigo-900/50 disabled:opacity-50 disabled:shadow-none mt-2 text-lg flex items-center justify-center gap-2"
-            >
-              <CheckCircle size={24} />
-              {savingBill ? 'Saving...' : 'Generate Bill'}
-            </button>
-          </div>
-        </div>
-      </div>
       )}
 
       {/* Bill Detail Modal */}
