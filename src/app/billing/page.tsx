@@ -1770,7 +1770,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
           <>
             {/* Drag handle + down arrow button */}
             <div
-              className="flex items-center justify-center pt-3 pb-2 flex-shrink-0 cursor-grab relative"
+              className="flex flex-col items-center pt-3 pb-2 flex-shrink-0 cursor-grab gap-1.5"
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
@@ -1778,10 +1778,10 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
               <div className="w-10 h-1.5 rounded-full bg-slate-300" />
               <button
                 onClick={onCollapse}
-                className="absolute right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 active:bg-slate-300 transition"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 transition"
                 title="Collapse"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
               </button>
             </div>
 
