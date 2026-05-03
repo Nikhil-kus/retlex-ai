@@ -565,6 +565,8 @@ export default function BillingPage() {
 
   // Pending Bills state
   const [pendingBills, setPendingBills] = useState<any[]>([]);
+  const [allPendingBills, setAllPendingBills] = useState<any[]>([]);
+  const [showMorePending, setShowMorePending] = useState(false);
   const [completedBills, setCompletedBills] = useState<any[]>([]);
   const [unpaidBills, setUnpaidBills] = useState<any[]>([]);
   const [allCompletedBills, setAllCompletedBills] = useState<any[]>([]);
@@ -641,12 +643,14 @@ export default function BillingPage() {
         const completed = allBills.filter((b: any) => b.orderStatus === 'COMPLETED');
         const unpaid = allBills.filter((b: any) => b.status === 'UNPAID');
         
-        setPendingBills(pending);
+        setPendingBills(pending.slice(0, 5));
+        setAllPendingBills(pending);
         setCompletedBills(completed.slice(0, 3));
         setAllCompletedBills(completed);
         setUnpaidBills(unpaid.slice(0, 3));
         setAllUnpaidBills(unpaid);
         setShowMoreCompleted(false);
+        setShowMorePending(false);
         setShowMoreUnpaid(false);
       }
     } catch (error) {
@@ -1038,7 +1042,7 @@ export default function BillingPage() {
                   <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><ShoppingCart size={28} className="opacity-30" /><p className="text-sm">No pending orders</p></div>
                 ) : (
                   <div className="space-y-2">
-                    {pendingBills.map((bill) => (
+                    {(showMorePending ? allPendingBills : pendingBills).map((bill) => (
                       <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-orange-300 hover:shadow-md hover:shadow-orange-50 transition-all">
                         <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0"><span className="text-orange-500 text-lg">🕐</span></div>
                         <div className="flex-1 min-w-0"><p className="font-semibold text-slate-900 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{bill.items?.length || 0} items · {new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
@@ -1046,6 +1050,8 @@ export default function BillingPage() {
                         <div className="absolute inset-y-0 left-0 w-1 bg-orange-400 rounded-full" />
                       </div>
                     ))}
+                    {!showMorePending && allPendingBills.length > 5 && <button onClick={() => setShowMorePending(true)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-orange-200">Show {allPendingBills.length - 5} more</button>}
+                    {showMorePending && allPendingBills.length > 5 && <button onClick={() => setShowMorePending(false)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-orange-200">Show less</button>}
                   </div>
                 )}
               </div>
