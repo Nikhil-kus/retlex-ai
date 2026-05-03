@@ -1003,7 +1003,7 @@ export default function BillingPage() {
                   {file && <button disabled={isProcessing} onClick={processImage} className="w-full bg-indigo-600 text-white font-semibold py-4 rounded-xl hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-50">{isProcessing ? 'Processing AI...' : 'Analyze Image'}</button>}
                 </div>
               ) : (
-                <div className="space-y-5">
+                <div className="space-y-5 flex flex-col h-full">
                   <div className="flex justify-between items-center">
                     <div>
                       <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -1014,7 +1014,7 @@ export default function BillingPage() {
                     </div>
                     <button onClick={() => setIsReviewing(false)} className="text-xs text-slate-400 hover:text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition font-medium">Cancel</button>
                   </div>
-                  <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                  <div className="space-y-3 flex-1 overflow-y-auto pr-1 min-h-0">
                     {reviewItems.map((item, idx) => (
                       <div key={idx} className={`relative rounded-2xl border overflow-hidden transition-all ${item.isRepeated ? 'border-amber-300 shadow-[0_0_0_3px_rgba(251,191,36,0.15)]' : item.productId ? 'border-slate-200 hover:border-slate-300' : 'border-rose-200 hover:border-rose-300'}`}>
                         <div className={`h-0.5 w-full ${item.isRepeated ? 'bg-amber-400' : item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
