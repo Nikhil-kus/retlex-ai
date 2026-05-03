@@ -563,6 +563,7 @@ export default function BillingPage() {
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
 
   // Pending Bills state
   const [pendingBills, setPendingBills] = useState<any[]>([]);
@@ -1064,12 +1065,17 @@ export default function BillingPage() {
                   ) : (
                     /* ── HOME: Top selling + Categories ── */
                     <>
-                      {/* Top Selling — horizontal scroll */}
+                      {/* Top Selling — horizontal scroll with suggestions */}
                       {catalog.length > 0 && (
                         <div className="pt-4 pb-2">
                           <div className="flex items-center justify-between px-4 mb-3">
                             <h2 className="text-sm font-bold text-slate-900">⚡ Top Selling</h2>
+                            {activeSuggestionId && (
+                              <button onClick={() => setActiveSuggestionId(null)} className="text-[11px] text-slate-400 hover:text-slate-600 font-medium">Dismiss</button>
+                            )}
                           </div>
+
+                          {/* Product row */}
                           <div
                             className="flex gap-3 overflow-x-auto px-4 pb-2"
                             style={{scrollbarWidth:'none'}}
@@ -1080,15 +1086,99 @@ export default function BillingPage() {
                             {catalog.slice(0, 10).map((p: any) => {
                               const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
                               const qty = cartItem ? cartItem.quantity : 0;
+                              const isActive = activeSuggestionId === p.id;
                               return (
-                                <ProductCard key={p.id} p={p} qty={qty} mini
-                                  onAdd={() => addToCart(p)}
-                                  onInc={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)}
-                                  onDec={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }}
-                                />
+                                <div
+                                  key={p.id}
+                                  className={`transition-all duration-200 ${isActive ? 'scale-105' : 'scale-100'}`}
+                                  onClick={() => setActiveSuggestionId(isActive ? null : p.id)}
+                                >
+                                  <ProductCard p={p} qty={qty} mini
+                                    onAdd={() => { addToCart(p); setActiveSuggestionId(p.id); }}
+                                    onInc={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)}
+                                    onDec={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }}
+                                  />
+                                  {/* Active indicator dot */}
+                                  {isActive && (
+                                    <div className="flex justify-center mt-1">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                    </div>
+                                  )}
+                                </div>
                               );
                             })}
                           </div>
+
+                          {/* Suggestions panel — slides in below the row */}
+                          {activeSuggestionId && (() => {
+                            const activeProduct = catalog.find(p => p.id === activeSuggestionId);
+                            if (!activeProduct) return null;
+                            const suggestions = getSuggestions({ productId: activeProduct.id, name: activeProduct.name, localName: activeProduct.localName });
+                            if (suggestions.length === 0) return null;
+                            return (
+                              <div className="mx-4 mt-2 mb-1 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white overflow-hidden shadow-sm">
+                                {/* Header */}
+                                <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+                                  <div className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+                                    {activeProduct.imageUrl
+                                      ? <img src={activeProduct.imageUrl} className="w-full h-full object-cover rounded-full" />
+                                      : <Package size={10} className="text-indigo-400" />
+                                    }
+                                  </div>
+                                  <p className="text-[11px] font-bold text-indigo-700 truncate flex-1">Similar to <span className="text-indigo-900">{activeProduct.name}</span></p>
+                                  <button onClick={() => setActiveSuggestionId(null)} className="w-5 h-5 flex items-center justify-center rounded-full bg-indigo-100 text-indigo-400 hover:bg-indigo-200 transition">
+                                    <X size={10} />
+                                  </button>
+                                </div>
+                                {/* Suggestion cards — horizontal scroll */}
+                                <div
+                                  className="flex gap-2.5 overflow-x-auto px-3 pb-3"
+                                  style={{scrollbarWidth:'none'}}
+                                  onTouchStart={e => e.stopPropagation()}
+                                  onTouchMove={e => e.stopPropagation()}
+                                  onTouchEnd={e => e.stopPropagation()}
+                                >
+                                  {suggestions.map((sug: any) => {
+                                    const sugCartItem = cart.find(c => c.productId === sug.id && c.unit === sug.baseUnit);
+                                    const sugQty = sugCartItem ? sugCartItem.quantity : 0;
+                                    return (
+                                      <div
+                                        key={sug.id}
+                                        className="flex-shrink-0 w-24 bg-white rounded-xl border border-indigo-100 overflow-hidden shadow-sm cursor-pointer active:scale-95 transition-all"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          addToCart(sug);
+                                          setActiveSuggestionId(null);
+                                        }}
+                                      >
+                                        <div className="relative w-full bg-indigo-50/50" style={{paddingBottom:'85%'}}>
+                                          <div className="absolute inset-0 flex items-center justify-center p-1.5">
+                                            {sug.imageUrl
+                                              ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                              : <Package className="text-indigo-200" size={20} />
+                                            }
+                                          </div>
+                                          {sugQty > 0 && (
+                                            <div className="absolute top-1 right-1 bg-indigo-600 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">
+                                              {sugQty}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="p-1.5">
+                                          <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{sug.name}</p>
+                                          <p className="text-[10px] font-bold text-emerald-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
+                                          <p className="text-[9px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
+                                          <div className={`mt-1 w-full rounded-lg py-0.5 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-indigo-600 text-white' : 'border border-indigo-400 text-indigo-600'}`}>
+                                            {sugQty > 0 ? <><span>✓</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
 
