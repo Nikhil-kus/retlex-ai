@@ -1001,13 +1001,13 @@ export default function BillingPage() {
                   {/* Products grid */}
                   <div className="grid grid-cols-3 gap-3 p-4">
                     {catalog.filter(p => (p.category || 'Uncategorized') === selectedCategory).map((p: any) => {
-                      const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
-                      const qty = cartItem ? cartItem.quantity : 0;
+                      const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
+                      const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
                       return (
                         <ProductCard key={p.id} p={p} qty={qty}
                           onAdd={() => addToCart(p)}
-                          onInc={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)}
-                          onDec={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }}
+                          onInc={() => updateCartItem(cartIdx, 'quantity', qty + 1)}
+                          onDec={() => { cartIdx >= 0 && (qty <= 1 ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - 1)); }}
                         />
                       );
                     })}
@@ -1048,13 +1048,13 @@ export default function BillingPage() {
                       ) : (
                         <div className="grid grid-cols-3 gap-3">
                           {searchResults.map((p: any) => {
-                            const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
-                            const qty = cartItem ? cartItem.quantity : 0;
+                            const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
+                            const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
                             return (
                               <ProductCard key={p.id} p={p} qty={qty}
                                 onAdd={() => addToCart(p)}
-                                onInc={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)}
-                                onDec={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }}
+                                onInc={() => updateCartItem(cartIdx, 'quantity', qty + 1)}
+                                onDec={() => { cartIdx >= 0 && (qty <= 1 ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - 1)); }}
                               />
                             );
                           })}
@@ -1084,8 +1084,8 @@ export default function BillingPage() {
                             onTouchEnd={e => e.stopPropagation()}
                           >
                             {catalog.slice(0, 10).map((p: any) => {
-                              const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
-                              const qty = cartItem ? cartItem.quantity : 0;
+                              const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
+                              const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
                               const isActive = activeSuggestionId === p.id;
                               return (
                                 <div
@@ -1095,8 +1095,8 @@ export default function BillingPage() {
                                 >
                                   <ProductCard p={p} qty={qty} mini
                                     onAdd={() => { addToCart(p); setActiveSuggestionId(p.id); }}
-                                    onInc={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)}
-                                    onDec={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }}
+                                    onInc={() => updateCartItem(cartIdx, 'quantity', qty + 1)}
+                                    onDec={() => { cartIdx >= 0 && (qty <= 1 ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - 1)); }}
                                   />
                                   {/* Active indicator dot */}
                                   {isActive && (
