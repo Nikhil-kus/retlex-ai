@@ -1419,9 +1419,29 @@ export default function BillingPage() {
                   <span className="text-slate-500 text-sm">Total</span>
                   <span className="text-xl font-bold text-emerald-600">₹{totalAmount.toFixed(2)}</span>
                 </div>
-                <div className="flex gap-2">
-                  <input type="text" placeholder="Customer Name" value={customerInfo.name} onChange={e => setCustomerInfo({...customerInfo, name: e.target.value})} className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
-                  <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={10} placeholder="Phone" value={customerInfo.phone} onChange={e => { const val = e.target.value.replace(/\D/g,''); const newInfo = {...customerInfo, phone: val}; setCustomerInfo(newInfo); if (val.length === 10) { handleGenerateBill(newInfo); setShowCartSheet(false); } }} className="w-28 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={10}
+                    placeholder="📱 Phone Number"
+                    value={customerInfo.phone}
+                    onChange={e => {
+                      const val = e.target.value.replace(/\D/g,'');
+                      const newInfo = {...customerInfo, phone: val};
+                      setCustomerInfo(newInfo);
+                      if (val.length === 10) { handleGenerateBill(newInfo); setShowCartSheet(false); }
+                    }}
+                    className="w-full bg-white border-2 border-indigo-200 rounded-xl px-4 py-3 text-base font-semibold focus:outline-none focus:border-indigo-500 placeholder:text-slate-400 placeholder:font-normal tracking-wider"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Customer Name (optional)"
+                    value={customerInfo.name}
+                    onChange={e => setCustomerInfo({...customerInfo, name: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400"
+                  />
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setCustomerInfo({...customerInfo, status:'PAID'})} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status==='PAID' ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>✓ Paid</button>
