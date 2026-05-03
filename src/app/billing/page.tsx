@@ -590,7 +590,7 @@ export default function BillingPage() {
     }
   }, [reviewItems.length]);
 
-  const modeIndex = mode === 'MANUAL' ? 0 : mode === 'OCR' ? 1 : 2;
+  const modeIndex = mode === 'MANUAL' ? 0 : mode === 'PENDING' ? 1 : 2;
   useEffect(() => {
     if (sliderRef.current) {
       sliderRef.current.scrollTo({
@@ -901,8 +901,8 @@ export default function BillingPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="flex border-b border-slate-100">
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
-            <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan Slip" />
             <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
+            <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan Slip" />
           </div>
 
           {/* Transcript card - always above the slider */}
@@ -930,7 +930,7 @@ export default function BillingPage() {
             onScroll={(e) => {
               const el = e.currentTarget;
               const idx = Math.round(el.scrollLeft / el.offsetWidth);
-              const modes: Array<'MANUAL' | 'OCR' | 'PENDING'> = ['MANUAL', 'OCR', 'PENDING'];
+              const modes: Array<'MANUAL' | 'OCR' | 'PENDING'> = ['MANUAL', 'PENDING', 'OCR'];
               if (modes[idx] && modes[idx] !== mode) setMode(modes[idx]);
             }}
           >
@@ -988,7 +988,7 @@ export default function BillingPage() {
               </div>
             </div>
 
-            {/* Slide 1 - Scan Slip / Review */}
+            {/* Slide 2 - Scan Slip / Review */}
             <div className="w-full shrink-0 snap-start p-6 h-full">
               {!isReviewing ? (
                 <div className="space-y-6 h-full flex flex-col">
@@ -1077,7 +1077,7 @@ export default function BillingPage() {
               )}
             </div>
 
-            {/* Slide 2 - Pending Bills */}
+            {/* Slide 1 - Pending Bills */}
             <div className="w-full shrink-0 snap-start p-6 space-y-8">
               <div>
                 <div className="flex items-center justify-between mb-4">
