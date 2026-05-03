@@ -593,6 +593,10 @@ export default function BillingPage() {
 
   const modeIndex = mode === 'MANUAL' ? 0 : mode === 'PENDING' ? 1 : 2;
   const isProgrammaticScroll = useRef(false);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const isSwiping = useRef(false);
+
   useEffect(() => {
     if (sliderRef.current) {
       isProgrammaticScroll.current = true;
@@ -600,7 +604,6 @@ export default function BillingPage() {
         left: modeIndex * sliderRef.current.offsetWidth,
         behavior: 'smooth',
       });
-      // Reset flag after scroll animation completes
       setTimeout(() => { isProgrammaticScroll.current = false; }, 500);
     }
   }, [modeIndex]);
@@ -931,18 +934,38 @@ export default function BillingPage() {
           {/* Swipeable slider - 3 panels side by side */}
           <div
             ref={sliderRef}
-            className="flex overflow-x-auto snap-x snap-mandatory max-h-[calc(100vh-16rem)]"
+            className="flex overflow-x-hidden max-h-[calc(100vh-16rem)]"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            onScroll={(e) => {
-              if (isProgrammaticScroll.current) return;
-              const el = e.currentTarget;
-              const idx = Math.round(el.scrollLeft / el.offsetWidth);
-              const modes: Array<'MANUAL' | 'OCR' | 'PENDING'> = ['MANUAL', 'PENDING', 'OCR'];
-              if (modes[idx] && modes[idx] !== mode) setMode(modes[idx]);
+            onTouchStart={(e) => {
+              touchStartX.current = e.touches[0].clientX;
+              touchStartY.current = e.touches[0].clientY;
+              isSwiping.current = false;
+            }}
+            onTouchMove={(e) => {
+              const dx = e.touches[0].clientX - touchStartX.current;
+              const dy = e.touches[0].clientY - touchStartY.current;
+              // Only lock as horizontal swipe if clearly more horizontal than vertical
+              if (!isSwiping.current && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+                isSwiping.current = true;
+              }
+              // Prevent page scroll when swiping horizontally
+              if (isSwiping.current) e.preventDefault();
+            }}
+            onTouchEnd={(e) => {
+              if (!isSwiping.current) return;
+              const dx = e.changedTouches[0].clientX - touchStartX.current;
+              const threshold = 50; // minimum px to count as a swipe
+              const modes: Array<'MANUAL' | 'PENDING' | 'OCR'> = ['MANUAL', 'PENDING', 'OCR'];
+              if (dx < -threshold && modeIndex < 2) {
+                setMode(modes[modeIndex + 1]);
+              } else if (dx > threshold && modeIndex > 0) {
+                setMode(modes[modeIndex - 1]);
+              }
+              isSwiping.current = false;
             }}
           >
             {/* Slide 0 - Manual Search */}
-            <div className="w-full shrink-0 snap-start p-6 space-y-4">
+            <div className="w-full shrink-0 p-6 space-y-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                 <input type="text" placeholder="Search catalog by name or barcode... (e.g. Tata Salt)" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg shadow-sm" />
@@ -996,7 +1019,7 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 1 - Pending Bills */}
-            <div className="w-full shrink-0 snap-start p-6 space-y-8 overflow-y-auto">
+            <div className="w-full shrink-0 p-6 space-y-8 overflow-y-auto">
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Pending</h3></div>
@@ -1066,7 +1089,7 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 2 - Scan Slip / Review */}
-            <div className="w-full shrink-0 snap-start flex flex-col" style={{minHeight: 0}}>
+            <div className="w-full shrink-0 flex flex-col" style={{minHeight: 0}}>
               {!isReviewing ? (
                 /* ── IDLE STATE: Upload / Voice prompt ── */
                 <div className="flex flex-col gap-4 p-5">
