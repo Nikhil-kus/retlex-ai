@@ -562,6 +562,7 @@ export default function BillingPage() {
   // Manual Mode state
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   // Pending Bills state
   const [pendingBills, setPendingBills] = useState<any[]>([]);
@@ -969,52 +970,170 @@ export default function BillingPage() {
               const modes: Array<'MANUAL' | 'PENDING' | 'OCR'> = ['MANUAL', 'PENDING', 'OCR'];
               if (dx < -threshold && modeIndex < 2) {
                 setMode(modes[modeIndex + 1]);
+                setSelectedCategory(null);
               } else if (dx > threshold && modeIndex > 0) {
                 setMode(modes[modeIndex - 1]);
+                setSelectedCategory(null);
               }
               isSwiping.current = false;
             }}
           >
             {/* Slide 0 - Manual Search */}
-            <div ref={slide0Ref} className="w-full shrink-0 p-6 space-y-4 overflow-y-auto">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input type="text" placeholder="Search catalog by name or barcode... (e.g. Tata Salt)" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg shadow-sm" />
-              </div>
-              <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden max-h-[50vh] overflow-y-auto">
-                {(() => {
-                  const productsToDisplay = search.length > 1 ? searchResults : catalog.slice(0, 100);
-                  if (productsToDisplay.length === 0) return <div className="p-8 text-slate-500 text-center">No products found.</div>;
-                  const groupedByCategory = productsToDisplay.reduce((acc, product) => { const category = product.category || 'Uncategorized'; if (!acc[category]) acc[category] = []; acc[category].push(product); return acc; }, {} as Record<string, any[]>);
-                  const categories = Object.keys(groupedByCategory).sort();
-                  return (
-                    <div className="space-y-6 p-4">
-                      {categories.map((category) => (
-                        <div key={category}>
-                          <h3 className="text-sm font-bold text-slate-900 mb-3 px-2">{category}</h3>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                            {groupedByCategory[category].map((p: any) => {
+            <div ref={slide0Ref} className="w-full shrink-0 overflow-y-auto flex flex-col">
+
+              {/* ── Category full-page view ── */}
+              {selectedCategory ? (
+                <div className="flex flex-col flex-1">
+                  {/* Header */}
+                  <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-slate-100 sticky top-0 bg-white z-10">
+                    <button
+                      onClick={() => setSelectedCategory(null)}
+                      className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+                    </button>
+                    <h2 className="font-bold text-slate-900 text-base">{selectedCategory}</h2>
+                    <span className="ml-auto text-xs text-slate-400">
+                      {catalog.filter(p => (p.category || 'Uncategorized') === selectedCategory).length} items
+                    </span>
+                  </div>
+                  {/* Products grid */}
+                  <div className="grid grid-cols-3 gap-3 p-4">
+                    {catalog.filter(p => (p.category || 'Uncategorized') === selectedCategory).map((p: any) => {
+                      const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
+                      const qty = cartItem ? cartItem.quantity : 0;
+                      return (
+                        <div key={p.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                          <div className="relative w-full bg-slate-50" style={{paddingBottom:'100%'}}>
+                            <div className="absolute inset-0 flex items-center justify-center p-2">
+                              {p.imageUrl
+                                ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                : <Package className="text-slate-300" size={28} />
+                              }
+                            </div>
+                          </div>
+                          <div className="p-2">
+                            <p className="font-semibold text-slate-900 text-xs line-clamp-2 leading-tight mb-1">{p.name}</p>
+                            <p className="text-[10px] text-slate-400 mb-1.5">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
+                            <p className="text-sm font-bold text-slate-900 mb-2">₹{(p.price || 0).toFixed(0)}</p>
+                            {qty > 0 ? (
+                              <div className="flex items-center justify-between bg-indigo-600 rounded-lg px-1 py-1">
+                                <button onClick={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }} className="w-6 h-6 flex items-center justify-center text-white font-bold text-base">−</button>
+                                <span className="text-white text-xs font-bold">{qty}</span>
+                                <button onClick={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)} className="w-6 h-6 flex items-center justify-center text-white font-bold text-base">+</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => addToCart(p)} className="w-full border-2 border-indigo-600 text-indigo-600 rounded-lg py-1 text-xs font-bold hover:bg-indigo-50 transition flex items-center justify-center gap-1">
+                                <Plus size={12} /> Add
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              ) : (
+                /* ── Home view ── */
+                <div className="flex flex-col gap-0">
+
+                  {/* Search bar */}
+                  <div className="px-4 pt-4 pb-3 sticky top-0 bg-white z-10 border-b border-slate-100">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input
+                        type="text"
+                        placeholder="Search products…"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition"
+                      />
+                      {search && (
+                        <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── SEARCH RESULTS ── */}
+                  {search.length > 1 ? (
+                    <div className="px-4 pt-3">
+                      {searchResults.length === 0 ? (
+                        <div className="py-12 text-center text-slate-400">
+                          <Package size={36} className="mx-auto mb-2 opacity-30" />
+                          <p className="text-sm">No products found</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-3">
+                          {searchResults.map((p: any) => {
+                            const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
+                            const qty = cartItem ? cartItem.quantity : 0;
+                            return (
+                              <div key={p.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                                <div className="relative w-full bg-slate-50" style={{paddingBottom:'100%'}}>
+                                  <div className="absolute inset-0 flex items-center justify-center p-2">
+                                    {p.imageUrl ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} /> : <Package className="text-slate-300" size={28} />}
+                                  </div>
+                                </div>
+                                <div className="p-2">
+                                  <p className="font-semibold text-slate-900 text-xs line-clamp-2 leading-tight mb-1">{p.name}</p>
+                                  <p className="text-[10px] text-slate-400 mb-1.5">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
+                                  <p className="text-sm font-bold text-slate-900 mb-2">₹{(p.price || 0).toFixed(0)}</p>
+                                  {qty > 0 ? (
+                                    <div className="flex items-center justify-between bg-indigo-600 rounded-lg px-1 py-1">
+                                      <button onClick={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }} className="w-6 h-6 flex items-center justify-center text-white font-bold text-base">−</button>
+                                      <span className="text-white text-xs font-bold">{qty}</span>
+                                      <button onClick={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)} className="w-6 h-6 flex items-center justify-center text-white font-bold text-base">+</button>
+                                    </div>
+                                  ) : (
+                                    <button onClick={() => addToCart(p)} className="w-full border-2 border-indigo-600 text-indigo-600 rounded-lg py-1 text-xs font-bold hover:bg-indigo-50 transition flex items-center justify-center gap-1">
+                                      <Plus size={12} /> Add
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                  ) : (
+                    /* ── HOME: Top selling + Categories ── */
+                    <>
+                      {/* Top Selling — horizontal scroll */}
+                      {catalog.length > 0 && (
+                        <div className="pt-4 pb-2">
+                          <div className="flex items-center justify-between px-4 mb-3">
+                            <h2 className="text-sm font-bold text-slate-900">⚡ Top Selling</h2>
+                          </div>
+                          <div className="flex gap-3 overflow-x-auto px-4 pb-2" style={{scrollbarWidth:'none'}}>
+                            {catalog.slice(0, 10).map((p: any) => {
                               const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
                               const qty = cartItem ? cartItem.quantity : 0;
                               return (
-                                <div key={p.id} className="bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-all hover:border-slate-300">
-                                  <div className="relative w-full h-24 bg-slate-100 overflow-hidden flex items-center justify-center">
-                                    {p.imageUrl ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover hover:scale-105 transition" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200"><Package className="text-slate-400" size={24} /></div>}
-                                  </div>
-                                  <div className="p-2.5">
-                                    <h4 className="font-semibold text-slate-900 text-xs line-clamp-2 mb-1">{p.name}</h4>
-                                    <div className="mb-2">
-                                      <div className="text-sm font-bold text-emerald-600">₹{(p.price || 0).toFixed(2)}</div>
-                                      <div className="text-xs text-slate-500">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</div>
+                                <div key={p.id} className="flex-shrink-0 w-28 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                                  <div className="relative w-full bg-slate-50" style={{paddingBottom:'100%'}}>
+                                    <div className="absolute inset-0 flex items-center justify-center p-2">
+                                      {p.imageUrl ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} /> : <Package className="text-slate-300" size={24} />}
                                     </div>
+                                  </div>
+                                  <div className="p-2">
+                                    <p className="font-semibold text-slate-900 text-[11px] line-clamp-2 leading-tight mb-1">{p.name}</p>
+                                    <p className="text-[10px] text-slate-400 mb-1">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
+                                    <p className="text-xs font-bold text-slate-900 mb-1.5">₹{(p.price || 0).toFixed(0)}</p>
                                     {qty > 0 ? (
-                                      <div className="flex items-center gap-1 bg-indigo-50 px-1.5 py-1 rounded-lg border border-indigo-100 shadow-inner">
-                                        <button onClick={(e) => { e.stopPropagation(); const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }} className="w-6 h-6 flex items-center justify-center bg-white text-indigo-600 rounded text-xs font-bold hover:bg-indigo-100 transition">−</button>
-                                        <span className="font-semibold text-xs text-center flex-1 text-indigo-900">{qty}</span>
-                                        <button onClick={(e) => { e.stopPropagation(); updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1); }} className="w-6 h-6 flex items-center justify-center bg-indigo-600 text-white rounded text-xs font-bold hover:bg-indigo-700 transition">+</button>
+                                      <div className="flex items-center justify-between bg-indigo-600 rounded-lg px-1 py-0.5">
+                                        <button onClick={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }} className="w-5 h-5 flex items-center justify-center text-white font-bold text-sm">−</button>
+                                        <span className="text-white text-[11px] font-bold">{qty}</span>
+                                        <button onClick={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)} className="w-5 h-5 flex items-center justify-center text-white font-bold text-sm">+</button>
                                       </div>
                                     ) : (
-                                      <button onClick={(e) => { e.stopPropagation(); addToCart(p); }} className="w-full text-indigo-600 bg-indigo-50 px-2 py-1.5 rounded-lg font-semibold hover:bg-indigo-100 transition-colors text-xs flex items-center justify-center gap-1"><Plus size={14} /> Add</button>
+                                      <button onClick={() => addToCart(p)} className="w-full border-2 border-indigo-600 text-indigo-600 rounded-lg py-0.5 text-[11px] font-bold hover:bg-indigo-50 transition flex items-center justify-center gap-0.5">
+                                        <Plus size={11} /> Add
+                                      </button>
                                     )}
                                   </div>
                                 </div>
@@ -1022,11 +1141,52 @@ export default function BillingPage() {
                             })}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  );
-                })()}
-              </div>
+                      )}
+
+                      {/* Divider */}
+                      <div className="h-2 bg-slate-100 my-1" />
+
+                      {/* Categories grid */}
+                      <div className="px-4 pt-4 pb-6">
+                        <h2 className="text-sm font-bold text-slate-900 mb-3">🛒 Shop by Category</h2>
+                        {(() => {
+                          const cats = Array.from(new Set(catalog.map(p => p.category || 'Uncategorized'))).sort();
+                          // Pick a representative image per category
+                          const catData = cats.map(cat => {
+                            const products = catalog.filter(p => (p.category || 'Uncategorized') === cat);
+                            const imgProduct = products.find(p => p.imageUrl);
+                            return { cat, count: products.length, img: imgProduct?.imageUrl || null };
+                          });
+                          return (
+                            <div className="grid grid-cols-3 gap-3">
+                              {catData.map(({ cat, count, img }) => (
+                                <button
+                                  key={cat}
+                                  onClick={() => setSelectedCategory(cat)}
+                                  className="flex flex-col items-center bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:border-indigo-200 active:scale-95 transition-all"
+                                >
+                                  <div className="w-full bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center" style={{paddingBottom:'75%', position:'relative'}}>
+                                    <div className="absolute inset-0 flex items-center justify-center p-3">
+                                      {img
+                                        ? <img src={img} alt={cat} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                        : <Package className="text-indigo-300" size={28} />
+                                      }
+                                    </div>
+                                  </div>
+                                  <div className="p-2 text-center w-full">
+                                    <p className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight">{cat}</p>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">{count} items</p>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Slide 1 - Pending Bills */}
