@@ -1535,7 +1535,8 @@ export default function BillingPage() {
       </button>
 
       {/* Cart Bottom Sheet — shown after "Add items to Bill" on mobile */}
-      {showCartSheet && (
+      {/* Cart Bottom Sheet — mini bar when collapsed, full sheet when expanded */}
+      {(showCartSheet || cart.length > 0) && (
         <CartBottomSheet
           cart={cart}
           totalAmount={totalAmount}
@@ -1546,7 +1547,9 @@ export default function BillingPage() {
           updateCartItem={updateCartItem}
           removeFromCart={removeFromCart}
           handleGenerateBill={handleGenerateBill}
-          onClose={() => setShowCartSheet(false)}
+          expanded={showCartSheet}
+          onExpand={() => setShowCartSheet(true)}
+          onCollapse={() => setShowCartSheet(false)}
           onClearCart={() => { setCart([]); setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' }); setShowCartSheet(false); }}
         />
       )}
@@ -1664,25 +1667,28 @@ function TabButton({ active, onClick, icon, label }: any) {
   );
 }
 
-function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, savingBill, calculateItemTotal, updateCartItem, removeFromCart, handleGenerateBill, onClose, onClearCart }: any) {
+function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, savingBill, calculateItemTotal, updateCartItem, removeFromCart, handleGenerateBill, expanded, onExpand, onCollapse, onClearCart }: any) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragStartY = useRef(0);
   const dragCurrentY = useRef(0);
   const isDragging = useRef(false);
 
+  // Full sheet height (85vh) vs mini bar height (~64px)
+  const MINI_HEIGHT = 64;
+  const FULL_HEIGHT_VH = 88;
+
   const handleTouchStart = (e: React.TouchEvent) => {
     dragStartY.current = e.touches[0].clientY;
     dragCurrentY.current = 0;
     isDragging.current = true;
-    if (sheetRef.current) {
-      sheetRef.current.style.transition = 'none';
-    }
+    if (sheetRef.current) sheetRef.current.style.transition = 'none';
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!isDragging.current) return;
     const dy = e.touches[0].clientY - dragStartY.current;
-    if (dy < 0) return; // don't allow dragging up
+    if (expanded && dy < 0) return;   // can't drag up when already expanded
+    if (!expanded && dy > 0) return;  // can't drag down when already mini
     dragCurrentY.current = dy;
     if (sheetRef.current) {
       sheetRef.current.style.transform = `translateY(${dy}px)`;
@@ -1691,129 +1697,178 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
 
   const handleTouchEnd = () => {
     isDragging.current = false;
-    if (sheetRef.current) {
-      sheetRef.current.style.transition = 'transform 200ms ease-out';
-      if (dragCurrentY.current > 120) {
-        // Swiped down enough — dismiss
-        sheetRef.current.style.transform = 'translateY(100%)';
-        setTimeout(() => onClose(), 200);
-      } else {
-        // Snap back
-        sheetRef.current.style.transform = 'translateY(0)';
-      }
+    if (sheetRef.current) sheetRef.current.style.transition = 'transform 220ms ease-out';
+    const dy = dragCurrentY.current;
+    if (expanded && dy > 100) {
+      // Collapse to mini
+      if (sheetRef.current) sheetRef.current.style.transform = 'translateY(0)';
+      onCollapse();
+    } else if (!expanded && dy < -60) {
+      // Expand to full
+      if (sheetRef.current) sheetRef.current.style.transform = 'translateY(0)';
+      onExpand();
+    } else {
+      // Snap back
+      if (sheetRef.current) sheetRef.current.style.transform = 'translateY(0)';
     }
     dragCurrentY.current = 0;
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end lg:hidden" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+    <>
+      {/* Backdrop — only when expanded */}
+      {expanded && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
+          onClick={onCollapse}
+        />
+      )}
+
+      {/* The sheet itself — always mounted, switches between mini and full */}
       <div
         ref={sheetRef}
-        className="relative bg-white rounded-t-3xl shadow-2xl flex flex-col"
-        style={{ maxHeight: '88vh', transition: 'transform 200ms ease-out' }}
-        onClick={e => e.stopPropagation()}
+        className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-white shadow-2xl"
+        style={{
+          borderRadius: expanded ? '24px 24px 0 0' : '20px 20px 0 0',
+          maxHeight: expanded ? `${FULL_HEIGHT_VH}vh` : `${MINI_HEIGHT}px`,
+          height: expanded ? `${FULL_HEIGHT_VH}vh` : `${MINI_HEIGHT}px`,
+          transition: 'max-height 220ms ease-out, height 220ms ease-out, border-radius 220ms ease-out',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
       >
-        {/* Drag handle — touch here to swipe down */}
-        <div
-          className="flex justify-center pt-3 pb-2 flex-shrink-0 cursor-grab active:cursor-grabbing"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-        >
-          <div className="w-10 h-1.5 rounded-full bg-slate-300" />
-        </div>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <ShoppingCart size={18} className="text-indigo-500" /> Current Bill
-            <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2 py-0.5 rounded-full">{cart.length}</span>
-          </h2>
-          {/* X button — clears the entire bill */}
-          <button
-            onClick={onClearCart}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-100 transition"
-            title="Clear bill"
+        {/* ── MINI BAR (collapsed) ── */}
+        {!expanded && (
+          <div
+            className="flex items-center gap-3 px-4 h-full cursor-pointer active:bg-slate-50 transition"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onClick={onExpand}
           >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Cart items */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
-          {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
-              <ShoppingCart size={40} className="opacity-20" />
-              <p className="text-sm">Cart is empty</p>
+            {/* Drag pill */}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full bg-slate-300" />
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+              <ShoppingCart size={18} className="text-white" />
             </div>
-          ) : (
-            cart.map((item: any, idx: number) => (
-              <div key={idx} className="flex gap-3 items-center bg-slate-50 rounded-xl p-3 border border-slate-100">
-                <div className="w-10 h-10 rounded-lg bg-white overflow-hidden shrink-0 flex items-center justify-center border border-slate-200">
-                  {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-400" size={16} />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-900 text-sm truncate">{item.name}</p>
-                  <p className="text-xs text-slate-500">₹{(item.price || 0).toFixed(2)} / {item.baseUnit}</p>
-                </div>
-                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg h-7 shrink-0">
-                  <button onClick={() => { const q = item.quantity - 1; q <= 0 ? removeFromCart(idx) : updateCartItem(idx, 'quantity', q); }} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">−</button>
-                  <span className="text-xs font-bold text-slate-800 px-1">{item.quantity}</span>
-                  <button onClick={() => updateCartItem(idx, 'quantity', item.quantity + 1)} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">+</button>
-                </div>
-                <p className="text-sm font-bold text-indigo-600 shrink-0 w-14 text-right">₹{calculateItemTotal(item).toFixed(0)}</p>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Footer */}
-        {cart.length > 0 && (
-          <div className="px-4 pb-6 pt-3 border-t border-slate-100 space-y-3 flex-shrink-0">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 text-sm">Total</span>
-              <span className="text-xl font-bold text-emerald-600">₹{totalAmount.toFixed(2)}</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-slate-900 text-sm">{cart.length} item{cart.length !== 1 ? 's' : ''} in bill</p>
+              <p className="text-xs text-slate-500">Tap or swipe up to view</p>
             </div>
-            <div className="flex flex-col gap-2">
-              <input
-                type="tel"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={10}
-                placeholder="📱 Phone Number"
-                value={customerInfo.phone}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  const val = e.target.value.replace(/\D/g, '');
-                  const newInfo = { ...customerInfo, phone: val };
-                  setCustomerInfo(newInfo);
-                  if (val.length === 10) { handleGenerateBill(newInfo); onClose(); }
-                }}
-                className="w-full bg-white border-2 border-indigo-200 rounded-xl px-4 py-3 text-base font-semibold focus:outline-none focus:border-indigo-500 placeholder:text-slate-400 placeholder:font-normal tracking-wider"
-              />
-              <input
-                type="text"
-                placeholder="Customer Name (optional)"
-                value={customerInfo.name}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomerInfo({ ...customerInfo, name: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400"
-              />
+            <div className="text-right shrink-0">
+              <p className="font-bold text-emerald-600 text-base">₹{totalAmount.toFixed(0)}</p>
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setCustomerInfo({ ...customerInfo, status: 'PAID' })} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status === 'PAID' ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>✓ Paid</button>
-              <button onClick={() => setCustomerInfo({ ...customerInfo, status: 'UNPAID' })} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status === 'UNPAID' ? 'bg-rose-100 text-rose-700 border border-rose-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>Unpaid</button>
+            <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
             </div>
-            <button
-              disabled={savingBill}
-              onClick={() => { handleGenerateBill(); onClose(); }}
-              className="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-2xl hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50"
-            >
-              <CheckCircle size={18} />
-              {savingBill ? 'Saving…' : 'Generate Bill'}
-            </button>
           </div>
         )}
+
+        {/* ── FULL SHEET (expanded) ── */}
+        {expanded && (
+          <>
+            {/* Drag handle */}
+            <div
+              className="flex justify-center pt-3 pb-2 flex-shrink-0 cursor-grab"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
+              <div className="w-10 h-1.5 rounded-full bg-slate-300" />
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <ShoppingCart size={18} className="text-indigo-500" /> Current Bill
+                <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2 py-0.5 rounded-full">{cart.length}</span>
+              </h2>
+              <button
+                onClick={onClearCart}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-100 transition"
+                title="Clear bill"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Cart items */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+              {cart.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
+                  <ShoppingCart size={40} className="opacity-20" />
+                  <p className="text-sm">Cart is empty</p>
+                </div>
+              ) : (
+                cart.map((item: any, idx: number) => (
+                  <div key={idx} className="flex gap-3 items-center bg-slate-50 rounded-xl p-3 border border-slate-100">
+                    <div className="w-10 h-10 rounded-lg bg-white overflow-hidden shrink-0 flex items-center justify-center border border-slate-200">
+                      {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-400" size={16} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-slate-900 text-sm truncate">{item.name}</p>
+                      <p className="text-xs text-slate-500">₹{(item.price || 0).toFixed(2)} / {item.baseUnit}</p>
+                    </div>
+                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg h-7 shrink-0">
+                      <button onClick={() => { const q = item.quantity - 1; q <= 0 ? removeFromCart(idx) : updateCartItem(idx, 'quantity', q); }} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">−</button>
+                      <span className="text-xs font-bold text-slate-800 px-1">{item.quantity}</span>
+                      <button onClick={() => updateCartItem(idx, 'quantity', item.quantity + 1)} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">+</button>
+                    </div>
+                    <p className="text-sm font-bold text-indigo-600 shrink-0 w-14 text-right">₹{calculateItemTotal(item).toFixed(0)}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            {cart.length > 0 && (
+              <div className="px-4 pb-6 pt-3 border-t border-slate-100 space-y-3 flex-shrink-0">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 text-sm">Total</span>
+                  <span className="text-xl font-bold text-emerald-600">₹{totalAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={10}
+                    placeholder="📱 Phone Number"
+                    value={customerInfo.phone}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      const newInfo = { ...customerInfo, phone: val };
+                      setCustomerInfo(newInfo);
+                      if (val.length === 10) { handleGenerateBill(newInfo); onCollapse(); }
+                    }}
+                    className="w-full bg-white border-2 border-indigo-200 rounded-xl px-4 py-3 text-base font-semibold focus:outline-none focus:border-indigo-500 placeholder:text-slate-400 placeholder:font-normal tracking-wider"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Customer Name (optional)"
+                    value={customerInfo.name}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomerInfo({ ...customerInfo, name: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setCustomerInfo({ ...customerInfo, status: 'PAID' })} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status === 'PAID' ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>✓ Paid</button>
+                  <button onClick={() => setCustomerInfo({ ...customerInfo, status: 'UNPAID' })} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status === 'UNPAID' ? 'bg-rose-100 text-rose-700 border border-rose-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>Unpaid</button>
+                </div>
+                <button
+                  disabled={savingBill}
+                  onClick={() => { handleGenerateBill(); onCollapse(); }}
+                  className="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-2xl hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                >
+                  <CheckCircle size={18} />
+                  {savingBill ? 'Saving…' : 'Generate Bill'}
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
-    </div>
+    </>
   );
 }
