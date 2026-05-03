@@ -591,12 +591,16 @@ export default function BillingPage() {
   }, [reviewItems.length]);
 
   const modeIndex = mode === 'MANUAL' ? 0 : mode === 'PENDING' ? 1 : 2;
+  const isProgrammaticScroll = useRef(false);
   useEffect(() => {
     if (sliderRef.current) {
+      isProgrammaticScroll.current = true;
       sliderRef.current.scrollTo({
         left: modeIndex * sliderRef.current.offsetWidth,
         behavior: 'smooth',
       });
+      // Reset flag after scroll animation completes
+      setTimeout(() => { isProgrammaticScroll.current = false; }, 500);
     }
   }, [modeIndex]);
 
@@ -928,6 +932,7 @@ export default function BillingPage() {
             className="flex overflow-x-auto snap-x snap-mandatory max-h-[calc(100vh-16rem)]"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             onScroll={(e) => {
+              if (isProgrammaticScroll.current) return;
               const el = e.currentTarget;
               const idx = Math.round(el.scrollLeft / el.offsetWidth);
               const modes: Array<'MANUAL' | 'OCR' | 'PENDING'> = ['MANUAL', 'PENDING', 'OCR'];
@@ -985,6 +990,76 @@ export default function BillingPage() {
                     </div>
                   );
                 })()}
+              </div>
+            </div>
+
+            {/* Slide 1 - Pending Bills */}
+            <div className="w-full shrink-0 snap-start p-6 space-y-8 overflow-y-auto">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Pending</h3></div>
+                  {pendingBills.length > 0 && <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pendingBills.length}</span>}
+                </div>
+                {loadingBills ? (
+                  <div className="space-y-2">{[1,2].map(i => <div key={i} className="h-16 rounded-xl bg-slate-100 animate-pulse" />)}</div>
+                ) : pendingBills.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><ShoppingCart size={28} className="opacity-30" /><p className="text-sm">No pending orders</p></div>
+                ) : (
+                  <div className="space-y-2">
+                    {pendingBills.map((bill) => (
+                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-orange-300 hover:shadow-md hover:shadow-orange-50 transition-all">
+                        <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0"><span className="text-orange-500 text-lg">🕐</span></div>
+                        <div className="flex-1 min-w-0"><p className="font-semibold text-slate-900 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{bill.items?.length || 0} items · {new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
+                        <div className="text-right shrink-0"><p className="font-bold text-slate-900 text-sm">₹{bill.totalAmount?.toFixed(0) || '0'}</p><span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md">Pending</span></div>
+                        <div className="absolute inset-y-0 left-0 w-1 bg-orange-400 rounded-full" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Completed</h3></div>
+                  {allCompletedBills.length > 0 && <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">{allCompletedBills.length}</span>}
+                </div>
+                {completedBills.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><p className="text-sm">No completed orders yet</p></div>
+                ) : (
+                  <div className="space-y-2">
+                    {(showMoreCompleted ? allCompletedBills : completedBills).map((bill) => (
+                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-50 transition-all">
+                        <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0"><CheckCircle size={16} className="text-emerald-500" /></div>
+                        <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
+                        <p className="font-semibold text-slate-700 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
+                        <div className="absolute inset-y-0 left-0 w-0.5 bg-emerald-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    ))}
+                    {!showMoreCompleted && allCompletedBills.length > 3 && <button onClick={() => setShowMoreCompleted(true)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show {allCompletedBills.length - 3} more</button>}
+                    {showMoreCompleted && allCompletedBills.length > 3 && <button onClick={() => setShowMoreCompleted(false)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show less</button>}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.6)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Unpaid</h3></div>
+                  {allUnpaidBills.length > 0 && <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">{allUnpaidBills.length}</span>}
+                </div>
+                {unpaidBills.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><p className="text-sm">No unpaid bills</p></div>
+                ) : (
+                  <div className="space-y-2">
+                    {(showMoreUnpaid ? allUnpaidBills : unpaidBills).map((bill) => (
+                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-rose-300 hover:shadow-md hover:shadow-rose-50 transition-all">
+                        <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0"><TriangleAlert size={15} className="text-rose-500" /></div>
+                        <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
+                        <p className="font-semibold text-rose-600 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
+                        <div className="absolute inset-y-0 left-0 w-0.5 bg-rose-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    ))}
+                    {!showMoreUnpaid && allUnpaidBills.length > 3 && <button onClick={() => setShowMoreUnpaid(true)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show {allUnpaidBills.length - 3} more</button>}
+                    {showMoreUnpaid && allUnpaidBills.length > 3 && <button onClick={() => setShowMoreUnpaid(false)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show less</button>}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1075,76 +1150,6 @@ export default function BillingPage() {
                   </button>
                 </div>
               )}
-            </div>
-
-            {/* Slide 1 - Pending Bills */}
-            <div className="w-full shrink-0 snap-start p-6 space-y-8">
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Pending</h3></div>
-                  {pendingBills.length > 0 && <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pendingBills.length}</span>}
-                </div>
-                {loadingBills ? (
-                  <div className="space-y-2">{[1,2].map(i => <div key={i} className="h-16 rounded-xl bg-slate-100 animate-pulse" />)}</div>
-                ) : pendingBills.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><ShoppingCart size={28} className="opacity-30" /><p className="text-sm">No pending orders</p></div>
-                ) : (
-                  <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-                    {pendingBills.map((bill) => (
-                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-orange-300 hover:shadow-md hover:shadow-orange-50 transition-all">
-                        <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0"><span className="text-orange-500 text-lg">🕐</span></div>
-                        <div className="flex-1 min-w-0"><p className="font-semibold text-slate-900 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{bill.items?.length || 0} items · {new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <div className="text-right shrink-0"><p className="font-bold text-slate-900 text-sm">₹{bill.totalAmount?.toFixed(0) || '0'}</p><span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md">Pending</span></div>
-                        <div className="absolute inset-y-0 left-0 w-1 bg-orange-400 rounded-full" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Completed</h3></div>
-                  {allCompletedBills.length > 0 && <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">{allCompletedBills.length}</span>}
-                </div>
-                {completedBills.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><p className="text-sm">No completed orders yet</p></div>
-                ) : (
-                  <div className="space-y-2">
-                    {(showMoreCompleted ? allCompletedBills : completedBills).map((bill) => (
-                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-50 transition-all">
-                        <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0"><CheckCircle size={16} className="text-emerald-500" /></div>
-                        <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <p className="font-semibold text-slate-700 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
-                        <div className="absolute inset-y-0 left-0 w-0.5 bg-emerald-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    ))}
-                    {!showMoreCompleted && allCompletedBills.length > 3 && <button onClick={() => setShowMoreCompleted(true)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show {allCompletedBills.length - 3} more</button>}
-                    {showMoreCompleted && allCompletedBills.length > 3 && <button onClick={() => setShowMoreCompleted(false)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show less</button>}
-                  </div>
-                )}
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.6)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Unpaid</h3></div>
-                  {allUnpaidBills.length > 0 && <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">{allUnpaidBills.length}</span>}
-                </div>
-                {unpaidBills.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><p className="text-sm">No unpaid bills</p></div>
-                ) : (
-                  <div className="space-y-2">
-                    {(showMoreUnpaid ? allUnpaidBills : unpaidBills).map((bill) => (
-                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-rose-300 hover:shadow-md hover:shadow-rose-50 transition-all">
-                        <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0"><TriangleAlert size={15} className="text-rose-500" /></div>
-                        <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <p className="font-semibold text-rose-600 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
-                        <div className="absolute inset-y-0 left-0 w-0.5 bg-rose-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    ))}
-                    {!showMoreUnpaid && allUnpaidBills.length > 3 && <button onClick={() => setShowMoreUnpaid(true)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show {allUnpaidBills.length - 3} more</button>}
-                    {showMoreUnpaid && allUnpaidBills.length > 3 && <button onClick={() => setShowMoreUnpaid(false)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show less</button>}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>
