@@ -599,12 +599,7 @@ export default function BillingPage() {
 
   useEffect(() => {
     if (sliderRef.current) {
-      isProgrammaticScroll.current = true;
-      sliderRef.current.scrollTo({
-        left: modeIndex * sliderRef.current.offsetWidth,
-        behavior: 'smooth',
-      });
-      setTimeout(() => { isProgrammaticScroll.current = false; }, 500);
+      sliderRef.current.style.transform = `translateX(-${modeIndex * 100}%)`;
     }
   }, [modeIndex]);
 
@@ -932,10 +927,15 @@ export default function BillingPage() {
           )}
 
           {/* Swipeable slider - 3 panels side by side */}
+          <div className="overflow-hidden flex-1" style={{minHeight: 0}}>
           <div
             ref={sliderRef}
-            className="flex overflow-x-hidden"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', minHeight: 0, flex: 1 }}
+            className="flex h-full"
+            style={{
+              transform: `translateX(-${modeIndex * 100}%)`,
+              transition: 'transform 200ms ease-out',
+              willChange: 'transform',
+            }}
             onTouchStart={(e) => {
               touchStartX.current = e.touches[0].clientX;
               touchStartY.current = e.touches[0].clientY;
@@ -944,17 +944,15 @@ export default function BillingPage() {
             onTouchMove={(e) => {
               const dx = e.touches[0].clientX - touchStartX.current;
               const dy = e.touches[0].clientY - touchStartY.current;
-              // Only lock as horizontal swipe if clearly more horizontal than vertical
               if (!isSwiping.current && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
                 isSwiping.current = true;
               }
-              // Prevent page scroll when swiping horizontally
               if (isSwiping.current) e.preventDefault();
             }}
             onTouchEnd={(e) => {
               if (!isSwiping.current) return;
               const dx = e.changedTouches[0].clientX - touchStartX.current;
-              const threshold = 50; // minimum px to count as a swipe
+              const threshold = 50;
               const modes: Array<'MANUAL' | 'PENDING' | 'OCR'> = ['MANUAL', 'PENDING', 'OCR'];
               if (dx < -threshold && modeIndex < 2) {
                 setMode(modes[modeIndex + 1]);
@@ -1320,6 +1318,7 @@ export default function BillingPage() {
                 </div>
               )}
             </div>
+          </div>
           </div>
         </div>
       </div>
