@@ -1109,7 +1109,13 @@ export default function BillingPage() {
                           <div className="flex items-center justify-between px-4 mb-3">
                             <h2 className="text-sm font-bold text-slate-900">⚡ Top Selling</h2>
                           </div>
-                          <div className="flex gap-3 overflow-x-auto px-4 pb-2" style={{scrollbarWidth:'none'}}>
+                          <div
+                            className="flex gap-3 overflow-x-auto px-4 pb-2"
+                            style={{scrollbarWidth:'none'}}
+                            onTouchStart={e => e.stopPropagation()}
+                            onTouchMove={e => e.stopPropagation()}
+                            onTouchEnd={e => e.stopPropagation()}
+                          >
                             {catalog.slice(0, 10).map((p: any) => {
                               const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
                               const qty = cartItem ? cartItem.quantity : 0;
