@@ -580,6 +580,7 @@ export default function BillingPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [reviewItems, setReviewItems] = useState<any[]>([]);
   const [isReviewing, setIsReviewing] = useState(false);
+  const [showCartSheet, setShowCartSheet] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reviewEndRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
@@ -880,6 +881,7 @@ export default function BillingPage() {
     setFile(null);
     setPreviewUrl(null);
     setReviewItems([]);
+    setShowCartSheet(true); // show cart bottom sheet after adding items
     
     if (isListeningRef.current) {
       stopVoiceInput();
@@ -1064,75 +1066,212 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 2 - Scan Slip / Review */}
-            <div className="w-full shrink-0 snap-start p-6 h-full">
+            <div className="w-full shrink-0 snap-start flex flex-col" style={{minHeight: 0}}>
               {!isReviewing ? (
-                <div className="space-y-6 h-full flex flex-col">
-                  <div className="flex-shrink-0">
-                    <h3 className="text-lg font-semibold">Upload Customer List slip</h3>
-                    <p className="text-slate-500 text-sm mb-4">We'll read handwritten or printed text and match it.</p>
+                /* ── IDLE STATE: Upload / Voice prompt ── */
+                <div className="flex flex-col gap-4 p-5">
+                  {/* Voice hint banner */}
+                  {isListening ? (
+                    <div className="relative overflow-hidden rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50">
+                      <div className="h-1 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400 animate-pulse" />
+                      <div className="p-4 flex items-start gap-3">
+                        <span className="relative flex h-3 w-3 mt-0.5 shrink-0">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold uppercase tracking-widest text-rose-500 mb-1">Listening…</p>
+                          <p className="text-slate-700 text-sm leading-relaxed break-words">{finalTranscript || 'Say items like "2 kg sugar, 1 packet salt…"'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 flex items-center gap-3">
+                      <span className="text-2xl">🎤</span>
+                      <div>
+                        <p className="text-sm font-semibold text-indigo-700">Speak your order</p>
+                        <p className="text-xs text-indigo-500 mt-0.5">Tap "Start Speaking" below and say items</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Divider */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-slate-200" />
+                    <span className="text-xs text-slate-400 font-medium">or upload a slip</span>
+                    <div className="flex-1 h-px bg-slate-200" />
                   </div>
-                  <div className="border-2 border-dashed border-indigo-200 rounded-2xl p-8 bg-indigo-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 transition flex-shrink-0" onClick={() => fileInputRef.current?.click()}>
+
+                  {/* Upload area */}
+                  <div
+                    className="border-2 border-dashed border-indigo-200 rounded-2xl bg-indigo-50/40 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
+                    style={{minHeight: '120px'}}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleFileChange} />
-                    {previewUrl ? <img src={previewUrl} alt="Preview" className="max-h-64 rounded-xl shadow-sm" /> : <div className="flex flex-col items-center gap-3 text-indigo-600"><Camera size={48} /><span className="font-semibold">Tap to capture or upload image</span></div>}
+                    {previewUrl
+                      ? <img src={previewUrl} alt="Preview" className="max-h-48 rounded-xl shadow-sm object-contain" />
+                      : (
+                        <div className="flex flex-col items-center gap-2 py-6 text-indigo-500">
+                          <Camera size={36} />
+                          <span className="font-semibold text-sm">Tap to capture or upload</span>
+                          <span className="text-xs text-indigo-400">Photo of handwritten / printed list</span>
+                        </div>
+                      )
+                    }
                   </div>
-                  {file && <button disabled={isProcessing} onClick={processImage} className="w-full bg-indigo-600 text-white font-semibold py-4 rounded-xl hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-50 flex-shrink-0">{isProcessing ? 'Processing AI...' : 'Analyze Image'}</button>}
+
+                  {file && (
+                    <button
+                      disabled={isProcessing}
+                      onClick={processImage}
+                      className="w-full bg-indigo-600 text-white font-semibold py-3.5 rounded-xl hover:bg-indigo-700 active:bg-indigo-800 transition flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
+                    >
+                      {isProcessing ? (
+                        <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Analyzing…</>
+                      ) : (
+                        <><Camera size={16} />Analyze Image</>
+                      )}
+                    </button>
+                  )}
                 </div>
               ) : (
-                <div className="space-y-4 flex flex-col max-h-full">
-                  <div className="flex justify-between items-center flex-shrink-0">
-                    <div>
-                      <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center"><CheckCircle size={13} className="text-emerald-600" /></span>
-                        Detected Items
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-0.5 ml-7">{reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} found</p>
+                /* ── REVIEW STATE: Detected items list ── */
+                <div className="flex flex-col" style={{height: '100%'}}>
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
+                        <CheckCircle size={14} className="text-emerald-600" />
+                      </span>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 leading-none">Detected Items</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">{reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} found</p>
+                      </div>
                     </div>
-                    <button onClick={() => setIsReviewing(false)} className="text-xs text-slate-400 hover:text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition font-medium">Cancel</button>
+                    <div className="flex items-center gap-2">
+                      {isListening && (
+                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-rose-500 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                          </span>
+                          Live
+                        </span>
+                      )}
+                      <button
+                        onClick={() => { setIsReviewing(false); setReviewItems([]); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
+                        className="text-xs text-slate-400 hover:text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition font-medium"
+                      >
+                        Clear
+                      </button>
+                    </div>
                   </div>
-                  <div className="space-y-3 overflow-y-auto pr-1 flex-1 min-h-0">
+
+                  {/* Live transcript strip */}
+                  {isListening && finalTranscript && (
+                    <div className="mx-4 mt-3 px-3 py-2 bg-rose-50 border border-rose-100 rounded-xl flex-shrink-0">
+                      <p className="text-xs text-rose-600 leading-relaxed line-clamp-2">{finalTranscript}</p>
+                    </div>
+                  )}
+
+                  {/* Items list */}
+                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5" style={{minHeight: 0}}>
                     {reviewItems.map((item, idx) => (
-                      <div key={idx} className={`relative rounded-2xl border overflow-hidden transition-all ${item.isRepeated ? 'border-amber-300 shadow-[0_0_0_3px_rgba(251,191,36,0.15)]' : item.productId ? 'border-slate-200 hover:border-slate-300' : 'border-rose-200 hover:border-rose-300'}`}>
+                      <div
+                        key={idx}
+                        className={`relative rounded-2xl border overflow-hidden transition-all ${
+                          item.isRepeated
+                            ? 'border-amber-300 bg-amber-50/30'
+                            : item.productId
+                            ? 'border-slate-200 bg-white'
+                            : 'border-rose-200 bg-rose-50/20'
+                        }`}
+                      >
+                        {/* Top color bar */}
                         <div className={`h-0.5 w-full ${item.isRepeated ? 'bg-amber-400' : item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-                        <div className="p-4 bg-white">
-                          {item.isRepeated && <div className="absolute top-3 right-3 bg-amber-400 text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full shadow-sm">Repeated</div>}
-                          <div className="flex gap-3 items-start">
-                            <div className={`w-14 h-14 rounded-xl overflow-hidden shrink-0 flex items-center justify-center border ${item.productId ? 'border-slate-100 bg-slate-50' : 'border-rose-100 bg-rose-50'}`}>
-                              {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className={item.productId ? 'text-slate-300' : 'text-rose-300'} size={22} />}
+
+                        <div className="p-3">
+                          {item.isRepeated && (
+                            <span className="absolute top-2.5 right-2.5 bg-amber-400 text-white text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full">Dup</span>
+                          )}
+
+                          {/* Row 1: image + name + delete */}
+                          <div className="flex gap-2.5 items-center">
+                            <div className={`w-10 h-10 rounded-lg overflow-hidden shrink-0 flex items-center justify-center border ${item.productId ? 'border-slate-100 bg-slate-50' : 'border-rose-100 bg-rose-50'}`}>
+                              {item.imageUrl
+                                ? <img src={item.imageUrl} className="w-full h-full object-cover" />
+                                : <Package className={item.productId ? 'text-slate-300' : 'text-rose-300'} size={18} />
+                              }
                             </div>
-                            <div className="flex-1 min-w-0 pr-6">
-                              <input value={item.name} onChange={e => { const n = [...reviewItems]; n[idx].name = e.target.value; setReviewItems(n); }} className="font-semibold text-slate-900 w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none text-sm pb-0.5 transition-colors" placeholder="Product Name" />
-                              {item.localName && <span className="text-xs text-slate-400 mt-0.5 block">({item.localName})</span>}
-                              <div className="flex items-center gap-1.5 mt-1.5">
-                                {item.confidence === 'low' ? <><span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0"></span><span className="text-[11px] text-rose-500 font-medium">Unrecognized — update details</span></> : <><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span><span className="text-[11px] text-emerald-600 font-medium">Matched: {item.aiLabel || 'Catalog'}</span></>}
+                            <div className="flex-1 min-w-0">
+                              <input
+                                value={item.name}
+                                onChange={e => { const n = [...reviewItems]; n[idx].name = e.target.value; setReviewItems(n); }}
+                                className="font-semibold text-slate-900 w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none text-sm pb-0.5 transition-colors"
+                                placeholder="Product Name"
+                              />
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                                <span className={`text-[10px] font-medium truncate ${item.productId ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                  {item.productId ? (item.aiLabel || 'Matched') : 'Not found in catalog'}
+                                </span>
                               </div>
                             </div>
-                            <button onClick={() => { const newItems = reviewItems.filter((_, i) => i !== idx); baseReviewItemsRef.current = newItems; globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e) {} } setReviewItems(newItems); }} className="absolute top-4 right-4 w-6 h-6 rounded-full flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors"><X size={14} /></button>
+                            <button
+                              onClick={() => {
+                                const newItems = reviewItems.filter((_, i) => i !== idx);
+                                baseReviewItemsRef.current = newItems;
+                                globalTranscriptRef.current = "";
+                                currentBreathRef.current = "";
+                                setFinalTranscript("");
+                                if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e) {} }
+                                setReviewItems(newItems);
+                              }}
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors shrink-0"
+                            >
+                              <X size={14} />
+                            </button>
                           </div>
-                          <div className="flex gap-3 mt-3 items-center">
-                            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden h-9 shrink-0">
-                              <button onClick={() => { const n = [...reviewItems]; n[idx].quantity = Math.max(1, n[idx].quantity - 1); setReviewItems(n); }} className="w-8 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition text-base font-bold">−</button>
-                              <input type="number" className="w-12 text-center text-sm font-bold focus:outline-none bg-transparent text-slate-800" value={item.quantity} onChange={e => { const n = [...reviewItems]; n[idx].quantity = parseFloat(e.target.value) || 1; setReviewItems(n); }} />
-                              <span className="text-[11px] text-slate-400 font-semibold pr-2">{item.unit || item.baseUnit}</span>
-                              <button onClick={() => { const n = [...reviewItems]; n[idx].quantity += 1; setReviewItems(n); }} className="w-8 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition text-base font-bold">+</button>
+
+                          {/* Row 2: qty + price */}
+                          <div className="flex gap-2 mt-2.5 items-center">
+                            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden h-8 shrink-0">
+                              <button onClick={() => { const n = [...reviewItems]; n[idx].quantity = Math.max(1, n[idx].quantity - 1); setReviewItems(n); }} className="w-7 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition font-bold text-sm">−</button>
+                              <input type="number" className="w-10 text-center text-xs font-bold focus:outline-none bg-transparent text-slate-800" value={item.quantity} onChange={e => { const n = [...reviewItems]; n[idx].quantity = parseFloat(e.target.value) || 1; setReviewItems(n); }} />
+                              <span className="text-[10px] text-slate-400 font-semibold pr-1.5">{item.unit || item.baseUnit}</span>
+                              <button onClick={() => { const n = [...reviewItems]; n[idx].quantity += 1; setReviewItems(n); }} className="w-7 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition font-bold text-sm">+</button>
                             </div>
-                            <div className="flex items-center gap-1.5 flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 h-9">
-                              <span className="text-slate-400 text-sm font-medium">₹</span>
-                              <input type="number" className="flex-1 bg-transparent focus:outline-none text-sm font-bold text-slate-800" value={item.price || item.sellingPrice || 0} onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }} />
+                            <div className="flex items-center gap-1 flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
+                              <span className="text-slate-400 text-xs font-medium">₹</span>
+                              <input type="number" className="flex-1 bg-transparent focus:outline-none text-xs font-bold text-slate-800 min-w-0" value={item.price || item.sellingPrice || 0} onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }} />
                             </div>
+                            <span className="text-xs font-bold text-indigo-600 shrink-0">
+                              ₹{((item.price || 0) * item.quantity).toFixed(0)}
+                            </span>
                           </div>
+
+                          {/* Suggestions */}
                           {item.suggestions && item.suggestions.length > 0 && (
-                            <div className="mt-4 pt-3 border-t border-slate-100">
-                              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">Similar products</p>
-                              <div className="grid grid-cols-3 gap-2">
+                            <div className="mt-3 pt-2.5 border-t border-slate-100">
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Similar products</p>
+                              <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
                                 {item.suggestions.map((sug: any, sIdx: number) => (
-                                  <button key={sIdx} onClick={() => { const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl }; if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; } const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides }; setReviewItems(newItems); }} className="group/sug flex flex-col bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-50 rounded-xl overflow-hidden transition-all text-left">
-                                    <div className="w-full aspect-square bg-slate-50 overflow-hidden flex items-center justify-center border-b border-slate-100 group-hover/sug:bg-indigo-50/40 transition-colors">
-                                      {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover group-hover/sug:scale-105 transition-transform duration-200" /> : <Package className="text-slate-300 group-hover/sug:text-indigo-300 transition-colors" size={20} />}
+                                  <button
+                                    key={sIdx}
+                                    onClick={() => {
+                                      const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl };
+                                      if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                      const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides }; setReviewItems(newItems);
+                                    }}
+                                    className="flex-shrink-0 flex flex-col items-center bg-white border border-slate-200 hover:border-indigo-300 rounded-xl overflow-hidden w-16 transition-all"
+                                  >
+                                    <div className="w-full h-12 bg-slate-50 overflow-hidden flex items-center justify-center">
+                                      {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={16} />}
                                     </div>
-                                    <div className="p-2">
-                                      <p className="text-[11px] font-bold text-slate-800 line-clamp-2 leading-tight group-hover/sug:text-indigo-700 transition-colors">{sug.name}</p>
-                                      <p className="text-[11px] font-bold text-emerald-600 mt-1">₹{(sug.price || 0).toFixed(0)}</p>
-                                      <p className="text-[9px] text-slate-400 font-medium leading-tight">{sug.baseQuantity || 1}{(sug.baseUnit || 'pc') === 'pkt' ? ' pkt' : ` ${sug.baseUnit || 'pc'}`}</p>
+                                    <div className="p-1 text-center">
+                                      <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{sug.name}</p>
+                                      <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
                                     </div>
                                   </button>
                                 ))}
@@ -1144,10 +1283,17 @@ export default function BillingPage() {
                     ))}
                     <div ref={reviewEndRef} />
                   </div>
-                  <button onClick={confirmReview} className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-4 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm flex-shrink-0">
-                    <CheckCircle size={18} />
-                    Add {reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} to Bill
-                  </button>
+
+                  {/* Add to Bill button */}
+                  <div className="px-4 pb-4 pt-2 flex-shrink-0 border-t border-slate-100 bg-white">
+                    <button
+                      onClick={confirmReview}
+                      className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-3.5 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 active:scale-[0.98] transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm"
+                    >
+                      <CheckCircle size={18} />
+                      Add {reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} to Bill
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1184,6 +1330,81 @@ export default function BillingPage() {
           </>
         )}
       </button>
+
+      {/* Cart Bottom Sheet — shown after "Add items to Bill" on mobile */}
+      {showCartSheet && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end lg:hidden" onClick={() => setShowCartSheet(false)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="relative bg-white rounded-t-3xl shadow-2xl flex flex-col"
+            style={{maxHeight: '85vh'}}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+              <div className="w-10 h-1 rounded-full bg-slate-300" />
+            </div>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <ShoppingCart size={18} className="text-indigo-500" /> Current Bill
+                <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2 py-0.5 rounded-full">{cart.length}</span>
+              </h2>
+              <button onClick={() => setShowCartSheet(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition">
+                <X size={16} />
+              </button>
+            </div>
+            {/* Cart items */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+              {cart.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
+                  <ShoppingCart size={40} className="opacity-20" />
+                  <p className="text-sm">Cart is empty</p>
+                </div>
+              ) : (
+                cart.map((item, idx) => (
+                  <div key={idx} className="flex gap-3 items-center bg-slate-50 rounded-xl p-3 border border-slate-100">
+                    <div className="w-10 h-10 rounded-lg bg-white overflow-hidden shrink-0 flex items-center justify-center border border-slate-200">
+                      {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-400" size={16} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-slate-900 text-sm truncate">{item.name}</p>
+                      <p className="text-xs text-slate-500">₹{(item.price || 0).toFixed(2)} / {item.baseUnit}</p>
+                    </div>
+                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg h-7 shrink-0">
+                      <button onClick={() => { const q = item.quantity - 1; q <= 0 ? removeFromCart(idx) : updateCartItem(idx, 'quantity', q); }} className="w-6 h-full flex items-center justify-center text-slate-500 hover:bg-slate-50 text-sm font-bold">−</button>
+                      <span className="text-xs font-bold text-slate-800 px-1">{item.quantity}</span>
+                      <button onClick={() => updateCartItem(idx, 'quantity', item.quantity + 1)} className="w-6 h-full flex items-center justify-center text-slate-500 hover:bg-slate-50 text-sm font-bold">+</button>
+                    </div>
+                    <p className="text-sm font-bold text-indigo-600 shrink-0 w-14 text-right">₹{calculateItemTotal(item).toFixed(0)}</p>
+                  </div>
+                ))
+              )}
+            </div>
+            {/* Footer */}
+            {cart.length > 0 && (
+              <div className="px-4 pb-6 pt-3 border-t border-slate-100 space-y-3 flex-shrink-0">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 text-sm">Total</span>
+                  <span className="text-xl font-bold text-emerald-600">₹{totalAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex gap-2">
+                  <input type="text" placeholder="Customer Name" value={customerInfo.name} onChange={e => setCustomerInfo({...customerInfo, name: e.target.value})} className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
+                  <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={10} placeholder="Phone" value={customerInfo.phone} onChange={e => { const val = e.target.value.replace(/\D/g,''); const newInfo = {...customerInfo, phone: val}; setCustomerInfo(newInfo); if (val.length === 10) { handleGenerateBill(newInfo); setShowCartSheet(false); } }} className="w-28 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setCustomerInfo({...customerInfo, status:'PAID'})} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status==='PAID' ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>✓ Paid</button>
+                  <button onClick={() => setCustomerInfo({...customerInfo, status:'UNPAID'})} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status==='UNPAID' ? 'bg-rose-100 text-rose-700 border border-rose-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>Unpaid</button>
+                </div>
+                <button disabled={savingBill} onClick={() => { handleGenerateBill(); setShowCartSheet(false); }} className="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-2xl hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50">
+                  <CheckCircle size={18} />
+                  {savingBill ? 'Saving…' : 'Generate Bill'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Right Panel: Current Bill / Cart */}
       {mode !== 'PENDING' && (
