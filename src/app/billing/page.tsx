@@ -596,10 +596,19 @@ export default function BillingPage() {
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const isSwiping = useRef(false);
+  const slide0Ref = useRef<HTMLDivElement>(null);
+  const slide1Ref = useRef<HTMLDivElement>(null);
+  const slide2Ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (sliderRef.current) {
       sliderRef.current.style.transform = `translateX(-${modeIndex * 100}%)`;
+    }
+    // Scroll the newly active slide back to top
+    const slideRefs = [slide0Ref, slide1Ref, slide2Ref];
+    const activeSlide = slideRefs[modeIndex]?.current;
+    if (activeSlide) {
+      activeSlide.scrollTop = 0;
     }
   }, [modeIndex]);
 
@@ -963,7 +972,7 @@ export default function BillingPage() {
             }}
           >
             {/* Slide 0 - Manual Search */}
-            <div className="w-full shrink-0 p-6 space-y-4">
+            <div ref={slide0Ref} className="w-full shrink-0 p-6 space-y-4 overflow-y-auto">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                 <input type="text" placeholder="Search catalog by name or barcode... (e.g. Tata Salt)" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg shadow-sm" />
@@ -1017,7 +1026,7 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 1 - Pending Bills */}
-            <div className="w-full shrink-0 p-6 space-y-8 overflow-y-auto">
+            <div ref={slide1Ref} className="w-full shrink-0 p-6 space-y-8 overflow-y-auto">
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Pending</h3></div>
@@ -1087,7 +1096,7 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 2 - Scan Slip / Review */}
-            <div className="w-full shrink-0 flex flex-col" style={{minHeight: 0}}>
+            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}>
               {!isReviewing ? (
                 /* ── IDLE STATE: Upload / Voice prompt ── */
                 <div className="flex flex-col gap-4 p-5">
