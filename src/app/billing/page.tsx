@@ -1003,32 +1003,11 @@ export default function BillingPage() {
                       const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
                       const qty = cartItem ? cartItem.quantity : 0;
                       return (
-                        <div key={p.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                          <div className="relative w-full bg-slate-50" style={{paddingBottom:'100%'}}>
-                            <div className="absolute inset-0 flex items-center justify-center p-2">
-                              {p.imageUrl
-                                ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} />
-                                : <Package className="text-slate-300" size={28} />
-                              }
-                            </div>
-                          </div>
-                          <div className="p-2">
-                            <p className="font-semibold text-slate-900 text-xs line-clamp-2 leading-tight mb-1">{p.name}</p>
-                            <p className="text-[10px] text-slate-400 mb-1.5">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
-                            <p className="text-sm font-bold text-slate-900 mb-2">₹{(p.price || 0).toFixed(0)}</p>
-                            {qty > 0 ? (
-                              <div className="flex items-center justify-between bg-indigo-600 rounded-lg px-1 py-1">
-                                <button onClick={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }} className="w-6 h-6 flex items-center justify-center text-white font-bold text-base">−</button>
-                                <span className="text-white text-xs font-bold">{qty}</span>
-                                <button onClick={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)} className="w-6 h-6 flex items-center justify-center text-white font-bold text-base">+</button>
-                              </div>
-                            ) : (
-                              <button onClick={() => addToCart(p)} className="w-full border-2 border-indigo-600 text-indigo-600 rounded-lg py-1 text-xs font-bold hover:bg-indigo-50 transition flex items-center justify-center gap-1">
-                                <Plus size={12} /> Add
-                              </button>
-                            )}
-                          </div>
-                        </div>
+                        <ProductCard key={p.id} p={p} qty={qty}
+                          onAdd={() => addToCart(p)}
+                          onInc={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)}
+                          onDec={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }}
+                        />
                       );
                     })}
                   </div>
@@ -1071,29 +1050,11 @@ export default function BillingPage() {
                             const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
                             const qty = cartItem ? cartItem.quantity : 0;
                             return (
-                              <div key={p.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                                <div className="relative w-full bg-slate-50" style={{paddingBottom:'100%'}}>
-                                  <div className="absolute inset-0 flex items-center justify-center p-2">
-                                    {p.imageUrl ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} /> : <Package className="text-slate-300" size={28} />}
-                                  </div>
-                                </div>
-                                <div className="p-2">
-                                  <p className="font-semibold text-slate-900 text-xs line-clamp-2 leading-tight mb-1">{p.name}</p>
-                                  <p className="text-[10px] text-slate-400 mb-1.5">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
-                                  <p className="text-sm font-bold text-slate-900 mb-2">₹{(p.price || 0).toFixed(0)}</p>
-                                  {qty > 0 ? (
-                                    <div className="flex items-center justify-between bg-indigo-600 rounded-lg px-1 py-1">
-                                      <button onClick={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }} className="w-6 h-6 flex items-center justify-center text-white font-bold text-base">−</button>
-                                      <span className="text-white text-xs font-bold">{qty}</span>
-                                      <button onClick={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)} className="w-6 h-6 flex items-center justify-center text-white font-bold text-base">+</button>
-                                    </div>
-                                  ) : (
-                                    <button onClick={() => addToCart(p)} className="w-full border-2 border-indigo-600 text-indigo-600 rounded-lg py-1 text-xs font-bold hover:bg-indigo-50 transition flex items-center justify-center gap-1">
-                                      <Plus size={12} /> Add
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
+                              <ProductCard key={p.id} p={p} qty={qty}
+                                onAdd={() => addToCart(p)}
+                                onInc={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)}
+                                onDec={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }}
+                              />
                             );
                           })}
                         </div>
@@ -1120,29 +1081,11 @@ export default function BillingPage() {
                               const cartItem = cart.find(c => c.productId === p.id && c.unit === p.baseUnit);
                               const qty = cartItem ? cartItem.quantity : 0;
                               return (
-                                <div key={p.id} className="flex-shrink-0 w-28 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                                  <div className="relative w-full bg-slate-50" style={{paddingBottom:'100%'}}>
-                                    <div className="absolute inset-0 flex items-center justify-center p-2">
-                                      {p.imageUrl ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} /> : <Package className="text-slate-300" size={24} />}
-                                    </div>
-                                  </div>
-                                  <div className="p-2">
-                                    <p className="font-semibold text-slate-900 text-[11px] line-clamp-2 leading-tight mb-1">{p.name}</p>
-                                    <p className="text-[10px] text-slate-400 mb-1">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
-                                    <p className="text-xs font-bold text-slate-900 mb-1.5">₹{(p.price || 0).toFixed(0)}</p>
-                                    {qty > 0 ? (
-                                      <div className="flex items-center justify-between bg-indigo-600 rounded-lg px-1 py-0.5">
-                                        <button onClick={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }} className="w-5 h-5 flex items-center justify-center text-white font-bold text-sm">−</button>
-                                        <span className="text-white text-[11px] font-bold">{qty}</span>
-                                        <button onClick={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)} className="w-5 h-5 flex items-center justify-center text-white font-bold text-sm">+</button>
-                                      </div>
-                                    ) : (
-                                      <button onClick={() => addToCart(p)} className="w-full border-2 border-indigo-600 text-indigo-600 rounded-lg py-0.5 text-[11px] font-bold hover:bg-indigo-50 transition flex items-center justify-center gap-0.5">
-                                        <Plus size={11} /> Add
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
+                                <ProductCard key={p.id} p={p} qty={qty} mini
+                                  onAdd={() => addToCart(p)}
+                                  onInc={() => updateCartItem(cart.indexOf(cartItem), 'quantity', qty + 1)}
+                                  onDec={() => { const i = cart.indexOf(cartItem); qty <= 1 ? removeFromCart(i) : updateCartItem(i, 'quantity', qty - 1); }}
+                                />
                               );
                             })}
                           </div>
@@ -1877,5 +1820,95 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
         )}
       </div>
     </>
+  );
+}
+
+function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
+  p: any; qty: number; mini?: boolean;
+  onAdd: () => void; onInc: () => void; onDec: () => void;
+}) {
+  const [pressed, setPressed] = useState(false);
+
+  const handlePress = () => {
+    setPressed(true);
+    onAdd();
+    // flash effect — reset after 600ms
+    setTimeout(() => setPressed(false), 600);
+  };
+
+  const inCart = qty > 0;
+
+  return (
+    <div
+      className={`relative bg-white border rounded-2xl overflow-hidden shadow-sm transition-all select-none ${
+        mini ? 'flex-shrink-0 w-28' : ''
+      } ${inCart ? 'border-indigo-400 shadow-indigo-100' : 'border-slate-200'}`}
+    >
+      {/* Image area — tappable overlay when in cart */}
+      <div
+        className="relative w-full bg-slate-50"
+        style={{ paddingBottom: '100%' }}
+        onClick={inCart ? onInc : handlePress}
+      >
+        {/* Product image */}
+        <div className="absolute inset-0 flex items-center justify-center p-2">
+          {p.imageUrl
+            ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            : <Package className="text-slate-300" size={mini ? 22 : 28} />
+          }
+        </div>
+
+        {/* Overlay: transparent indigo tint + big + icon when in cart */}
+        {inCart && (
+          <div className="absolute inset-0 bg-indigo-600/10 flex items-center justify-center transition-all">
+            <div className={`w-9 h-9 rounded-full bg-indigo-600/80 flex items-center justify-center shadow-lg transition-transform ${pressed ? 'scale-125' : 'scale-100'}`}>
+              <Plus size={20} className="text-white" strokeWidth={3} />
+            </div>
+          </div>
+        )}
+
+        {/* Qty badge top-right */}
+        {inCart && (
+          <div className="absolute top-1.5 right-1.5 bg-indigo-600 text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow">
+            {qty}
+          </div>
+        )}
+
+        {/* Flash ripple on add */}
+        {pressed && (
+          <div className="absolute inset-0 bg-indigo-400/20 animate-ping rounded-2xl pointer-events-none" />
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="p-2">
+        <p className={`font-semibold text-slate-900 line-clamp-2 leading-tight mb-0.5 ${mini ? 'text-[11px]' : 'text-xs'}`}>{p.name}</p>
+        <p className="text-[10px] text-slate-400 mb-1">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
+        <p className={`font-bold text-slate-900 ${mini ? 'text-xs mb-1.5' : 'text-sm mb-2'}`}>₹{(p.price || 0).toFixed(0)}</p>
+
+        {inCart ? (
+          /* Qty stepper */
+          <div className="flex items-center justify-between bg-indigo-600 rounded-lg px-1 py-0.5">
+            <button
+              onClick={e => { e.stopPropagation(); onDec(); }}
+              className={`flex items-center justify-center text-white font-bold ${mini ? 'w-5 h-5 text-sm' : 'w-6 h-6 text-base'}`}
+            >−</button>
+            <span className={`text-white font-bold ${mini ? 'text-[11px]' : 'text-xs'}`}>{qty}</span>
+            <button
+              onClick={e => { e.stopPropagation(); onInc(); }}
+              className={`flex items-center justify-center text-white font-bold ${mini ? 'w-5 h-5 text-sm' : 'w-6 h-6 text-base'}`}
+            >+</button>
+          </div>
+        ) : (
+          /* Add button */
+          <button
+            onClick={handlePress}
+            className={`w-full border-2 border-indigo-600 text-indigo-600 rounded-lg font-bold hover:bg-indigo-50 active:bg-indigo-100 transition flex items-center justify-center gap-0.5 ${mini ? 'py-0.5 text-[11px]' : 'py-1 text-xs'}`}
+          >
+            <Plus size={mini ? 11 : 12} /> Add
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
