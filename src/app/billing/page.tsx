@@ -989,7 +989,7 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 1 - Scan Slip / Review */}
-            <div className="w-full shrink-0 snap-start p-6">
+            <div className="w-full shrink-0 snap-start p-6 max-h-[calc(100vh-20rem)]">
               {!isReviewing ? (
                 <div className="space-y-6">
                   <div>
@@ -1003,8 +1003,8 @@ export default function BillingPage() {
                   {file && <button disabled={isProcessing} onClick={processImage} className="w-full bg-indigo-600 text-white font-semibold py-4 rounded-xl hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-50">{isProcessing ? 'Processing AI...' : 'Analyze Image'}</button>}
                 </div>
               ) : (
-                <div className="space-y-5 flex flex-col h-full">
-                  <div className="flex justify-between items-center">
+                <div className="space-y-4 flex flex-col max-h-full">
+                  <div className="flex justify-between items-center flex-shrink-0">
                     <div>
                       <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                         <span className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center"><CheckCircle size={13} className="text-emerald-600" /></span>
@@ -1014,7 +1014,7 @@ export default function BillingPage() {
                     </div>
                     <button onClick={() => setIsReviewing(false)} className="text-xs text-slate-400 hover:text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition font-medium">Cancel</button>
                   </div>
-                  <div className="space-y-3 flex-1 overflow-y-auto pr-1 min-h-0">
+                  <div className="space-y-3 overflow-y-auto pr-1 flex-1 min-h-0">
                     {reviewItems.map((item, idx) => (
                       <div key={idx} className={`relative rounded-2xl border overflow-hidden transition-all ${item.isRepeated ? 'border-amber-300 shadow-[0_0_0_3px_rgba(251,191,36,0.15)]' : item.productId ? 'border-slate-200 hover:border-slate-300' : 'border-rose-200 hover:border-rose-300'}`}>
                         <div className={`h-0.5 w-full ${item.isRepeated ? 'bg-amber-400' : item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
@@ -1069,7 +1069,7 @@ export default function BillingPage() {
                     ))}
                     <div ref={reviewEndRef} />
                   </div>
-                  <button onClick={confirmReview} className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-4 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm">
+                  <button onClick={confirmReview} className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-4 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm flex-shrink-0">
                     <CheckCircle size={18} />
                     Add {reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} to Bill
                   </button>
