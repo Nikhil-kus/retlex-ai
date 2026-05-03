@@ -925,7 +925,7 @@ export default function BillingPage() {
           {/* Swipeable slider - 3 panels side by side */}
           <div
             ref={sliderRef}
-            className="flex overflow-x-auto snap-x snap-mandatory"
+            className="flex overflow-x-auto snap-x snap-mandatory max-h-[calc(100vh-16rem)]"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             onScroll={(e) => {
               const el = e.currentTarget;
@@ -989,18 +989,18 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 1 - Scan Slip / Review */}
-            <div className="w-full shrink-0 snap-start p-6 max-h-[calc(100vh-20rem)]">
+            <div className="w-full shrink-0 snap-start p-6 h-full">
               {!isReviewing ? (
-                <div className="space-y-6">
-                  <div>
+                <div className="space-y-6 h-full flex flex-col">
+                  <div className="flex-shrink-0">
                     <h3 className="text-lg font-semibold">Upload Customer List slip</h3>
                     <p className="text-slate-500 text-sm mb-4">We'll read handwritten or printed text and match it.</p>
                   </div>
-                  <div className="border-2 border-dashed border-indigo-200 rounded-2xl p-8 bg-indigo-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 transition" onClick={() => fileInputRef.current?.click()}>
+                  <div className="border-2 border-dashed border-indigo-200 rounded-2xl p-8 bg-indigo-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 transition flex-shrink-0" onClick={() => fileInputRef.current?.click()}>
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleFileChange} />
                     {previewUrl ? <img src={previewUrl} alt="Preview" className="max-h-64 rounded-xl shadow-sm" /> : <div className="flex flex-col items-center gap-3 text-indigo-600"><Camera size={48} /><span className="font-semibold">Tap to capture or upload image</span></div>}
                   </div>
-                  {file && <button disabled={isProcessing} onClick={processImage} className="w-full bg-indigo-600 text-white font-semibold py-4 rounded-xl hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-50">{isProcessing ? 'Processing AI...' : 'Analyze Image'}</button>}
+                  {file && <button disabled={isProcessing} onClick={processImage} className="w-full bg-indigo-600 text-white font-semibold py-4 rounded-xl hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-50 flex-shrink-0">{isProcessing ? 'Processing AI...' : 'Analyze Image'}</button>}
                 </div>
               ) : (
                 <div className="space-y-4 flex flex-col max-h-full">
