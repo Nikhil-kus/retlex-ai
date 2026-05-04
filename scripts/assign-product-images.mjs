@@ -1,9 +1,16 @@
 /**
- * ONE-TIME SCRIPT: Assign product images by saving external URLs directly to Firestore
+ * ONE-TIME SCRIPT: Assign product images — saves external URLs directly to Firestore
  *
  * ✅ Works on Vercel, mobile, any device — no local files needed
- * ✅ No API key required (uses Open Food Facts + DuckDuckGo)
+ * ✅ Uses Google Custom Search API (your existing key works)
  * ✅ Skips products that already have a real imageUrl
+ *
+ * Setup (one time):
+ *   1. Go to https://programmablesearchengine.google.com/
+ *   2. Click "Add" → name it anything → set "Search the entire web"
+ *   3. After creation → Edit → "Search features" → turn ON "Image search"
+ *   4. Copy the "Search engine ID" and add to .env:
+ *      GOOGLE_CSE_CX="your_cx_here"
  *
  * Usage:
  *   node scripts/assign-product-images.mjs
@@ -43,120 +50,94 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 const db  = getFirestore(app);
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const DELAY_MS = 900;
-const GOOGLE_CSE_API_KEY = process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_VISION_API_KEY;
-const GOOGLE_CSE_CX      = process.env.GOOGLE_CSE_CX;
+const DELAY_MS       = 300; // Google CSE allows 100 free queries/day, 10 QPS
+const API_KEY        = process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_VISION_API_KEY;
+const CX             = process.env.GOOGLE_CSE_CX;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// ── Fetch helper ──────────────────────────────────────────────────────────────
-async function fetchSafe(url, timeoutMs = 12000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+async function fetchSafe(url, ms = 10000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
   try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ProductImageBot/1.0)' }
-    });
-    clearTimeout(timer);
-    return res;
-  } catch {
-    clearTimeout(timer);
-    return null;
-  }
+    const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
+    clearTimeout(t);
+    return r;
+  } catch { clearTimeout(t); return null; }
 }
 
-// ── Validate that a URL actually serves an image ──────────────────────────────
-async function isValidImageUrl(url) {
-  if (!url) return false;
-  const lower = url.toLowerCase();
-  if (lower.endsWith('.svg') || lower.endsWith('.gif') || lower.endsWith('.webp')) return false;
-  try {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(url, { method: 'HEAD', signal: controller.signal });
-    const ct = res.headers.get('content-type') || '';
-    return res.ok && ct.startsWith('image/');
-  } catch {
-    // HEAD not supported — assume valid if URL looks like an image
-    return /\.(jpg|jpeg|png)(\?|$)/i.test(url);
-  }
-}
-
-// ── Source 1: Open Food Facts ─────────────────────────────────────────────────
+// ── Source 1: Open Food Facts (free, no key) ──────────────────────────────────
 async function searchOpenFoodFacts(name) {
-  const query = encodeURIComponent(name);
-  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,image_front_url,image_url`;
-  const res = await fetchSafe(url, 12000);
+  const res = await fetchSafe(
+    `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(name)}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,image_front_url`
+  );
   if (!res?.ok) return null;
   try {
     const data = await res.json();
-    const keyword = name.split(' ')[0].toLowerCase();
-    const products = (data.products || []).filter(p =>
-      (p.image_front_url || p.image_url) &&
-      (p.product_name || '').toLowerCase().includes(keyword)
+    const kw = name.split(' ')[0].toLowerCase();
+    const hit = (data.products || []).find(p =>
+      p.image_front_url && (p.product_name || '').toLowerCase().includes(kw)
     );
-    const imgUrl = products[0]?.image_front_url || products[0]?.image_url || null;
-    if (imgUrl && await isValidImageUrl(imgUrl)) return imgUrl;
-    return null;
+    return hit?.image_front_url || null;
   } catch { return null; }
 }
 
-// ── Source 2: DuckDuckGo ──────────────────────────────────────────────────────
-async function searchDuckDuckGo(query) {
-  const initRes = await fetchSafe(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`);
-  if (!initRes?.ok) return null;
-  const html = await initRes.text();
-  const vqdMatch = html.match(/vqd=['"]([^'"]+)['"]/);
-  if (!vqdMatch) return null;
-
-  const imgRes = await fetchSafe(
-    `https://duckduckgo.com/i.js?q=${encodeURIComponent(query)}&vqd=${vqdMatch[1]}&f=,,,,,&p=1&v7exp=a`
-  );
-  if (!imgRes?.ok) return null;
-  try {
-    const data = await imgRes.json();
-    const results = (data.results || []).filter(r => {
-      const u = (r.image || '').toLowerCase();
-      const t = (r.title || '').toLowerCase();
-      return !u.endsWith('.svg') && !u.endsWith('.gif') &&
-             !t.includes('logo') && !t.includes('icon') &&
-             (u.includes('.jpg') || u.includes('.jpeg') || u.includes('.png'));
-    });
-    for (const r of results.slice(0, 3)) {
-      if (await isValidImageUrl(r.image)) return r.image;
-    }
-    return null;
-  } catch { return null; }
-}
-
-// ── Source 3: Google CSE (optional) ──────────────────────────────────────────
-async function searchGoogle(query) {
-  if (!GOOGLE_CSE_API_KEY || !GOOGLE_CSE_CX || GOOGLE_CSE_CX.includes('your_')) return null;
+// ── Source 2: Google Custom Search (uses your existing API key) ───────────────
+async function searchGoogleCSE(query) {
+  if (!API_KEY || !CX || CX.includes('your_')) return null;
   const url = new URL('https://www.googleapis.com/customsearch/v1');
-  url.searchParams.set('key', GOOGLE_CSE_API_KEY);
-  url.searchParams.set('cx', GOOGLE_CSE_CX);
-  url.searchParams.set('q', query);
+  url.searchParams.set('key',        API_KEY);
+  url.searchParams.set('cx',         CX);
+  url.searchParams.set('q',          query);
   url.searchParams.set('searchType', 'image');
-  url.searchParams.set('num', '5');
-  url.searchParams.set('imgType', 'photo');
+  url.searchParams.set('num',        '5');
+  url.searchParams.set('imgType',    'photo');
+  url.searchParams.set('safe',       'active');
   const res = await fetchSafe(url.toString());
-  if (!res?.ok) return null;
+  if (!res?.ok) {
+    const err = await res?.text();
+    console.warn(`   ⚠️  CSE error: ${(err || '').slice(0, 100)}`);
+    return null;
+  }
   try {
     const data = await res.json();
     const items = (data.items || []).filter(i => {
       const l = (i.link || '').toLowerCase();
-      return !l.endsWith('.svg') && !l.endsWith('.gif');
+      return !l.endsWith('.svg') && !l.endsWith('.gif') && !l.endsWith('.webp');
     });
-    for (const item of items.slice(0, 3)) {
-      if (await isValidImageUrl(item.link)) return item.link;
-    }
-    return null;
+    return items[0]?.link || null;
+  } catch { return null; }
+}
+
+// ── Source 3: Wikimedia Commons (free, reliable for common products) ──────────
+async function searchWikimedia(name) {
+  const res = await fetchSafe(
+    `https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name + ' product')}&srnamespace=6&format=json&srlimit=3`
+  );
+  if (!res?.ok) return null;
+  try {
+    const data = await res.json();
+    const hits = (data.query?.search || []);
+    if (!hits.length) return null;
+    const title = hits[0].title.replace('File:', '');
+    const infoRes = await fetchSafe(
+      `https://commons.wikimedia.org/w/api.php?action=query&titles=File:${encodeURIComponent(title)}&prop=imageinfo&iiprop=url&format=json`
+    );
+    if (!infoRes?.ok) return null;
+    const info = await infoRes.json();
+    const pages = Object.values(info.query?.pages || {});
+    return pages[0]?.imageinfo?.[0]?.url || null;
   } catch { return null; }
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
+  if (!CX || CX.includes('your_')) {
+    console.log('⚠️  GOOGLE_CSE_CX not set — will use Open Food Facts + Wikimedia only');
+    console.log('   For better results, add GOOGLE_CSE_CX to .env');
+    console.log('   Get it free at: https://programmablesearchengine.google.com/\n');
+  }
+
   console.log('📦  Fetching all products from Firestore…');
   const snapshot = await getDocs(collection(db, 'products'));
   const products = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -168,43 +149,30 @@ async function main() {
     const { id, name, localName, imageUrl } = products[i];
     console.log(`[${i + 1}/${products.length}] ${name}${localName ? ` (${localName})` : ''}`);
 
-    // Skip if already has a real external URL (not a local path or default)
-    if (imageUrl &&
-        !imageUrl.startsWith('/products/') &&
-        !imageUrl.includes('default') &&
-        imageUrl.startsWith('http')) {
-      console.log(`   ✅  Already has external URL — skipping`);
+    // Skip if already has a real external URL
+    if (imageUrl && imageUrl.startsWith('http') && !imageUrl.includes('default')) {
+      console.log(`   ✅  Already has image — skipping`);
       results.skipped++;
       continue;
     }
 
-    // Build search queries
     const combined = [name, localName].filter(Boolean).join(' ');
-    const queries = [
-      `${combined} product packaging`,
-      `${name} India grocery product`,
-      `${name} packet`,
-    ];
-
     let imgUrl = null;
 
     // 1. Open Food Facts
-    console.log(`   🔍  Open Food Facts…`);
     imgUrl = await searchOpenFoodFacts(name);
-    if (imgUrl) console.log(`   ✓  Found on Open Food Facts`);
+    if (imgUrl) { console.log(`   ✓  Open Food Facts`); }
 
-    // 2. DuckDuckGo
+    // 2. Google CSE
     if (!imgUrl) {
-      console.log(`   🔍  DuckDuckGo…`);
-      imgUrl = await searchDuckDuckGo(queries[0]);
-      if (imgUrl) console.log(`   ✓  Found on DuckDuckGo`);
+      imgUrl = await searchGoogleCSE(`${combined} product packaging India`);
+      if (imgUrl) { console.log(`   ✓  Google CSE`); }
     }
 
-    // 3. Google CSE
-    if (!imgUrl && GOOGLE_CSE_CX && !GOOGLE_CSE_CX.includes('your_')) {
-      console.log(`   🔍  Google CSE…`);
-      imgUrl = await searchGoogle(queries[0]);
-      if (imgUrl) console.log(`   ✓  Found on Google CSE`);
+    // 3. Wikimedia
+    if (!imgUrl) {
+      imgUrl = await searchWikimedia(name);
+      if (imgUrl) { console.log(`   ✓  Wikimedia`); }
     }
 
     if (!imgUrl) {
@@ -215,19 +183,17 @@ async function main() {
       continue;
     }
 
-    // Save external URL directly to Firestore — works everywhere
+    // Save external URL directly to Firestore
     await updateDoc(doc(db, 'products', id), { imageUrl: imgUrl });
-    console.log(`   ✅  Saved URL → ${imgUrl.slice(0, 70)}…`);
+    console.log(`   ✅  ${imgUrl.slice(0, 72)}…`);
     results.updated++;
-
     await sleep(DELAY_MS);
   }
 
   console.log('\n══════════════════════════════════════');
-  console.log('✅  Done!');
-  console.log(`   Updated : ${results.updated}`);
-  console.log(`   Skipped : ${results.skipped}`);
-  console.log(`   Failed  : ${results.failed}`);
+  console.log(`✅  Updated : ${results.updated}`);
+  console.log(`⏭️  Skipped : ${results.skipped}`);
+  console.log(`❌  Failed  : ${results.failed}`);
   if (results.noImage.length > 0) {
     console.log('\n⚠️  No image found for:');
     results.noImage.forEach(n => console.log(`   - ${n}`));
