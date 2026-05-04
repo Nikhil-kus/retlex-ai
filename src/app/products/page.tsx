@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Package, Search, Plus, Pencil, Trash, X, ChevronDown, CheckSquare, Square } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Package, Search, Plus, Pencil, Trash, X, ChevronDown, CheckSquare, Square, Camera, Sparkles, Upload } from 'lucide-react';
 import Image from 'next/image';
 
 export default function ProductsPage() {
@@ -20,9 +20,16 @@ export default function ProductsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '', localName: '', barcode: '',
-    sellingPrice: '', costPrice: '', unit: '', category: '', imageUrl: '',
+    sellingPrice: '', costPrice: '', unit: 'pc', category: '', imageUrl: '',
     packetWeight: '', packetUnit: 'g'
   });
+
+  // AI autofill states
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiFields, setAiFields] = useState<Set<string>>(new Set());
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // Quick price edit state
   const [quickPriceEdit, setQuickPriceEdit] = useState<{ id: string; price: string } | null>(null);
@@ -65,6 +72,75 @@ export default function ProductsPage() {
   const resetForm = () => {
     setFormData({ name: '', localName: '', barcode: '', sellingPrice: '', costPrice: '', unit: 'pc', category: '', imageUrl: '', packetWeight: '', packetUnit: 'g' });
     setEditingId(null);
+    setImagePreview(null);
+    setAiFields(new Set());
+    setAnalyzeError(null);
+  };
+
+  // Compress image to base64 JPEG
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.src = e.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX = 800;
+          let w = img.width, h = img.height;
+          if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d')!;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+      };
+    });
+  };
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setAnalyzeError(null);
+
+    // Show preview instantly
+    const compressed = await compressImage(file);
+    setImagePreview(compressed);
+    setFormData(prev => ({ ...prev, imageUrl: compressed }));
+
+    // Analyze with AI
+    setIsAnalyzing(true);
+    try {
+      const res = await fetch('/api/products/analyze-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: compressed })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setAnalyzeError(data.error || 'AI analysis failed');
+        return;
+      }
+      // Auto-fill fields, track which ones AI filled
+      const filled = new Set<string>();
+      setFormData(prev => {
+        const next = { ...prev };
+        if (data.name)      { next.name = data.name;           filled.add('name'); }
+        if (data.localName) { next.localName = data.localName; filled.add('localName'); }
+        if (data.category)  { next.category = data.category;   filled.add('category'); }
+        if (data.unit)      { next.unit = data.unit;           filled.add('unit'); }
+        return next;
+      });
+      setAiFields(filled);
+    } catch (err: any) {
+      setAnalyzeError('Could not connect to AI. Fill manually.');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleOpenEdit = (p: any) => {
@@ -398,7 +474,7 @@ export default function ProductsPage() {
         )}
       </div>
 
-      {/* Edit Modal */}
+      {/* Add/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
@@ -408,26 +484,117 @@ export default function ProductsPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
+
+              {/* ── AI Image Section ── */}
+              {!editingId && (
+                <div className="rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/40 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles size={16} className="text-indigo-500" />
+                    <span className="text-sm font-bold text-indigo-700">AI Auto-fill from Image</span>
+                    <span className="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-semibold">BETA</span>
+                  </div>
+
+                  <div className="flex gap-3 items-start">
+                    {/* Preview */}
+                    <div
+                      className="w-24 h-24 rounded-xl border-2 border-indigo-200 bg-white overflow-hidden flex items-center justify-center shrink-0 cursor-pointer hover:border-indigo-400 transition"
+                      onClick={() => imageInputRef.current?.click()}
+                    >
+                      {imagePreview
+                        ? <img src={imagePreview} alt="preview" className="w-full h-full object-contain" />
+                        : <div className="flex flex-col items-center gap-1 text-indigo-300">
+                            <Camera size={24} />
+                            <span className="text-[10px] font-medium">Tap to add</span>
+                          </div>
+                      }
+                    </div>
+
+                    <div className="flex-1">
+                      <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={handleImageSelect}
+                      />
+                      <div className="flex gap-2 mb-2">
+                        <button
+                          type="button"
+                          onClick={() => { if (imageInputRef.current) { imageInputRef.current.removeAttribute('capture'); imageInputRef.current.click(); } }}
+                          className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-indigo-300 text-indigo-600 rounded-xl py-2 text-xs font-semibold hover:bg-indigo-50 transition"
+                        >
+                          <Upload size={13} /> Upload
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { if (imageInputRef.current) { imageInputRef.current.setAttribute('capture', 'environment'); imageInputRef.current.click(); } }}
+                          className="flex-1 flex items-center justify-center gap-1.5 bg-indigo-600 text-white rounded-xl py-2 text-xs font-semibold hover:bg-indigo-700 transition"
+                        >
+                          <Camera size={13} /> Camera
+                        </button>
+                      </div>
+
+                      {isAnalyzing && (
+                        <div className="flex items-center gap-2 text-indigo-600 text-xs font-medium">
+                          <div className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                          Analyzing image with AI…
+                        </div>
+                      )}
+                      {analyzeError && (
+                        <p className="text-xs text-rose-500">{analyzeError}</p>
+                      )}
+                      {!isAnalyzing && !analyzeError && aiFields.size > 0 && (
+                        <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium">
+                          <Sparkles size={12} />
+                          AI filled {aiFields.size} field{aiFields.size > 1 ? 's' : ''} — review before saving
+                        </div>
+                      )}
+                      {!imagePreview && !isAnalyzing && (
+                        <p className="text-[11px] text-slate-400 mt-1">Take a photo of the product packaging to auto-fill name, category & unit</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Form Fields ── */}
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Name *</label>
-                  <input required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Tata Salt 1kg" />
+                  <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1.5">
+                    Name *
+                    {aiFields.has('name') && <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5"><Sparkles size={9} />AI</span>}
+                  </label>
+                  <input required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })}
+                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${aiFields.has('name') ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300'}`}
+                    placeholder="e.g. Tata Salt 1kg" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Local/Hindi Name</label>
-                  <input value={formData.localName} onChange={e => setFormData({ ...formData, localName: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. टाटा नमक" />
+                  <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1.5">
+                    Local/Hindi Name
+                    {aiFields.has('localName') && <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5"><Sparkles size={9} />AI</span>}
+                  </label>
+                  <input value={formData.localName} onChange={e => setFormData({ ...formData, localName: e.target.value })}
+                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${aiFields.has('localName') ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300'}`}
+                    placeholder="e.g. टाटा नमक" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Selling Price (₹) *</label>
-                  <input required type="number" step="0.01" value={formData.sellingPrice} onChange={e => setFormData({ ...formData, sellingPrice: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                  <input required type="number" step="0.01" value={formData.sellingPrice} onChange={e => setFormData({ ...formData, sellingPrice: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Cost Price (₹)</label>
-                  <input type="number" step="0.01" value={formData.costPrice} onChange={e => setFormData({ ...formData, costPrice: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                  <input type="number" step="0.01" value={formData.costPrice} onChange={e => setFormData({ ...formData, costPrice: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Unit Type *</label>
-                  <select required value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1.5">
+                    Unit Type *
+                    {aiFields.has('unit') && <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5"><Sparkles size={9} />AI</span>}
+                  </label>
+                  <select required value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value })}
+                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${aiFields.has('unit') ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300'}`}>
                     <option value="pc">Piece (pc)</option>
                     <option value="kg">Kilogram (kg)</option>
                     <option value="pkt">Packet (pkt)</option>
@@ -436,29 +603,41 @@ export default function ProductsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
-                  <input value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Grocery" />
+                  <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1.5">
+                    Category
+                    {aiFields.has('category') && <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5"><Sparkles size={9} />AI</span>}
+                  </label>
+                  <input value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}
+                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${aiFields.has('category') ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300'}`}
+                    placeholder="e.g. Grocery" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Barcode</label>
-                  <input value={formData.barcode} onChange={e => setFormData({ ...formData, barcode: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Scan or type barcode" />
+                  <input value={formData.barcode} onChange={e => setFormData({ ...formData, barcode: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Scan or type barcode" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Image URL</label>
-                  <input value={formData.imageUrl} onChange={e => setFormData({ ...formData, imageUrl: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="https://..." />
+                  <input value={formData.imageUrl.startsWith('data:') ? '' : formData.imageUrl}
+                    onChange={e => setFormData({ ...formData, imageUrl: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="https://... (or use camera above)" />
                 </div>
               </div>
 
-              {/* Packet Information - Show when unit is pkt */}
+              {/* Packet fields */}
               {formData.unit === 'pkt' && (
                 <div className="grid md:grid-cols-2 gap-4 pt-4 border-t border-slate-200">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Packet Weight/Volume *</label>
-                    <input type="number" step="0.01" value={formData.packetWeight} onChange={e => setFormData({ ...formData, packetWeight: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. 84" required />
+                    <input type="number" step="0.01" value={formData.packetWeight} onChange={e => setFormData({ ...formData, packetWeight: e.target.value })}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. 84" required />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Packet Unit *</label>
-                    <select value={formData.packetUnit} onChange={e => setFormData({ ...formData, packetUnit: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" required>
+                    <select value={formData.packetUnit} onChange={e => setFormData({ ...formData, packetUnit: e.target.value })}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" required>
                       <option value="">Select unit</option>
                       <option value="g">Gram (g)</option>
                       <option value="ml">Milliliter (ml)</option>
@@ -469,12 +648,11 @@ export default function ProductsPage() {
                 </div>
               )}
 
-              <div className="grid md:grid-cols-2 gap-4">
-              </div>
-
               <div className="pt-4 border-t border-slate-100 flex justify-end gap-3 text-sm font-medium">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg transition">Cancel</button>
-                <button type="submit" className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition shadow-sm">{editingId ? 'Update' : 'Add'}</button>
+                <button type="submit" disabled={isAnalyzing} className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition shadow-sm disabled:opacity-50">
+                  {editingId ? 'Update' : 'Add Product'}
+                </button>
               </div>
             </form>
           </div>

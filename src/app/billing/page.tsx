@@ -516,9 +516,10 @@ export default function BillingPage() {
                 currentBreathRef.current = "";
                 
                 // Re-create the recognition object to bypass Android Chrome zombie state bug
+                // Use longer delay to avoid rapid restart beeps on Android
                 setTimeout(() => {
                     initMic();
-                }, 10);
+                }, 300);
             } else {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
