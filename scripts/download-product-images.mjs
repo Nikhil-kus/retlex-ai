@@ -1,162 +1,169 @@
 /**
- * ONE-TIME SCRIPT: Download and assign product images from Google Custom Search API
+ * ONE-TIME SCRIPT: Auto-download product images
+ *
+ * Sources tried in order:
+ *   1. Open Food Facts API (free, no key, great for packaged goods)
+ *   2. DuckDuckGo image search (free, no key)
+ *   3. Fallback: default placeholder
  *
  * Usage:
  *   node scripts/download-product-images.mjs
  *
- * Required env vars (add to .env):
- *   GOOGLE_CSE_API_KEY   — Google API key with Custom Search enabled
- *   GOOGLE_CSE_CX        — Custom Search Engine ID (cx)
- *   NEXT_PUBLIC_FIREBASE_PROJECT_ID etc. (already in .env)
- *
- * How to get GOOGLE_CSE_CX:
- *   1. Go to https://programmablesearchengine.google.com/
- *   2. Create a new search engine → set "Search the entire web"
- *   3. Enable "Image search" in settings
- *   4. Copy the "Search engine ID" (cx)
- *
- * How to get GOOGLE_CSE_API_KEY:
- *   1. Go to https://console.cloud.google.com/
- *   2. Enable "Custom Search API"
- *   3. Create an API key (or reuse GOOGLE_VISION_API_KEY project)
+ * Optional: set GOOGLE_CSE_API_KEY + GOOGLE_CSE_CX in .env for better results
  */
 
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { createWriteStream, existsSync, mkdirSync } from 'fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync } from 'fs';
 import { pipeline } from 'stream/promises';
 import https from 'https';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { readFileSync } from 'fs';
 
-// ── Load .env manually (no dotenv dependency needed) ──────────────────────────
+// ── Load .env ─────────────────────────────────────────────────────────────────
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(__dirname, '..', '.env');
 if (existsSync(envPath)) {
-  const lines = readFileSync(envPath, 'utf8').split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
-    if (!process.env[key]) process.env[key] = val;
+  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const eq = t.indexOf('=');
+    if (eq === -1) continue;
+    const k = t.slice(0, eq).trim();
+    const v = t.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+    if (!process.env[k]) process.env[k] = v;
   }
 }
 
-// ── Config ────────────────────────────────────────────────────────────────────
-const GOOGLE_CSE_API_KEY = process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_VISION_API_KEY;
-const GOOGLE_CSE_CX      = process.env.GOOGLE_CSE_CX;
-const OUTPUT_DIR         = path.join(__dirname, '..', 'public', 'products');
-const DEFAULT_IMAGE      = '/products/default.png';
-const DELAY_MS           = 1200; // stay under 100 req/day free quota
-
-if (!GOOGLE_CSE_API_KEY) {
-  console.error('❌  GOOGLE_CSE_API_KEY (or GOOGLE_VISION_API_KEY) not set in .env');
-  process.exit(1);
-}
-if (!GOOGLE_CSE_CX) {
-  console.error('❌  GOOGLE_CSE_CX not set in .env');
-  console.error('   Get it from https://programmablesearchengine.google.com/');
-  process.exit(1);
-}
-
-// ── Firebase init ─────────────────────────────────────────────────────────────
+// ── Firebase config ───────────────────────────────────────────────────────────
 const firebaseConfig = {
-  apiKey:            process.env.NEXT_PUBLIC_FIREBASE_API_KEY            || 'AIzaSyBnwCbkUgTYazDWVyOcyYNEdTYLgmND3Wk',
-  authDomain:        process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN        || 'retlex-ai.firebaseapp.com',
-  projectId:         process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID         || 'retlex-ai',
-  storageBucket:     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET     || 'retlex-ai.firebasestorage.app',
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID|| '339712048398',
-  appId:             process.env.NEXT_PUBLIC_FIREBASE_APP_ID             || '1:339712048398:web:578ac498b0c942db7aab5f',
+  apiKey:            'AIzaSyBnwCbkUgTYazDWVyOcyYNEdTYLgmND3Wk',
+  authDomain:        'retlex-ai.firebaseapp.com',
+  projectId:         'retlex-ai',
+  storageBucket:     'retlex-ai.firebasestorage.app',
+  messagingSenderId: '339712048398',
+  appId:             '1:339712048398:web:578ac498b0c942db7aab5f',
 };
-
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db  = getFirestore(app);
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
+const OUTPUT_DIR    = path.join(__dirname, '..', 'public', 'products');
+const DEFAULT_IMAGE = '/products/default.png';
+const DELAY_MS      = 800;
 
-/** Sleep for ms milliseconds */
+const GOOGLE_CSE_API_KEY = process.env.GOOGLE_CSE_API_KEY || process.env.GOOGLE_VISION_API_KEY;
+const GOOGLE_CSE_CX      = process.env.GOOGLE_CSE_CX;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-/** Ensure output directory exists */
 function ensureDir(dir) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
-/**
- * Search Google Custom Search for a product image.
- * Returns the first image URL or null.
- */
-async function searchImage(query) {
-  const url = new URL('https://www.googleapis.com/customsearch/v1');
-  url.searchParams.set('key',        GOOGLE_CSE_API_KEY);
-  url.searchParams.set('cx',         GOOGLE_CSE_CX);
-  url.searchParams.set('q',          query);
-  url.searchParams.set('searchType', 'image');
-  url.searchParams.set('num',        '5');
-  url.searchParams.set('imgType',    'photo');
-  url.searchParams.set('imgSize',    'medium');
-  // Prefer product packaging shots
-  url.searchParams.set('rights',     'cc_publicdomain|cc_attribute|cc_sharealike');
-
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    const err = await res.text();
-    console.warn(`   ⚠️  Search API error (${res.status}): ${err.slice(0, 120)}`);
+/** Fetch with timeout, returns Response or null */
+async function fetchSafe(url, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    return res;
+  } catch {
+    clearTimeout(timer);
     return null;
   }
-
-  const data = await res.json();
-  const items = data.items || [];
-
-  // Filter: skip logos, ads, SVGs
-  const filtered = items.filter(item => {
-    const link = (item.link || '').toLowerCase();
-    const title = (item.title || '').toLowerCase();
-    // Skip SVG and GIF
-    if (link.endsWith('.svg') || link.endsWith('.gif')) return false;
-    // Skip obvious logos/icons
-    if (title.includes('logo') || title.includes('icon') || title.includes('banner')) return false;
-    return true;
-  });
-
-  return filtered.length > 0 ? filtered[0].link : (items[0]?.link || null);
 }
 
-/**
- * Download an image from url to destPath.
- * Returns true on success, false on failure.
- */
-async function downloadImage(imageUrl, destPath) {
+/** Download binary from url to destPath. Follows redirects. Returns true/false. */
+async function downloadImage(imageUrl, destPath, depth = 0) {
+  if (depth > 4) return false;
   return new Promise(resolve => {
-    const protocol = imageUrl.startsWith('https') ? https : http;
-    const req = protocol.get(imageUrl, { timeout: 15000 }, res => {
-      // Follow redirects (up to 3)
-      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
-        downloadImage(res.headers.location, destPath).then(resolve);
-        return;
-      }
-      if (res.statusCode !== 200) {
-        resolve(false);
-        return;
-      }
-      const contentType = res.headers['content-type'] || '';
-      if (!contentType.startsWith('image/')) {
-        resolve(false);
-        return;
-      }
-      const writer = createWriteStream(destPath);
-      pipeline(res, writer)
-        .then(() => resolve(true))
-        .catch(() => resolve(false));
-    });
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
+    const proto = imageUrl.startsWith('https') ? https : http;
+    try {
+      const req = proto.get(imageUrl, { timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } }, res => {
+        if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location) {
+          downloadImage(res.headers.location, destPath, depth + 1).then(resolve);
+          return;
+        }
+        if (res.statusCode !== 200) { resolve(false); return; }
+        const ct = res.headers['content-type'] || '';
+        if (!ct.startsWith('image/')) { resolve(false); return; }
+        const writer = createWriteStream(destPath);
+        pipeline(res, writer).then(() => resolve(true)).catch(() => resolve(false));
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => { req.destroy(); resolve(false); });
+    } catch { resolve(false); }
   });
+}
+
+// ── Source 1: Open Food Facts ─────────────────────────────────────────────────
+async function searchOpenFoodFacts(name) {
+  const query = encodeURIComponent(name);
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,image_front_url,image_url`;
+  const res = await fetchSafe(url, 12000);
+  if (!res || !res.ok) return null;
+  try {
+    const data = await res.json();
+    const products = (data.products || []).filter(p =>
+      (p.image_front_url || p.image_url) &&
+      (p.product_name || '').toLowerCase().includes(name.split(' ')[0].toLowerCase())
+    );
+    return products[0]?.image_front_url || products[0]?.image_url || null;
+  } catch { return null; }
+}
+
+// ── Source 2: DuckDuckGo image search ────────────────────────────────────────
+async function searchDuckDuckGo(query) {
+  // Step 1: get vqd token
+  const initUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`;
+  const initRes = await fetchSafe(initUrl, 10000);
+  if (!initRes || !initRes.ok) return null;
+  const html = await initRes.text();
+  const vqdMatch = html.match(/vqd=['"]([^'"]+)['"]/);
+  if (!vqdMatch) return null;
+  const vqd = vqdMatch[1];
+
+  // Step 2: fetch image results
+  const imgUrl = `https://duckduckgo.com/i.js?q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,,,&p=1&v7exp=a`;
+  const imgRes = await fetchSafe(imgUrl, 10000);
+  if (!imgRes || !imgRes.ok) return null;
+  try {
+    const data = await imgRes.json();
+    const results = (data.results || []).filter(r => {
+      const url = (r.image || '').toLowerCase();
+      const title = (r.title || '').toLowerCase();
+      if (url.endsWith('.svg') || url.endsWith('.gif')) return false;
+      if (title.includes('logo') || title.includes('icon')) return false;
+      return true;
+    });
+    return results[0]?.image || null;
+  } catch { return null; }
+}
+
+// ── Source 3: Google Custom Search (if keys available) ───────────────────────
+async function searchGoogle(query) {
+  if (!GOOGLE_CSE_API_KEY || !GOOGLE_CSE_CX || GOOGLE_CSE_CX.includes('your_')) return null;
+  const url = new URL('https://www.googleapis.com/customsearch/v1');
+  url.searchParams.set('key', GOOGLE_CSE_API_KEY);
+  url.searchParams.set('cx', GOOGLE_CSE_CX);
+  url.searchParams.set('q', query);
+  url.searchParams.set('searchType', 'image');
+  url.searchParams.set('num', '5');
+  url.searchParams.set('imgType', 'photo');
+  const res = await fetchSafe(url.toString(), 10000);
+  if (!res || !res.ok) return null;
+  try {
+    const data = await res.json();
+    const items = (data.items || []).filter(i => {
+      const l = (i.link || '').toLowerCase();
+      return !l.endsWith('.svg') && !l.endsWith('.gif');
+    });
+    return items[0]?.link || null;
+  } catch { return null; }
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -171,56 +178,65 @@ async function main() {
   const results = { updated: 0, skipped: 0, failed: 0, noImage: [] };
 
   for (let i = 0; i < products.length; i++) {
-    const product = products[i];
-    const { id, name, localName, imageUrl } = product;
+    const { id, name, localName, imageUrl } = products[i];
+    console.log(`[${i + 1}/${products.length}] ${name}${localName ? ` (${localName})` : ''}`);
 
-    console.log(`[${i + 1}/${products.length}] ${name}`);
-
-    // ── Skip if image already exists ──────────────────────────────────────────
+    // Skip if already has a real image
     const localFile = path.join(OUTPUT_DIR, `${id}.jpg`);
-    if (imageUrl && imageUrl !== DEFAULT_IMAGE) {
-      // Already has a remote URL assigned — skip
-      console.log(`   ✅  Already has imageUrl, skipping`);
+    if (imageUrl && imageUrl !== DEFAULT_IMAGE && !imageUrl.includes('default')) {
+      console.log(`   ✅  Already has imageUrl — skipping`);
       results.skipped++;
       continue;
     }
     if (existsSync(localFile)) {
-      console.log(`   ✅  Local file already exists, skipping`);
+      console.log(`   ✅  Local file exists — skipping`);
       results.skipped++;
       continue;
     }
 
-    // ── Build search query ────────────────────────────────────────────────────
-    const parts = [name];
-    if (localName && localName !== name) parts.push(localName);
-    parts.push('product packaging India front view');
-    const searchQuery = parts.join(' ');
-    console.log(`   🔍  Searching: "${searchQuery}"`);
+    // Build search queries
+    const nameParts = [name, localName].filter(Boolean).join(' ');
+    const queries = [
+      `${nameParts} product packaging`,
+      `${name} India grocery product`,
+      `${name} packet`,
+    ];
 
-    // ── Search ────────────────────────────────────────────────────────────────
     let imgUrl = null;
-    try {
-      imgUrl = await searchImage(searchQuery);
-    } catch (e) {
-      console.warn(`   ⚠️  Search failed: ${e.message}`);
+
+    // Try Open Food Facts first (best for packaged goods)
+    console.log(`   🔍  Trying Open Food Facts…`);
+    imgUrl = await searchOpenFoodFacts(name);
+    if (imgUrl) console.log(`   ✓  Found on Open Food Facts`);
+
+    // Try DuckDuckGo
+    if (!imgUrl) {
+      console.log(`   🔍  Trying DuckDuckGo…`);
+      imgUrl = await searchDuckDuckGo(queries[0]);
+      if (imgUrl) console.log(`   ✓  Found on DuckDuckGo`);
+    }
+
+    // Try Google CSE if configured
+    if (!imgUrl && GOOGLE_CSE_CX && !GOOGLE_CSE_CX.includes('your_')) {
+      console.log(`   🔍  Trying Google CSE…`);
+      imgUrl = await searchGoogle(queries[0]);
+      if (imgUrl) console.log(`   ✓  Found on Google CSE`);
     }
 
     if (!imgUrl) {
-      console.log(`   ❌  No image found — assigning default`);
+      console.log(`   ❌  No image found — using default`);
       results.noImage.push(name);
-      // Update DB with default
       await updateDoc(doc(db, 'products', id), { imageUrl: DEFAULT_IMAGE });
       results.failed++;
       await sleep(DELAY_MS);
       continue;
     }
 
-    console.log(`   ⬇️   Downloading: ${imgUrl.slice(0, 80)}…`);
-
-    // ── Download ──────────────────────────────────────────────────────────────
+    // Download
+    console.log(`   ⬇️   ${imgUrl.slice(0, 80)}…`);
     const ok = await downloadImage(imgUrl, localFile);
     if (!ok) {
-      console.log(`   ❌  Download failed — assigning default`);
+      console.log(`   ❌  Download failed — using default`);
       results.noImage.push(name);
       await updateDoc(doc(db, 'products', id), { imageUrl: DEFAULT_IMAGE });
       results.failed++;
@@ -228,7 +244,6 @@ async function main() {
       continue;
     }
 
-    // ── Update Firestore ──────────────────────────────────────────────────────
     const publicPath = `/products/${id}.jpg`;
     await updateDoc(doc(db, 'products', id), { imageUrl: publicPath });
     console.log(`   ✅  Saved → ${publicPath}`);
@@ -237,21 +252,17 @@ async function main() {
     await sleep(DELAY_MS);
   }
 
-  // ── Summary ───────────────────────────────────────────────────────────────
   console.log('\n══════════════════════════════════════');
   console.log('✅  Done!');
   console.log(`   Updated : ${results.updated}`);
   console.log(`   Skipped : ${results.skipped}`);
   console.log(`   Failed  : ${results.failed}`);
   if (results.noImage.length > 0) {
-    console.log('\n⚠️  Products with no image found:');
+    console.log('\n⚠️  No image found for:');
     results.noImage.forEach(n => console.log(`   - ${n}`));
   }
   console.log('══════════════════════════════════════\n');
   process.exit(0);
 }
 
-main().catch(e => {
-  console.error('Fatal error:', e);
-  process.exit(1);
-});
+main().catch(e => { console.error('Fatal:', e); process.exit(1); });
