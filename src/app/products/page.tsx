@@ -77,7 +77,7 @@ export default function ProductsPage() {
     setAnalyzeError(null);
   };
 
-  // Compress image to base64 JPEG
+  // Step 1: Compress image to base64 JPEG (max 800px)
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -101,41 +101,91 @@ export default function ProductsPage() {
     });
   };
 
+  // Step 2: Compose product on Amazon-style white square background
+  // Product centered with 10% padding, white background, 600x600px
+  const composeProductImage = (base64: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const SIZE = 600;
+        const PADDING = SIZE * 0.10; // 10% padding on each side
+        const canvas = document.createElement('canvas');
+        canvas.width = SIZE;
+        canvas.height = SIZE;
+        const ctx = canvas.getContext('2d')!;
+
+        // White background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, SIZE, SIZE);
+
+        // Scale product to fit within padded area, maintaining aspect ratio
+        const maxW = SIZE - PADDING * 2;
+        const maxH = SIZE - PADDING * 2;
+        const scale = Math.min(maxW / img.width, maxH / img.height);
+        const drawW = img.width * scale;
+        const drawH = img.height * scale;
+        const x = (SIZE - drawW) / 2;
+        const y = (SIZE - drawH) / 2;
+
+        ctx.drawImage(img, x, y, drawW, drawH);
+        resolve(canvas.toDataURL('image/jpeg', 0.92));
+      };
+      img.src = base64;
+    });
+  };
+
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setAnalyzeError(null);
 
-    // Show preview instantly
+    // Show raw preview instantly
     const compressed = await compressImage(file);
     setImagePreview(compressed);
     setFormData(prev => ({ ...prev, imageUrl: compressed }));
 
-    // Analyze with AI
+    // Run both in parallel: AI analysis + background removal
     setIsAnalyzing(true);
     try {
-      const res = await fetch('/api/products/analyze-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: compressed })
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setAnalyzeError(data.error || 'AI analysis failed');
-        return;
+      const [aiRes, bgRes] = await Promise.allSettled([
+        // AI analysis
+        fetch('/api/products/analyze-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: compressed })
+        }).then(r => r.json()),
+
+        // Background removal
+        fetch('/api/products/process-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: compressed })
+        }).then(r => r.json()),
+      ]);
+
+      // Apply background removal result
+      if (bgRes.status === 'fulfilled' && bgRes.value?.imageBase64) {
+        const cleanImage = await composeProductImage(bgRes.value.imageBase64);
+        setImagePreview(cleanImage);
+        setFormData(prev => ({ ...prev, imageUrl: cleanImage }));
       }
-      // Auto-fill fields, track which ones AI filled
-      const filled = new Set<string>();
-      setFormData(prev => {
-        const next = { ...prev };
-        if (data.name)      { next.name = data.name;           filled.add('name'); }
-        if (data.localName) { next.localName = data.localName; filled.add('localName'); }
-        if (data.category)  { next.category = data.category;   filled.add('category'); }
-        if (data.unit)      { next.unit = data.unit;           filled.add('unit'); }
-        return next;
-      });
-      setAiFields(filled);
+
+      // Apply AI autofill
+      if (aiRes.status === 'fulfilled' && !aiRes.value?.error) {
+        const data = aiRes.value;
+        const filled = new Set<string>();
+        setFormData(prev => {
+          const next = { ...prev };
+          if (data.name)      { next.name = data.name;           filled.add('name'); }
+          if (data.localName) { next.localName = data.localName; filled.add('localName'); }
+          if (data.category)  { next.category = data.category;   filled.add('category'); }
+          if (data.unit)      { next.unit = data.unit;           filled.add('unit'); }
+          return next;
+        });
+        setAiFields(filled);
+      } else if (aiRes.status === 'fulfilled' && aiRes.value?.error) {
+        setAnalyzeError(aiRes.value.error);
+      }
     } catch (err: any) {
       setAnalyzeError('Could not connect to AI. Fill manually.');
     } finally {
@@ -538,7 +588,7 @@ export default function ProductsPage() {
                       {isAnalyzing && (
                         <div className="flex items-center gap-2 text-indigo-600 text-xs font-medium">
                           <div className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                          Analyzing image with AI…
+                          Removing background + analyzing with AI…
                         </div>
                       )}
                       {analyzeError && (
