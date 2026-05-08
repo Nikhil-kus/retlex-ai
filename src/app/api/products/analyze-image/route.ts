@@ -55,11 +55,12 @@ Rules:
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    // Parse JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    // Parse JSON — handle markdown code blocks like ```json { } ```
+    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/);
     if (!jsonMatch) return NextResponse.json({ error: 'Could not parse AI response' }, { status: 500 });
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    const jsonStr = jsonMatch[1] || jsonMatch[0];
+    const parsed = JSON.parse(jsonStr.trim());
 
     return NextResponse.json({
       name: parsed.name || '',
