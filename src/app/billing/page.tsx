@@ -509,6 +509,7 @@ export default function BillingPage() {
                 isListeningRef.current = false;
                 alert("Microphone error: Please check permissions or hardware.");
             }
+            // For other errors (network, aborted), just restart silently
         };
 
         recognition.onend = () => {
@@ -516,11 +517,27 @@ export default function BillingPage() {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
                 
-                // Re-create the recognition object to bypass Android Chrome zombie state bug
-                // Use longer delay to avoid rapid restart beeps on Android
-                setTimeout(() => {
-                    initMic();
-                }, 300);
+                // Play a silent audio buffer before restarting to suppress
+                // Android Chrome's built-in "start listening" beep sound
+                try {
+                    const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+                    if (AudioContext) {
+                        const ctx = new AudioContext();
+                        const buf = ctx.createBuffer(1, 1, 22050);
+                        const src = ctx.createBufferSource();
+                        src.buffer = buf;
+                        src.connect(ctx.destination);
+                        src.start(0);
+                        src.onended = () => {
+                            ctx.close();
+                            if (isListeningRef.current) initMic();
+                        };
+                        return; // initMic called from onended
+                    }
+                } catch (_) {}
+
+                // Fallback if AudioContext not available
+                setTimeout(() => { initMic(); }, 100);
             } else {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
