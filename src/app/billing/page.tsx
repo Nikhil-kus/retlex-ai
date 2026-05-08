@@ -1,3 +1,4 @@
+
 'use client';
 import Fuse from 'fuse.js';
 
@@ -1152,11 +1153,11 @@ export default function BillingPage() {
                                           setActiveSuggestionId(null);
                                         }}
                                       >
-                                        <div className="relative w-full bg-indigo-50/50" style={{paddingBottom:'85%'}}>
-                                          <div className="absolute inset-0 flex items-center justify-center p-1.5">
+                                        <div className="relative w-full bg-slate-100 overflow-hidden" style={{paddingBottom:'85%'}}>
+                                          <div className="absolute inset-0">
                                             {sug.imageUrl
                                               ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
-                                              : <Package className="text-indigo-200" size={20} />
+                                              : <div className="w-full h-full flex items-center justify-center"><Package className="text-indigo-200" size={20} /></div>
                                             }
                                           </div>
                                           {sugQty > 0 && (
@@ -1205,11 +1206,11 @@ export default function BillingPage() {
                                   onClick={() => setSelectedCategory(cat)}
                                   className="flex flex-col items-center bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:border-indigo-200 active:scale-95 transition-all"
                                 >
-                                  <div className="w-full bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center" style={{paddingBottom:'75%', position:'relative'}}>
-                                    <div className="absolute inset-0 flex items-center justify-center p-3">
+                                  <div className="w-full bg-gradient-to-br from-indigo-50 to-slate-100 overflow-hidden" style={{paddingBottom:'75%', position:'relative'}}>
+                                    <div className="absolute inset-0">
                                       {img
                                         ? <img src={img} alt={cat} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
-                                        : <Package className="text-indigo-300" size={28} />
+                                        : <div className="w-full h-full flex items-center justify-center"><Package className="text-indigo-300" size={28} /></div>
                                       }
                                     </div>
                                   </div>
@@ -1937,17 +1938,15 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
     >
       {/* Image area — tappable overlay when in cart */}
       <div
-        className="relative w-full bg-slate-50"
+        className="relative w-full bg-slate-100 overflow-hidden"
         style={{ paddingBottom: '100%' }}
         onClick={inCart ? onInc : handlePress}
       >
-        {/* Product image */}
-        <div className="absolute inset-0 flex items-center justify-center p-2">
-          {p.imageUrl
-            ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            : <Package className="text-slate-300" size={mini ? 22 : 28} />
-          }
-        </div>
+        {/* Product image — fills entire box */}
+        {p.imageUrl
+          ? <img src={p.imageUrl} alt={p.name} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+          : <div className="absolute inset-0 flex items-center justify-center"><Package className="text-slate-300" size={mini ? 22 : 28} /></div>
+        }
 
         {/* Overlay: transparent indigo tint + big + icon when in cart */}
         {inCart && (
