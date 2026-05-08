@@ -1155,7 +1155,7 @@ export default function BillingPage() {
                                         <div className="relative w-full bg-indigo-50/50" style={{paddingBottom:'85%'}}>
                                           <div className="absolute inset-0 flex items-center justify-center p-1.5">
                                             {sug.imageUrl
-                                              ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                              ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
                                               : <Package className="text-indigo-200" size={20} />
                                             }
                                           </div>
@@ -1208,7 +1208,7 @@ export default function BillingPage() {
                                   <div className="w-full bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center" style={{paddingBottom:'75%', position:'relative'}}>
                                     <div className="absolute inset-0 flex items-center justify-center p-3">
                                       {img
-                                        ? <img src={img} alt={cat} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                        ? <img src={img} alt={cat} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
                                         : <Package className="text-indigo-300" size={28} />
                                       }
                                     </div>
@@ -1944,7 +1944,7 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
         {/* Product image */}
         <div className="absolute inset-0 flex items-center justify-center p-2">
           {p.imageUrl
-            ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
             : <Package className="text-slate-300" size={mini ? 22 : 28} />
           }
         </div>
