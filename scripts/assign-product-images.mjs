@@ -119,8 +119,9 @@ async function searchGoogleCSE(query) {
   const res = await fetchSafe(url.toString());
   if (!res?.ok) {
     const err = await res?.text().catch(() => '');
-    if (!err.includes('has not been used') && !err.includes('does not have')) {
-      console.warn(`   ⚠️  CSE: ${err.slice(0, 80)}`);
+    const errStr = err || '';
+    if (!errStr.includes('has not been used') && !errStr.includes('does not have')) {
+      console.warn(`   ⚠️  CSE: ${errStr.slice(0, 80)}`);
     }
     return null;
   }
