@@ -295,6 +295,14 @@ export default function BillingPage() {
         }
       }
 
+      const key = (bestMatch?.id || item.name).toLowerCase();
+      let isRepeated = false;
+      if (seenItemsMap.has(key)) {
+        isRepeated = true;
+      } else {
+        seenItemsMap.add(key);
+      }
+
       // PHASE 5: REJECTION SYSTEM
       if (!bestMatch) {
         return {
@@ -306,20 +314,12 @@ export default function BillingPage() {
           productId: null,
           confidence: 'low',
           aiLabel: item.name,
-          isRepeated: false
+          isRepeated
         };
       }
 
       // PHASE 4: FINAL SAFE OUTPUT
       const match = bestMatch;
-      const key = (match.id || item.name).toLowerCase();
-      let isRepeated = false;
-      if (seenItemsMap.has(key)) {
-        isRepeated = true;
-      } else {
-        seenItemsMap.add(key);
-      }
-
       let finalQty = item.quantity;
       let finalUnit = item.unit || 'pc';
       const baseUnit = match.baseUnit || 'pc';
@@ -330,7 +330,8 @@ export default function BillingPage() {
               finalQty = finalQty / 1000;
               finalUnit = 'kg';
           } else if (baseUnit === 'pc') {
-              if (baseQty > 1) {
+              // User said 'g', but DB is 'pc' (packet). Calculate packets!
+              if (baseQty > 1) { // Assuming baseQty is packet weight in grams
                   finalQty = Math.max(1, Math.round(finalQty / baseQty));
                   finalUnit = 'pc';
               } else {
@@ -365,7 +366,7 @@ export default function BillingPage() {
           }
       } else if (item.unit === 'kg') {
           if (baseUnit === 'pc') {
-              if (baseQty > 1) {
+              if (baseQty > 1) { // baseQty is in grams
                   finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
                   finalUnit = 'pc';
               } else {
@@ -381,7 +382,7 @@ export default function BillingPage() {
           }
       } else if (item.unit === 'l') {
           if (baseUnit === 'pc') {
-              if (baseQty > 1) {
+              if (baseQty > 1) { // baseQty is in ml
                   finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
                   finalUnit = 'pc';
               } else {
@@ -396,12 +397,14 @@ export default function BillingPage() {
               }
           }
       } else {
+        // Mismatch between spoken unit and base unit without a conversion rule
+        // Keep the spoken unit so UI accurately reflects what was heard!
         finalUnit = item.unit;
       }
 
       return {
         productId: match.id,
-        name: match.name,
+        name: match.name, // Safely mapped exactly from Database Output
         localName: match.localName,
         imageUrl: match.imageUrl,
         quantity: finalQty,
@@ -631,13 +634,22 @@ export default function BillingPage() {
     if (sliderRef.current) {
       sliderRef.current.style.transform = `translateX(-${modeIndex * 100}%)`;
     }
-    // Scroll the newly active slide back to top
-    const slideRefs = [slide0Ref, slide1Ref, slide2Ref];
-    const activeSlide = slideRefs[modeIndex]?.current;
-    if (activeSlide) {
-      activeSlide.scrollTop = 0;
-    }
+    // Scroll all slides back to top when switching modes to ensure a clean view
+    [slide0Ref, slide1Ref, slide2Ref].forEach(ref => {
+      if (ref.current) ref.current.scrollTop = 0;
+    });
   }, [modeIndex]);
+
+  // Reset scroll on Manual Search tab when category or search changes
+  useEffect(() => {
+    if (slide0Ref.current) slide0Ref.current.scrollTop = 0;
+  }, [selectedCategory, search.length > 0, searchResults.length]);
+
+  // Reset scroll on Scan Slip tab when switching between idle and review states
+  useEffect(() => {
+    if (slide2Ref.current) slide2Ref.current.scrollTop = 0;
+  }, [isReviewing]);
+
 
   useEffect(() => {
     fetch('/api/shop').then(r => r.json()).then(data => {

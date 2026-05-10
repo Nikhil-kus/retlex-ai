@@ -54,6 +54,12 @@ export default function ProductsPage() {
     return () => clearTimeout(timeoutInt);
   }, [search]);
 
+  // Reset scroll to top when products list changes (e.g. after search)
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [products.length, search.length > 0]);
+
+
   const fetchProducts = async (shopId: string, q: string) => {
     setLoading(true);
     const res = await fetch(`/api/products?shopId=${shopId}&q=${encodeURIComponent(q)}`);
