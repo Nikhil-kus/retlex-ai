@@ -1339,10 +1339,11 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 2 - Scan Slip / Review */}
-            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}>
+            {/* No overflow-y-auto here: the slide itself must NOT scroll. Only the items list inside scrolls. */}
+            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col" style={{minHeight: 0}}>
               {!isReviewing ? (
                 /* ── IDLE STATE: Upload / Voice prompt ── */
-                <div className="flex-1 flex flex-col justify-center gap-6 p-6">
+                <div className="flex flex-col gap-6 p-6">
                   {/* Voice hint banner */}
                   {isListening ? (
                     <div className="relative overflow-hidden rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50">
@@ -1410,7 +1411,8 @@ export default function BillingPage() {
                 </div>
               ) : (
                 /* ── REVIEW STATE: Detected items list ── */
-                <div className="flex flex-col flex-1" style={{minHeight: 0}}>
+                {/* This div must fill all remaining height of the slide and NOT overflow — only the items list inside should scroll */}
+                <div className="flex flex-col" style={{height: 'calc(100vh - 13rem)', minHeight: '400px'}}>
                   {/* Header */}
                   <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 flex-shrink-0">
                     <div className="flex items-center gap-2">
@@ -1448,8 +1450,8 @@ export default function BillingPage() {
                     </div>
                   )}
 
-                  {/* Items list */}
-                  <div className="overflow-y-auto min-h-0 bg-slate-50/50 p-4 space-y-3">
+                  {/* Items list - this is the ONLY scrollable zone */}
+                  <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4 space-y-3" style={{minHeight: 0}}>
                     {reviewItems.map((item, idx) => (
                       <div
                         key={idx}
