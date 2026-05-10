@@ -1449,7 +1449,7 @@ export default function BillingPage() {
                   )}
 
                   {/* Items list */}
-                  <div className="flex-1 overflow-y-auto min-h-0 bg-slate-50/50 p-4 space-y-3">
+                  <div className="overflow-y-auto min-h-0 bg-slate-50/50 p-4 space-y-3">
                     {reviewItems.map((item, idx) => (
                       <div
                         key={idx}
