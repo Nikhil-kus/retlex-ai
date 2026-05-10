@@ -277,14 +277,19 @@ export default function BillingPage() {
         // Weak match (e.g. 'namak chini' against 'namak'). Try splitting into individual items!
         const words = searchName.split(/\s+/);
         const seenIds = new Set();
-        const genericWords = ['dal', 'daal', 'powder', 'oil', 'tel', 'packet', 'pouch', 'khula', 'loose', 'milk', 'dudh', 'doodh'];
+        const genericWords = [
+            'dal', 'daal', 'powder', 'oil', 'tel', 'packet', 'pouch', 'khula', 'loose', 'milk', 'dudh', 'doodh',
+            'दाल', 'पाउडर', 'तेल', 'खुला', 'दूध', 'पैकेट', 'मसाला', 'masala', 'bhaji', 'sabji', 'sabzi',
+            'atta', 'आटा', 'rice', 'chawal', 'चावल'
+        ];
         
         for (const w of words) {
             const cleanW = w.toLowerCase().trim();
-            if (cleanW.length > 2 && !genericWords.includes(cleanW)) {
+            // Stricter word length (4+) and check against expanded generic list
+            if (cleanW.length >= 4 && !genericWords.includes(cleanW)) {
                 const subResult = fuse.search(cleanW);
-                // Require a stricter match (0.3) for individual words to avoid false positives
-                if (subResult.length && (subResult[0].score ?? 1) <= 0.3) {
+                // Require an extremely strict match (0.1) for individual words to avoid false positives
+                if (subResult.length && (subResult[0].score ?? 1) <= 0.1) {
                     const matchItem = subResult[0].item;
                     if (!seenIds.has(matchItem.id)) {
                         seenIds.add(matchItem.id);
