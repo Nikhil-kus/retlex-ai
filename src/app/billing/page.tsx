@@ -1436,7 +1436,7 @@ export default function BillingPage() {
                 </div>
               ) : (
                 /* ── REVIEW STATE: Detected items list ── */
-                <div className="flex flex-col h-full">
+                <div className="flex flex-col h-full min-h-0">
                   {/* Header */}
                   <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 flex-shrink-0">
                     <div className="flex items-center gap-2">
@@ -1475,7 +1475,7 @@ export default function BillingPage() {
                   )}
 
                   {/* Items list */}
-                  <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4 space-y-3">
+                  <div className="flex-1 overflow-y-auto min-h-0 bg-slate-50/50 p-4 space-y-3">
                     {reviewItems.map((item, idx) => (
                       <div
                         key={idx}
