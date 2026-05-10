@@ -4,7 +4,7 @@ import Fuse from 'fuse.js';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Camera, FileText, Upload, Plus, Minus, Trash, Trash2, CheckCircle, Check, TriangleAlert, AlertTriangle, ShoppingCart, X, Package, Sparkles, IndianRupee } from 'lucide-react';
+import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
 
@@ -1365,291 +1365,232 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 2 - Scan Slip / Review */}
-            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col" style={{ minHeight: 0 }}>
+            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col" style={{minHeight: 0}}>
               {!isReviewing ? (
                 /* ── IDLE STATE: Upload / Voice prompt ── */
-                <div className="flex flex-col gap-5 p-6">
+                <div className="flex flex-col gap-4 p-5">
                   {/* Voice hint banner */}
                   {isListening ? (
-                    <div className="relative overflow-hidden rounded-3xl border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-orange-50 shadow-sm">
-                      <div className="h-1.5 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400 animate-pulse" />
-                      <div className="p-5 flex items-start gap-4">
-                        <span className="relative flex h-3.5 w-3.5 mt-1 shrink-0">
+                    <div className="relative overflow-hidden rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50">
+                      <div className="h-1 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400 animate-pulse" />
+                      <div className="p-4 flex items-start gap-3">
+                        <span className="relative flex h-3 w-3 mt-0.5 shrink-0">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-500 mb-1.5">Voice Engine Active</p>
-                          <p className="text-slate-800 text-sm leading-relaxed font-semibold break-words">
-                            {finalTranscript || 'Waiting for you to say something... Try "2 kg Sugar, 1 Salt"'}
-                          </p>
+                          <p className="text-xs font-bold uppercase tracking-widest text-rose-500 mb-1">Listening…</p>
+                          <p className="text-slate-700 text-sm leading-relaxed break-words">{finalTranscript || 'Say items like "2 kg sugar, 1 packet salt…"'}</p>
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="group rounded-3xl border-2 border-dashed border-indigo-100 bg-gradient-to-br from-indigo-50/50 to-white p-5 flex items-center gap-4 transition-all hover:border-indigo-200 hover:shadow-md">
-                      <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-2xl shadow-inner group-hover:scale-110 transition-transform">🎤</div>
+                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 flex items-center gap-3">
+                      <span className="text-2xl">🎤</span>
                       <div>
-                        <p className="text-sm font-black text-indigo-900 tracking-tight">Smart Voice Billing</p>
-                        <p className="text-xs font-bold text-indigo-400 mt-0.5">Tap the green button below to start</p>
+                        <p className="text-sm font-semibold text-indigo-700">Speak your order</p>
+                        <p className="text-xs text-indigo-500 mt-0.5">Tap "Start Speaking" below and say items</p>
                       </div>
                     </div>
                   )}
 
                   {/* Divider */}
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1 h-px bg-slate-100" />
-                    <span className="text-[10px] text-slate-300 font-black uppercase tracking-widest">or analyze image</span>
-                    <div className="flex-1 h-px bg-slate-100" />
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-slate-200" />
+                    <span className="text-xs text-slate-400 font-medium">or upload a slip</span>
+                    <div className="flex-1 h-px bg-slate-200" />
                   </div>
 
                   {/* Upload area */}
                   <div
-                    className="group relative border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50 flex flex-col items-center justify-center cursor-pointer overflow-hidden transition-all hover:border-indigo-400 hover:bg-white hover:shadow-xl active:scale-[0.99]"
-                    style={{ minHeight: '160px' }}
+                    className="border-2 border-dashed border-indigo-200 rounded-2xl bg-indigo-50/40 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
+                    style={{minHeight: '120px'}}
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleFileChange} />
-                    {previewUrl ? (
-                      <div className="relative w-full h-full p-4 flex items-center justify-center">
-                        <img src={previewUrl} alt="Preview" className="max-h-56 rounded-2xl shadow-2xl object-contain border-4 border-white" />
-                        <div className="absolute inset-0 bg-slate-900/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <span className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-xl text-xs font-black text-slate-900 shadow-lg">Change Image</span>
+                    {previewUrl
+                      ? <img src={previewUrl} alt="Preview" className="max-h-48 rounded-xl shadow-sm object-contain" />
+                      : (
+                        <div className="flex flex-col items-center gap-2 py-6 text-indigo-500">
+                          <Camera size={36} />
+                          <span className="font-semibold text-sm">Tap to capture or upload</span>
+                          <span className="text-xs text-indigo-400">Photo of handwritten / printed list</span>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-3 py-10 text-slate-400 group-hover:text-indigo-500 transition-colors">
-                        <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center border border-slate-100 group-hover:border-indigo-100">
-                          <Camera size={32} strokeWidth={1.5} />
-                        </div>
-                        <div className="text-center">
-                          <span className="block font-black text-sm text-slate-900">Snap a Photo</span>
-                          <span className="text-xs font-bold text-slate-400 mt-1">Capture handwritten or printed lists</span>
-                        </div>
-                      </div>
-                    )}
+                      )
+                    }
                   </div>
+
                   {file && (
                     <button
                       disabled={isProcessing}
                       onClick={processImage}
-                      className="w-full relative overflow-hidden bg-indigo-600 text-white font-black py-4.5 rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-500 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                      className="w-full bg-indigo-600 text-white font-semibold py-3.5 rounded-xl hover:bg-indigo-700 active:bg-indigo-800 transition flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
                     >
                       {isProcessing ? (
-                        <div className="flex items-center gap-3">
-                          <span className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" />
-                          <span className="text-sm">Artificial Intelligence at Work...</span>
-                        </div>
+                        <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Analyzing…</>
                       ) : (
-                        <>
-                          <Sparkles size={20} />
-                          <span className="text-sm">Identify All Products</span>
-                        </>
+                        <><Camera size={16} />Analyze Image</>
                       )}
                     </button>
                   )}
                 </div>
               ) : (
                 /* ── REVIEW STATE: Detected items list ── */
-                <div className="flex flex-col">
+                <div className="flex flex-col" style={{height: '100%'}}>
                   {/* Header */}
-                  <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-white/90 backdrop-blur-xl sticky top-0 z-20">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
-                        <CheckCircle size={20} strokeWidth={2.5} />
-                      </div>
+                  <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
+                        <CheckCircle size={14} className="text-emerald-600" />
+                      </span>
                       <div>
-                        <p className="text-base font-black text-slate-900 tracking-tight leading-none">Review Detected Items</p>
-                        <p className="text-[10px] font-bold text-slate-400 mt-1.5 uppercase tracking-widest">{reviewItems.length} Products Found</p>
+                        <p className="text-sm font-bold text-slate-900 leading-none">Detected Items</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">{reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} found</p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => { setIsReviewing(false); setReviewItems([]); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
-                      className="p-2.5 rounded-2xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all active:scale-90"
-                    >
-                      <Trash2 size={20} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {isListening && (
+                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-rose-500 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                          </span>
+                          Live
+                        </span>
+                      )}
+                      <button
+                        onClick={() => { setIsReviewing(false); setReviewItems([]); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
+                        className="text-xs text-slate-400 hover:text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition font-medium"
+                      >
+                        Clear
+                      </button>
+                    </div>
                   </div>
 
+                  {/* Live transcript strip */}
+                  {isListening && finalTranscript && (
+                    <div className="mx-4 mt-3 px-3 py-2 bg-rose-50 border border-rose-100 rounded-xl flex-shrink-0">
+                      <p className="text-xs text-rose-600 leading-relaxed line-clamp-2">{finalTranscript}</p>
+                    </div>
+                  )}
+
                   {/* Items list */}
-                  <div className="bg-slate-50/30 p-4 md:p-6 space-y-4">
-                    {reviewItems.map((item, idx) => {
-                      const isMatched = !!item.productId;
-                      const isDup = item.isRepeated;
-                      
-                      return (
-                        <div
-                          key={idx}
-                          className={`group relative rounded-3xl border-2 transition-all duration-300 hover:shadow-xl ${
-                            isDup
-                              ? 'border-amber-200 bg-amber-50/40 shadow-amber-100/20'
-                              : isMatched
-                              ? 'border-emerald-100 bg-white shadow-emerald-100/10'
-                              : 'border-rose-100 bg-rose-50/30 shadow-rose-100/10'
-                          }`}
-                        >
-                          {/* Status Badge */}
-                          <div className="absolute -top-3 left-4">
-                            <span className={`flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm ${
-                              isDup 
-                                ? 'bg-amber-400 text-white' 
-                                : isMatched 
-                                ? 'bg-emerald-500 text-white' 
-                                : 'bg-rose-500 text-white'
-                            }`}>
-                              {isDup ? (
-                                <><AlertTriangle size={10} strokeWidth={3} /> Duplicate</>
-                              ) : isMatched ? (
-                                <><Check size={10} strokeWidth={3} /> Verified</>
-                              ) : (
-                                <><Search size={10} strokeWidth={3} /> Not Found</>
-                              )}
+                  <div className="bg-slate-50/50 p-4 space-y-3 overflow-y-auto max-h-[55vh]">
+                    {reviewItems.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className={`relative rounded-2xl border overflow-hidden transition-all ${
+                          item.isRepeated
+                            ? 'border-amber-300 bg-amber-50/30'
+                            : item.productId
+                            ? 'border-slate-200 bg-white'
+                            : 'border-rose-200 bg-rose-50/20'
+                        }`}
+                      >
+                        {/* Top color bar */}
+                        <div className={`h-0.5 w-full ${item.isRepeated ? 'bg-amber-400' : item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+
+                        <div className="p-3">
+                          {item.isRepeated && (
+                            <span className="absolute top-2.5 right-2.5 bg-amber-400 text-white text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full">Dup</span>
+                          )}
+
+                          {/* Row 1: image + name + delete */}
+                          <div className="flex gap-2.5 items-center">
+                            <div className={`w-10 h-10 rounded-lg overflow-hidden shrink-0 flex items-center justify-center border ${item.productId ? 'border-slate-100 bg-slate-50' : 'border-rose-100 bg-rose-50'}`}>
+                              {item.imageUrl
+                                ? <img src={item.imageUrl} className="w-full h-full object-cover" />
+                                : <Package className={item.productId ? 'text-slate-300' : 'text-rose-300'} size={18} />
+                              }
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <input
+                                value={item.name}
+                                onChange={e => { const n = [...reviewItems]; n[idx].name = e.target.value; setReviewItems(n); }}
+                                className="font-semibold text-slate-900 w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none text-sm pb-0.5 transition-colors"
+                                placeholder="Product Name"
+                              />
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                                <span className={`text-[10px] font-medium truncate ${item.productId ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                  {item.productId ? (item.aiLabel || 'Matched') : 'Not found in catalog'}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                const newItems = reviewItems.filter((_, i) => i !== idx);
+                                baseReviewItemsRef.current = newItems;
+                                globalTranscriptRef.current = "";
+                                currentBreathRef.current = "";
+                                setFinalTranscript("");
+                                if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e) {} }
+                                setReviewItems(newItems);
+                              }}
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors shrink-0"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+
+                          {/* Row 2: qty + price */}
+                          <div className="flex gap-2 mt-2.5 items-center">
+                            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden h-8 shrink-0">
+                              <button onClick={() => { const n = [...reviewItems]; n[idx].quantity = Math.max(1, n[idx].quantity - 1); setReviewItems(n); }} className="w-7 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition font-bold text-sm">−</button>
+                              <input type="number" className="w-10 text-center text-xs font-bold focus:outline-none bg-transparent text-slate-800" value={item.quantity} onChange={e => { const n = [...reviewItems]; n[idx].quantity = parseFloat(e.target.value) || 1; setReviewItems(n); }} />
+                              <span className="text-[10px] text-slate-400 font-semibold pr-1.5">{item.unit || item.baseUnit}</span>
+                              <button onClick={() => { const n = [...reviewItems]; n[idx].quantity += 1; setReviewItems(n); }} className="w-7 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition font-bold text-sm">+</button>
+                            </div>
+                            <div className="flex items-center gap-1 flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
+                              <span className="text-slate-400 text-xs font-medium">₹</span>
+                              <input type="number" className="flex-1 bg-transparent focus:outline-none text-xs font-bold text-slate-800 min-w-0" value={item.price || item.sellingPrice || 0} onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }} />
+                            </div>
+                            <span className="text-xs font-bold text-indigo-600 shrink-0">
+                              ₹{((item.price || 0) * item.quantity).toFixed(0)}
                             </span>
                           </div>
 
-                          <div className="p-4 pt-5">
-                            {/* Row 1: Image, Name, and Delete */}
-                            <div className="flex gap-4 items-start">
-                              <div className={`w-14 h-14 rounded-2xl overflow-hidden shrink-0 flex items-center justify-center border-2 transition-transform group-hover:scale-105 ${
-                                isMatched ? 'border-emerald-50 bg-white' : 'border-rose-50 bg-white'
-                              } shadow-sm`}>
-                                {item.imageUrl
-                                  ? <img src={item.imageUrl} className="w-full h-full object-contain p-1" />
-                                  : <Package className={isMatched ? 'text-emerald-200' : 'text-rose-200'} size={24} />
-                                }
-                              </div>
-                              
-                              <div className="flex-1 min-w-0">
-                                <input
-                                  value={item.name}
-                                  onChange={e => { const n = [...reviewItems]; n[idx].name = e.target.value; setReviewItems(n); }}
-                                  className="font-bold text-slate-800 w-full bg-transparent border-b-2 border-transparent hover:border-slate-100 focus:border-indigo-400 focus:outline-none text-base pb-1 transition-all"
-                                  placeholder="Enter product name..."
-                                />
-                                <div className="flex items-center gap-2 mt-1.5">
-                                  <div className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                    isMatched ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'
-                                  }`}>
-                                    {isMatched ? (item.aiLabel || 'Matched in Catalog') : 'Missing from Database'}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <button
-                                onClick={() => {
-                                  const newItems = reviewItems.filter((_, i) => i !== idx);
-                                  baseReviewItemsRef.current = newItems;
-                                  setReviewItems(newItems);
-                                }}
-                                className="w-9 h-9 rounded-2xl flex items-center justify-center text-slate-300 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-100 border border-transparent transition-all shrink-0 active:scale-90"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-
-                            {/* Row 2: Controls */}
-                            <div className="flex flex-wrap gap-3 mt-5 items-center">
-                              {/* Quantity Control */}
-                              <div className="flex items-center bg-slate-100/80 backdrop-blur-sm p-1 rounded-2xl border border-slate-200/50 shadow-inner">
-                                <button 
-                                  onClick={() => { const n = [...reviewItems]; n[idx].quantity = Math.max(1, n[idx].quantity - 1); setReviewItems(n); }}
-                                  className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-600 hover:bg-white hover:text-indigo-600 transition-all shadow-sm active:scale-90"
-                                >
-                                  <Minus size={14} strokeWidth={3} />
-                                </button>
-                                <div className="flex flex-col items-center px-3 min-w-[3rem]">
-                                  <input 
-                                    type="number" 
-                                    className="w-full text-center text-sm font-black focus:outline-none bg-transparent text-slate-800" 
-                                    value={item.quantity} 
-                                    onChange={e => { const n = [...reviewItems]; n[idx].quantity = parseFloat(e.target.value) || 1; setReviewItems(n); }} 
-                                  />
-                                  <span className="text-[9px] font-extrabold uppercase text-slate-400 tracking-tighter">
-                                    {item.unit || item.baseUnit || 'pc'}
-                                  </span>
-                                </div>
-                                <button 
-                                  onClick={() => { const n = [...reviewItems]; n[idx].quantity += 1; setReviewItems(n); }}
-                                  className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-600 hover:bg-white hover:text-indigo-600 transition-all shadow-sm active:scale-90"
-                                >
-                                  <Plus size={14} strokeWidth={3} />
-                                </button>
-                              </div>
-
-                              {/* Price Input */}
-                              <div className="flex-1 min-w-[120px] flex items-center gap-2 bg-slate-100/80 backdrop-blur-sm px-3 h-10 rounded-2xl border border-slate-200/50 shadow-inner group/price">
-                                <IndianRupee size={12} className="text-slate-400 group-focus-within/price:text-indigo-500 transition-colors" />
-                                <div className="flex flex-col flex-1">
-                                  <span className="text-[8px] font-black uppercase text-slate-400 tracking-wider">Unit Price</span>
-                                  <input 
-                                    type="number" 
-                                    className="bg-transparent focus:outline-none text-sm font-black text-slate-800 w-full" 
-                                    value={item.price || item.sellingPrice || 0} 
-                                    onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }} 
-                                  />
-                                </div>
-                              </div>
-
-                              {/* Total for this item */}
-                              <div className="bg-indigo-600 text-white px-4 h-10 rounded-2xl flex flex-col items-center justify-center shadow-lg shadow-indigo-200 shrink-0">
-                                <span className="text-[8px] font-black uppercase text-white/70 tracking-widest leading-none">Subtotal</span>
-                                <span className="text-sm font-black">₹{((item.price || 0) * item.quantity).toFixed(0)}</span>
+                          {/* Suggestions */}
+                          {item.suggestions && item.suggestions.length > 0 && (
+                            <div className="mt-3 pt-2.5 border-t border-slate-100">
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Similar products</p>
+                              <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
+                                {item.suggestions.map((sug: any, sIdx: number) => (
+                                  <button
+                                    key={sIdx}
+                                    onClick={() => {
+                                      const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl };
+                                      if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                      const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides }; setReviewItems(newItems);
+                                    }}
+                                    className="flex-shrink-0 flex flex-col items-center bg-white border border-slate-200 hover:border-indigo-300 rounded-xl overflow-hidden w-16 transition-all"
+                                  >
+                                    <div className="w-full h-12 bg-slate-50 overflow-hidden flex items-center justify-center">
+                                      {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={16} />}
+                                    </div>
+                                    <div className="p-1 text-center">
+                                      <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{sug.name}</p>
+                                      <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                    </div>
+                                  </button>
+                                ))}
                               </div>
                             </div>
-
-                            {/* Suggestions Slider */}
-                            {item.suggestions && item.suggestions.length > 0 && (
-                              <div className="mt-5 pt-4 border-t border-slate-100/50">
-                                <div className="flex items-center gap-2 mb-3">
-                                  <Sparkles size={12} className="text-indigo-400" />
-                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Smart Recommendations</p>
-                                </div>
-                                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none" style={{ scrollbarWidth: 'none' }}>
-                                  {item.suggestions.map((sug: any, sIdx: number) => (
-                                    <button
-                                      key={sIdx}
-                                      onClick={() => {
-                                        const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl };
-                                        if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
-                                        const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides }; setReviewItems(newItems);
-                                      }}
-                                      className="flex-shrink-0 group/sug w-24 bg-white border border-slate-200 hover:border-indigo-400 hover:shadow-lg rounded-2xl overflow-hidden transition-all duration-300"
-                                    >
-                                      <div className="w-full h-16 bg-slate-50 flex items-center justify-center p-2 relative">
-                                        {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-contain" /> : <Package className="text-slate-300" size={20} />}
-                                        <div className="absolute inset-0 bg-indigo-600/0 group-hover/sug:bg-indigo-600/5 transition-colors" />
-                                      </div>
-                                      <div className="p-2 border-t border-slate-100">
-                                        <p className="text-[9px] font-black text-slate-700 line-clamp-2 leading-tight h-5 mb-1">{sug.name}</p>
-                                        <div className="flex items-center justify-between">
-                                          <p className="text-[10px] font-black text-indigo-600">₹{(sug.price || 0).toFixed(0)}</p>
-                                          <Plus size={10} className="text-slate-300 group-hover/sug:text-indigo-500" />
-                                        </div>
-                                      </div>
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                          )}
                         </div>
-                      );
-                    })}
+                      </div>
+                    ))}
                     <div ref={reviewEndRef} />
                   </div>
+
                   {/* Add to Bill button */}
-                  <div className="px-6 pb-10 pt-5 flex-shrink-0 border-t border-slate-100 bg-white shadow-[0_-20px_40px_rgba(0,0,0,0.03)]">
+                  <div className="px-4 pb-4 pt-2 flex-shrink-0 border-t border-slate-100 bg-white">
                     <button
                       onClick={confirmReview}
-                      className="group w-full relative overflow-hidden bg-slate-900 text-white font-black py-5 rounded-[1.5rem] transition-all active:scale-[0.98] shadow-2xl shadow-slate-200 flex items-center justify-center gap-3 text-lg"
+                      className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-3.5 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 active:scale-[0.98] transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm"
                     >
-                      <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 opacity-100 group-hover:opacity-90 transition-opacity" />
-                      <div className="relative flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-inner">
-                          <Check size={18} strokeWidth={4} />
-                        </div>
-                        <span className="tracking-tight">Add {reviewItems.length} Products to Bill</span>
-                      </div>
+                      <CheckCircle size={18} />
+                      Add {reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} to Bill
                     </button>
                   </div>
                 </div>
