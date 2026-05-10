@@ -264,50 +264,40 @@ export default function BillingPage() {
 
     const seenItemsMap = new Set();
 
-    const matchedItems = normalizedItems.flatMap(item => {
-      const searchName = item.name.replace(/\d+/g, '').replace(/\b(kg|g|ml|l|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m)\b/gi, '').trim();
+    const matchedItems = normalizedItems.map(item => {
+      const searchName = item.name
+        .replace(/\d+/g, '')
+        .replace(/\b(kg|kilo|kilograms?|g|gram|grams?|ml|l|liter|litre|litres?|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m|khula|loose|खुला)\b/gi, '')
+        .trim();
+        
       const result = fuse.search(searchName);
-      
-      const foundMatches: any[] = [];
+      let bestMatch: any = null;
 
       // Strong match for multi-word products like 'parle g' or 'aashirvaad atta'
-      if (result.length && (result[0].score ?? 1) <= 0.35) { // Slightly relaxed to 0.35
-        foundMatches.push(result[0].item);
+      if (result.length && (result[0].score ?? 1) <= 0.45) {
+        bestMatch = result[0].item;
       } else {
-        // Weak match (e.g. 'namak chini' against 'namak'). Try splitting into individual items!
+        // Fallback: If full phrase fails, try individual words but only pick the absolute BEST one
         const words = searchName.split(/\s+/);
-        const seenIds = new Set();
-        const genericWords = [
-            'dal', 'daal', 'powder', 'oil', 'tel', 'packet', 'pouch', 'khula', 'loose', 'milk', 'dudh', 'doodh',
-            'दाल', 'पाउडर', 'तेल', 'खुला', 'दूध', 'पैकेट', 'मसाला', 'masala', 'bhaji', 'sabji', 'sabzi',
-            'atta', 'आटा', 'rice', 'chawal', 'चावल'
-        ];
+        let bestWordScore = 1;
         
         for (const w of words) {
             const cleanW = w.toLowerCase().trim();
-            // Stricter word length (4+) and check against expanded generic list
-            if (cleanW.length >= 4 && !genericWords.includes(cleanW)) {
+            if (cleanW.length >= 3) {
                 const subResult = fuse.search(cleanW);
-                // Require an extremely strict match (0.1) for individual words to avoid false positives
-                if (subResult.length && (subResult[0].score ?? 1) <= 0.1) {
-                    const matchItem = subResult[0].item;
-                    if (!seenIds.has(matchItem.id)) {
-                        seenIds.add(matchItem.id);
-                        foundMatches.push(matchItem);
+                if (subResult.length && (subResult[0].score ?? 1) < bestWordScore) {
+                    bestWordScore = subResult[0].score ?? 1;
+                    if (bestWordScore <= 0.3) {
+                        bestMatch = subResult[0].item;
                     }
                 }
             }
         }
-        
-        // If word-by-word failed but we had a passable full-phrase match, use it
-        if (foundMatches.length === 0 && result.length && (result[0].score ?? 1) <= 0.6) {
-            foundMatches.push(result[0].item);
-        }
       }
 
       // PHASE 5: REJECTION SYSTEM
-      if (foundMatches.length === 0) {
-        return [{
+      if (!bestMatch) {
+        return {
           name: item.name,
           quantity: item.quantity,
           unit: item.unit,
@@ -317,117 +307,116 @@ export default function BillingPage() {
           confidence: 'low',
           aiLabel: item.name,
           isRepeated: false
-        }];
+        };
       }
 
       // PHASE 4: FINAL SAFE OUTPUT
-      return foundMatches.map(match => {
-        const key = (match.id || item.name).toLowerCase();
-        let isRepeated = false;
-        if (seenItemsMap.has(key)) {
-          isRepeated = true;
-        } else {
-          seenItemsMap.add(key);
-        }
+      const match = bestMatch;
+      const key = (match.id || item.name).toLowerCase();
+      let isRepeated = false;
+      if (seenItemsMap.has(key)) {
+        isRepeated = true;
+      } else {
+        seenItemsMap.add(key);
+      }
 
-        let finalQty = item.quantity;
-        let finalUnit = item.unit || 'pc';
-        const baseUnit = match.baseUnit || 'pc';
-        const baseQty = match.baseQuantity || 1;
+      let finalQty = item.quantity;
+      let finalUnit = item.unit || 'pc';
+      const baseUnit = match.baseUnit || 'pc';
+      const baseQty = match.baseQuantity || 1;
 
-        if (item.unit === 'g') {
-            if (baseUnit === 'kg') {
-                finalQty = finalQty / 1000;
-                finalUnit = 'kg';
-            } else if (baseUnit === 'pc') {
-                if (baseQty > 1) {
-                    finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                    finalUnit = 'pc';
-                } else {
-                    finalUnit = 'g';
-                }
-            } else if (baseUnit === 'g') {
-                if (baseQty > 1) {
-                    finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                    finalUnit = 'pc';
-                } else {
-                    finalUnit = 'g';
-                }
-            }
-        } else if (item.unit === 'ml') {
-            if (baseUnit === 'l') {
-                finalQty = finalQty / 1000;
-                finalUnit = 'l';
-            } else if (baseUnit === 'pc') {
-                if (baseQty > 1) {
-                    finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                    finalUnit = 'pc';
-                } else {
-                    finalUnit = 'ml';
-                }
-            } else if (baseUnit === 'ml') {
-                if (baseQty > 1) {
-                    finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                    finalUnit = 'pc';
-                } else {
-                    finalUnit = 'ml';
-                }
-            }
-        } else if (item.unit === 'kg') {
-            if (baseUnit === 'pc') {
-                if (baseQty > 1) {
-                    finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
-                    finalUnit = 'pc';
-                } else {
-                    finalUnit = 'kg';
-                }
-            } else if (baseUnit === 'kg') {
-                if (baseQty > 1) {
-                    finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                    finalUnit = 'pc';
-                } else {
-                    finalUnit = 'kg';
-                }
-            }
-        } else if (item.unit === 'l') {
-            if (baseUnit === 'pc') {
-                if (baseQty > 1) {
-                    finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
-                    finalUnit = 'pc';
-                } else {
-                    finalUnit = 'l';
-                }
-            } else if (baseUnit === 'l') {
-                if (baseQty > 1) {
-                    finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                    finalUnit = 'pc';
-                } else {
-                    finalUnit = 'l';
-                }
-            }
-        } else {
-          finalUnit = item.unit;
-        }
+      if (item.unit === 'g') {
+          if (baseUnit === 'kg') {
+              finalQty = finalQty / 1000;
+              finalUnit = 'kg';
+          } else if (baseUnit === 'pc') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'g';
+              }
+          } else if (baseUnit === 'g') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'g';
+              }
+          }
+      } else if (item.unit === 'ml') {
+          if (baseUnit === 'l') {
+              finalQty = finalQty / 1000;
+              finalUnit = 'l';
+          } else if (baseUnit === 'pc') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'ml';
+              }
+          } else if (baseUnit === 'ml') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'ml';
+              }
+          }
+      } else if (item.unit === 'kg') {
+          if (baseUnit === 'pc') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'kg';
+              }
+          } else if (baseUnit === 'kg') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'kg';
+              }
+          }
+      } else if (item.unit === 'l') {
+          if (baseUnit === 'pc') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'l';
+              }
+          } else if (baseUnit === 'l') {
+              if (baseQty > 1) {
+                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
+                  finalUnit = 'pc';
+              } else {
+                  finalUnit = 'l';
+              }
+          }
+      } else {
+        finalUnit = item.unit;
+      }
 
-        return {
-          productId: match.id,
-          name: match.name,
-          localName: match.localName,
-          imageUrl: match.imageUrl,
-          quantity: finalQty,
-          unit: finalUnit,
-          baseUnit: match.baseUnit,
-          baseQuantity: match.baseQuantity,
-          packetWeight: match.packetWeight,
-          packetUnit: match.packetUnit,
-          price: match.price,
-          costPrice: match.costPrice,
-          confidence: 'high',
-          hasExplicitQty: true,
-          aiLabel: match.name,
-          isRepeated
-        };
-      });
+      return {
+        productId: match.id,
+        name: match.name,
+        localName: match.localName,
+        imageUrl: match.imageUrl,
+        quantity: finalQty,
+        unit: finalUnit,
+        baseUnit: match.baseUnit,
+        baseQuantity: match.baseQuantity,
+        packetWeight: match.packetWeight,
+        packetUnit: match.packetUnit,
+        price: match.price,
+        costPrice: match.costPrice,
+        confidence: 'high',
+        hasExplicitQty: true,
+        aiLabel: match.name,
+        isRepeated
+      };
     });
 
     return matchedItems;
