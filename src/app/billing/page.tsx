@@ -4,7 +4,7 @@ import Fuse from 'fuse.js';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
+import { Search, Camera, FileText, Upload, Plus, Minus, Trash, Trash2, CheckCircle, Check, TriangleAlert, AlertTriangle, ShoppingCart, X, Package, Sparkles, IndianRupee } from 'lucide-react';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
 
