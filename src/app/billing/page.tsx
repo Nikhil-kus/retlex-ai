@@ -271,18 +271,20 @@ export default function BillingPage() {
       const foundMatches: any[] = [];
 
       // Strong match for multi-word products like 'parle g' or 'aashirvaad atta'
-      if (result.length && (result[0].score ?? 1) <= 0.3) {
+      if (result.length && (result[0].score ?? 1) <= 0.35) { // Slightly relaxed to 0.35
         foundMatches.push(result[0].item);
       } else {
         // Weak match (e.g. 'namak chini' against 'namak'). Try splitting into individual items!
         const words = searchName.split(/\s+/);
         const seenIds = new Set();
+        const genericWords = ['dal', 'daal', 'powder', 'oil', 'tel', 'packet', 'pouch', 'khula', 'loose', 'milk', 'dudh', 'doodh'];
         
         for (const w of words) {
-            if (w.length > 2) {
-                const subResult = fuse.search(w);
-                // Require a strict match for individual words to avoid false positives
-                if (subResult.length && (subResult[0].score ?? 1) <= 0.4) {
+            const cleanW = w.toLowerCase().trim();
+            if (cleanW.length > 2 && !genericWords.includes(cleanW)) {
+                const subResult = fuse.search(cleanW);
+                // Require a stricter match (0.3) for individual words to avoid false positives
+                if (subResult.length && (subResult[0].score ?? 1) <= 0.3) {
                     const matchItem = subResult[0].item;
                     if (!seenIds.has(matchItem.id)) {
                         seenIds.add(matchItem.id);
