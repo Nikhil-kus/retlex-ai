@@ -1365,7 +1365,7 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 2 - Scan Slip / Review */}
-            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col" style={{minHeight: 0}}>
+            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col" style={{minHeight: 0, height: isReviewing ? '70vh' : 'auto'}}>
               {!isReviewing ? (
                 /* ── IDLE STATE: Upload / Voice prompt ── */
                 <div className="flex flex-col gap-4 p-5">
@@ -1436,7 +1436,7 @@ export default function BillingPage() {
                 </div>
               ) : (
                 /* ── REVIEW STATE: Detected items list ── */
-                <div className="flex flex-col" style={{height: '100%'}}>
+                <div className="flex flex-col h-full">
                   {/* Header */}
                   <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 flex-shrink-0">
                     <div className="flex items-center gap-2">
@@ -1475,7 +1475,7 @@ export default function BillingPage() {
                   )}
 
                   {/* Items list */}
-                  <div className="bg-slate-50/50 p-4 space-y-3 overflow-y-auto max-h-[55vh]">
+                  <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4 space-y-3">
                     {reviewItems.map((item, idx) => (
                       <div
                         key={idx}
