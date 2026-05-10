@@ -445,7 +445,7 @@ export default function ProductsPage() {
                               src={p.imageUrl}
                               alt={p.name}
                               fill
-                              className="object-cover hover:scale-105 transition"
+                              className="object-contain hover:scale-105 transition"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
                               }}
