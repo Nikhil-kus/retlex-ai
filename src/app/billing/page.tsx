@@ -614,6 +614,8 @@ export default function BillingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reviewEndRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
+  const [sliderHeight, setSliderHeight] = useState<number | 'auto'>('auto');
+
 
   useEffect(() => {
     if (reviewEndRef.current) {
@@ -650,6 +652,29 @@ export default function BillingPage() {
     if (slide2Ref.current) slide2Ref.current.scrollTop = 0;
   }, [isReviewing]);
 
+
+  // Dynamic height adjustment for the slider
+  useEffect(() => {
+    const slideRefs = [slide0Ref, slide1Ref, slide2Ref];
+    const activeSlide = slideRefs[modeIndex]?.current;
+    
+    if (!activeSlide) return;
+
+    const updateHeight = () => {
+      const height = activeSlide.scrollHeight;
+      // For the Scan Slip tab (modeIndex 2), ensure a minimum height for the camera area
+      const minHeight = modeIndex === 2 ? 400 : 0;
+      setSliderHeight(Math.max(height, minHeight));
+    };
+
+    updateHeight();
+    
+    // Also update height if content inside the slide changes (e.g. search results)
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(activeSlide);
+    
+    return () => observer.disconnect();
+  }, [modeIndex, reviewItems.length, searchResults.length, selectedCategory, isReviewing]);
 
   useEffect(() => {
     fetch('/api/shop').then(r => r.json()).then(data => {
@@ -936,6 +961,7 @@ export default function BillingPage() {
     }
   };
 
+
   if (!shop) return <div className="p-8 text-center mt-20">Loading...</div>;
   if (shop.error) return (
     <div className="p-8 max-w-lg mx-auto mt-20 text-center space-y-6">
@@ -948,11 +974,11 @@ export default function BillingPage() {
   );
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6 h-full">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6">
 
       {/* Main Panel */}
-      <div className="flex-1 flex flex-col gap-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1">
+      <div className="flex flex-col gap-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
           <div className="flex border-b border-slate-100">
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
             <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
@@ -977,10 +1003,13 @@ export default function BillingPage() {
           )}
 
           {/* Swipeable slider - 3 panels side by side */}
-          <div className="overflow-hidden flex-1" style={{minHeight: 0}}>
+          <div 
+            className="overflow-hidden transition-[height] duration-300 ease-out" 
+            style={{ height: sliderHeight === 'auto' ? 'auto' : `${sliderHeight}px` }}
+          >
           <div
             ref={sliderRef}
-            className="flex h-full"
+            className="flex items-start"
             style={{
               transform: `translateX(-${modeIndex * 100}%)`,
               transition: 'transform 200ms ease-out',
@@ -1015,11 +1044,11 @@ export default function BillingPage() {
             }}
           >
             {/* Slide 0 - Manual Search */}
-            <div ref={slide0Ref} className="w-full shrink-0 overflow-y-auto flex flex-col">
+            <div ref={slide0Ref} className="w-full shrink-0 flex flex-col">
 
               {/* ── Category full-page view ── */}
               {selectedCategory ? (
-                <div className="flex flex-col flex-1">
+                <div className="flex flex-col">
                   {/* Header */}
                   <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-slate-100 sticky top-0 bg-white z-10">
                     <button
@@ -1264,7 +1293,7 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 1 - Pending Bills */}
-            <div ref={slide1Ref} className="w-full shrink-0 p-6 space-y-8 overflow-y-auto">
+            <div ref={slide1Ref} className="w-full shrink-0 p-6 space-y-8">
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Pending</h3></div>
@@ -1336,7 +1365,7 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 2 - Scan Slip / Review */}
-            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}>
+            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col" style={{minHeight: 0}}>
               {!isReviewing ? (
                 /* ── IDLE STATE: Upload / Voice prompt ── */
                 <div className="flex flex-col gap-4 p-5">
@@ -1446,7 +1475,7 @@ export default function BillingPage() {
                   )}
 
                   {/* Items list */}
-                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5" style={{minHeight: 0}}>
+                  <div className="bg-slate-50/50 p-4 space-y-3">
                     {reviewItems.map((item, idx) => (
                       <div
                         key={idx}
