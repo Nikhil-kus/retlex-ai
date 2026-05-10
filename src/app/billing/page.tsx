@@ -1342,7 +1342,7 @@ export default function BillingPage() {
             <div ref={slide2Ref} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}>
               {!isReviewing ? (
                 /* ── IDLE STATE: Upload / Voice prompt ── */
-                <div className="flex flex-col gap-4 p-5">
+                <div className="flex-1 flex flex-col justify-center gap-6 p-6">
                   {/* Voice hint banner */}
                   {isListening ? (
                     <div className="relative overflow-hidden rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50">

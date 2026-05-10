@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Store, Package, Receipt, History, ChartColumn, Menu, X, FileText } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -18,6 +18,11 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+
+  // Reset main scroll container on route change
+  useEffect(() => {
+    document.getElementById('main-scroll-container')?.scrollTo(0, 0);
+  }, [pathname]);
 
   // If path is public QR route, hide sidebar
   if (pathname.startsWith('/qr/')) return null;
