@@ -9,19 +9,30 @@ export default function WorkerPage() {
   const { pName } = useHindi();
   const [bills, setBills] = useState<any[]>([]);
   const [shop, setShop] = useState<any>(null);
+  const [catalog, setCatalog] = useState<Record<string, string>>({}); // productId -> imageUrl
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [selectedBill, setSelectedBill] = useState<any>(null);
-  // Map to store packed items for each bill: billId -> Set of item indices
   const [billPackedItems, setBillPackedItems] = useState<Map<string, Set<number>>>(new Map());
 
-  // Fetch shop info
+  // Fetch shop info + catalog
   useEffect(() => {
     fetch('/api/shop')
       .then(r => r.json())
       .then(data => {
         setShop(data);
-        if (data?.id) fetchPendingBills(data.id);
+        if (data?.id) {
+          fetchPendingBills(data.id);
+          // Fetch catalog to get images for bill items that don't have imageUrl saved
+          fetch(`/api/products?shopId=${data.id}`)
+            .then(r => r.json())
+            .then((products: any[]) => {
+              const map: Record<string, string> = {};
+              products.forEach(p => { if (p.id && p.imageUrl) map[p.id] = p.imageUrl; });
+              setCatalog(map);
+            })
+            .catch(() => {});
+        }
       });
   }, []);
 
@@ -245,11 +256,16 @@ export default function WorkerPage() {
 
                           {/* Product image */}
                           <div className="flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-slate-700 border border-slate-600 flex items-center justify-center">
-                            {item.imageUrl
-                              ? <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; (e.currentTarget.nextSibling as HTMLElement)?.classList.remove('hidden'); }} />
+                            {(item.imageUrl || catalog[item.productId])
+                              ? <img
+                                  src={item.imageUrl || catalog[item.productId]}
+                                  alt={item.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => { e.currentTarget.style.display = 'none'; (e.currentTarget.nextSibling as HTMLElement)?.classList.remove('hidden'); }}
+                                />
                               : null
                             }
-                            <Package className={`text-slate-500 ${item.imageUrl ? 'hidden' : ''}`} size={22} />
+                            <Package className={`text-slate-500 ${(item.imageUrl || catalog[item.productId]) ? 'hidden' : ''}`} size={22} />
                           </div>
 
                           {/* Name + details */}
