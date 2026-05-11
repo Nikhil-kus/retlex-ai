@@ -15,6 +15,7 @@ export default function CustomerPage() {
   const globalTranscriptRef = useRef("");
   const currentBreathRef = useRef("");
   const silenceRef = useRef<any>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
 
@@ -453,25 +454,32 @@ export default function CustomerPage() {
     setIsListening(true);
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
-    // Start a continuous infra-sound loop to keep the audio channel "hot"
-    // and suppress Android Chrome's system beep sounds
+    // 1. Start a continuous infra-sound loop (output channel keep-alive)
     try {
         const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
         if (AudioContext) {
             const ctx = new AudioContext();
             const gainNode = ctx.createGain();
-            gainNode.gain.value = 0.001; // Extremely quiet but active
+            gainNode.gain.value = 0.001;
             gainNode.connect(ctx.destination);
-            
             const osc = ctx.createOscillator();
             osc.type = 'sine';
-            osc.frequency.value = 20; // 20Hz is below human hearing range
+            osc.frequency.value = 20;
             osc.connect(gainNode);
             osc.start(0);
             silenceRef.current = { ctx, osc };
         }
-    } catch (e) {
-        console.error("Silence loop failed", e);
+    } catch (e) {}
+
+    // 2. IMPORTANT: Acquire a persistent hardware microphone lock (input channel keep-alive)
+    // This prevents the Android OS from beeping on every recognition restart
+    // because the microphone session stays "active" at the system level.
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                micStreamRef.current = stream;
+            })
+            .catch(err => console.error("Mic keep-alive failed:", err));
     }
 
     const initMic = () => {
@@ -573,6 +581,13 @@ export default function CustomerPage() {
       try { silenceRef.current.osc.stop(); } catch(e) {}
       try { silenceRef.current.ctx.close(); } catch(e) {}
       silenceRef.current = null;
+    }
+    // Release the hardware microphone lock
+    if (micStreamRef.current) {
+      try {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+      } catch (e) {}
+      micStreamRef.current = null;
     }
   };
 
