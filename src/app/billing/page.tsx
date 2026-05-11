@@ -17,6 +17,8 @@ export default function BillingPage() {
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const silenceCtxRef = useRef<any>(null);
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
     if (!s1) return s2 || "";
@@ -453,6 +455,35 @@ export default function BillingPage() {
     setIsListening(true);
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
+    // ── Android beep suppression ──────────────────────────────────────────────
+    // Android Chrome plays a system beep whenever a new audio session opens.
+    // Holding an open getUserMedia stream + a silent AudioContext oscillator
+    // keeps the audio session alive continuously, so recognition restarts are
+    // treated as session continuations — no new session open → no beep.
+
+    // 1. Grab a raw mic stream to hold the hardware audio session open
+    if (navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => { micStreamRef.current = stream; })
+        .catch(() => {}); // non-fatal — recognition still works without it
+    }
+
+    // 2. Play a zero-volume silent oscillator to keep the AudioContext alive
+    try {
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx && !silenceCtxRef.current) {
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.value = 0; // completely silent
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(0);
+        silenceCtxRef.current = { ctx, osc };
+      }
+    } catch (_) {}
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Create ONE recognition instance for the entire session.
     // Never destroy and recreate it — each new instance + start() call
     // triggers the Android OS "start listening" beep. By reusing the same
@@ -541,6 +572,17 @@ export default function BillingPage() {
     setIsListening(false);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
+    }
+    // Release the hardware mic stream lock
+    if (micStreamRef.current) {
+      try { micStreamRef.current.getTracks().forEach(t => t.stop()); } catch(_) {}
+      micStreamRef.current = null;
+    }
+    // Stop the silent oscillator and close the AudioContext
+    if (silenceCtxRef.current) {
+      try { silenceCtxRef.current.osc.stop(); } catch(_) {}
+      try { silenceCtxRef.current.ctx.close(); } catch(_) {}
+      silenceCtxRef.current = null;
     }
   };
 
