@@ -6,8 +6,10 @@ import { useRouter } from 'next/navigation';
 import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
+import { useHindi } from '@/lib/hindi-context';
 
 export default function CustomerPage() {
+  const { pName } = useHindi();
   const [isListening, setIsListening] = useState(false);
   const [finalTranscript, setFinalTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
@@ -1196,7 +1198,7 @@ export default function CustomerPage() {
                                           )}
                                         </div>
                                         <div className="p-1.5">
-                                          <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{sug.name}</p>
+                                          <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
                                           <p className="text-[10px] font-bold text-emerald-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
                                           <p className="text-[9px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
                                           <div className={`mt-1 w-full rounded-lg py-0.5 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-indigo-600 text-white' : 'border border-indigo-400 text-indigo-600'}`}>
@@ -1530,7 +1532,7 @@ export default function CustomerPage() {
                                       {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={16} />}
                                     </div>
                                     <div className="p-1 text-center">
-                                      <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{sug.name}</p>
+                                      <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
                                       <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
                                     </div>
                                   </button>
@@ -1669,7 +1671,7 @@ export default function CustomerPage() {
                       <tr key={idx}>
                         <td className="py-3">
                           <p className="font-medium text-slate-800">
-                            {item.name} {item.localName && <span className="text-slate-500 font-normal ml-1">({item.localName})</span>}
+                            {pName(item.name, item.localName)}
                           </p>
                         </td>
                         <td className="py-3 text-center text-slate-600">
@@ -1730,6 +1732,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
   const dragStartY = useRef(0);
   const dragCurrentY = useRef(0);
   const isDragging = useRef(false);
+  const { pName } = useHindi();
 
   // Full sheet height (85vh) vs mini bar height (~64px)
   const MINI_HEIGHT = 64;
@@ -1872,7 +1875,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
                       {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-400" size={16} />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-900 text-sm truncate">{item.name}</p>
+                      <p className="font-semibold text-slate-900 text-sm truncate">{pName(item.name, item.localName)}</p>
                       <p className="text-xs text-slate-500">₹{(item.price || 0).toFixed(2)} / {item.baseUnit}</p>
                     </div>
                     <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg h-7 shrink-0">
@@ -1943,6 +1946,7 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
   onAdd: () => void; onInc: () => void; onDec: () => void;
 }) {
   const [pressed, setPressed] = useState(false);
+  const { pName } = useHindi();
 
   const handlePress = () => {
     setPressed(true);
@@ -1995,7 +1999,7 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
 
       {/* Info */}
       <div className="p-2">
-        <p className={`font-semibold text-slate-900 line-clamp-2 leading-tight mb-0.5 ${mini ? 'text-[11px]' : 'text-xs'}`}>{p.name}</p>
+        <p className={`font-semibold text-slate-900 line-clamp-2 leading-tight mb-0.5 ${mini ? 'text-[11px]' : 'text-xs'}`}>{pName(p.name, p.localName)}</p>
         <p className="text-[10px] text-slate-400 mb-1">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
         <p className={`font-bold text-slate-900 ${mini ? 'text-xs mb-1.5' : 'text-sm mb-2'}`}>₹{(p.price || 0).toFixed(0)}</p>
 
