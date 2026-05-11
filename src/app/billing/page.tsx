@@ -17,7 +17,6 @@ export default function BillingPage() {
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
-  const silenceCtxRef = useRef<any>(null);
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
     if (!s1) return s2 || "";
@@ -455,24 +454,8 @@ export default function BillingPage() {
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
     // ── Android beep suppression ──────────────────────────────────────────────
-    // The getUserMedia stream is already held open from page load (see useEffect
-    // above). We only need to ensure the silent oscillator is running to keep
-    // the AudioContext alive between recognition restarts.
-
-    // Play a zero-volume silent oscillator to keep the AudioContext alive
-    try {
-      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx && !silenceCtxRef.current) {
-        const ctx = new AudioCtx();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        gain.gain.value = 0; // completely silent
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(0);
-        silenceCtxRef.current = { ctx, osc };
-      }
-    } catch (_) {}
+    // getUserMedia permission is pre-warmed on page load (see useEffect below).
+    // That's all we need — no AudioContext tricks required.
     // ─────────────────────────────────────────────────────────────────────────
 
     // Create ONE recognition instance for the entire session.
@@ -563,12 +546,6 @@ export default function BillingPage() {
     setIsListening(false);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
-    }
-    // Stop the silent oscillator and close the AudioContext
-    if (silenceCtxRef.current) {
-      try { silenceCtxRef.current.osc.stop(); } catch(_) {}
-      try { silenceCtxRef.current.ctx.close(); } catch(_) {}
-      silenceCtxRef.current = null;
     }
   };
 
