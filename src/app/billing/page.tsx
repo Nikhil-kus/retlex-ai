@@ -511,16 +511,13 @@ export default function BillingPage() {
     };
 
     recognition.onend = () => {
-        // EXPERIMENT: no restart — let continuous:true keep it running on its own.
-        // If recognition stops naturally, we just commit the transcript but do NOT
-        // call recognition.start() again. This removes the mid-speech beep caused
-        // by the restart cycle. If this experiment fails, revert this change.
+        // Restart FIRST before anything else — absolute minimum gap between
+        // stop and start so Android has no time to close the audio session.
+        if (isListeningRef.current) {
+            try { recognition.start(); } catch(_) {}
+        }
         globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
         currentBreathRef.current = "";
-        if (!isListeningRef.current) {
-            // User pressed Stop — expected end, nothing to do
-        }
-        // intentionally no recognition.start() here
     };
 
     try {
