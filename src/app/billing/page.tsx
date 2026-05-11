@@ -585,6 +585,35 @@ export default function BillingPage() {
     }
   }, [reviewItems.length]);
 
+  // ── Android hardware back button support ──────────────────────────────────
+  // Push a history entry whenever a sub-view opens so the browser back button
+  // closes it instead of navigating away from the page.
+  useEffect(() => {
+    const anySubViewOpen = selectedCategory || selectedBill || isReviewing;
+    if (anySubViewOpen) {
+      window.history.pushState({ subView: true }, '');
+    }
+  }, [selectedCategory, selectedBill, isReviewing]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      // Close sub-views in priority order: bill modal > review > category
+      if (selectedBill) { setSelectedBill(null); return; }
+      if (isReviewing) {
+        setIsReviewing(false);
+        setReviewItems([]);
+        globalTranscriptRef.current = '';
+        currentBreathRef.current = '';
+        setFinalTranscript('');
+        return;
+      }
+      if (selectedCategory) { setSelectedCategory(null); return; }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [selectedBill, isReviewing, selectedCategory]);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const modeIndex = mode === 'MANUAL' ? 0 : mode === 'PENDING' ? 1 : 2;
   const isProgrammaticScroll = useRef(false);
   const touchStartX = useRef(0);
