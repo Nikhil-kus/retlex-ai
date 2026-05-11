@@ -17,6 +17,8 @@ export default function BillingPage() {
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const silenceCtxRef = useRef<any>(null);
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
     if (!s1) return s2 || "";
@@ -453,6 +455,32 @@ export default function BillingPage() {
     setIsListening(true);
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
+    // ── Android beep suppression ──────────────────────────────────────────────
+    // The getUserMedia stream was held open from page load to warm the audio
+    // session. Release it now so recognition can take exclusive mic access —
+    // keeping it open causes Android to block recognition audio input.
+    // The silent oscillator alone is enough to keep the AudioContext alive.
+    if (micStreamRef.current) {
+      try { micStreamRef.current.getTracks().forEach(t => t.stop()); } catch(_) {}
+      micStreamRef.current = null;
+    }
+
+    // Play a zero-volume silent oscillator to keep the AudioContext alive
+    try {
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx && !silenceCtxRef.current) {
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.value = 0; // completely silent
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(0);
+        silenceCtxRef.current = { ctx, osc };
+      }
+    } catch (_) {}
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Create ONE recognition instance for the entire session.
     // Never destroy and recreate it — each new instance + start() call
     // triggers the Android OS "start listening" beep. By reusing the same
@@ -519,26 +547,7 @@ export default function BillingPage() {
         if (isListeningRef.current) {
             globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
             currentBreathRef.current = "";
-            // Play a 1-sample silent AudioContext buffer before restarting.
-            // This occupies the audio session so Android Chrome does not fire
-            // its "start listening" beep when recognition.start() is called.
-            try {
-                const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-                if (AudioContext) {
-                    const ctx = new AudioContext();
-                    const buf = ctx.createBuffer(1, 1, 22050);
-                    const src = ctx.createBufferSource();
-                    src.buffer = buf;
-                    src.connect(ctx.destination);
-                    src.start(0);
-                    src.onended = () => {
-                        ctx.close();
-                        if (isListeningRef.current) recognition.start();
-                    };
-                    return; // recognition.start() called from onended
-                }
-            } catch (_) {}
-            // Fallback if AudioContext not available
+            // Restart the SAME instance — no new object created, no OS beep
             try { recognition.start(); } catch(_) {}
         } else {
             globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
@@ -560,6 +569,17 @@ export default function BillingPage() {
     setIsListening(false);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
+    }
+    // Release the hardware mic stream lock
+    if (micStreamRef.current) {
+      try { micStreamRef.current.getTracks().forEach(t => t.stop()); } catch(_) {}
+      micStreamRef.current = null;
+    }
+    // Stop the silent oscillator and close the AudioContext
+    if (silenceCtxRef.current) {
+      try { silenceCtxRef.current.osc.stop(); } catch(_) {}
+      try { silenceCtxRef.current.ctx.close(); } catch(_) {}
+      silenceCtxRef.current = null;
     }
   };
 
@@ -654,11 +674,14 @@ export default function BillingPage() {
     if (!navigator.mediaDevices?.getUserMedia) return;
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(stream => {
-        // Release immediately — we only needed the permission grant.
-        // Holding it open conflicts with SpeechRecognition on Android.
-        stream.getTracks().forEach(t => t.stop());
+        // Keep the stream alive in the ref so the session stays warm.
+        // It will be released when the user stops speaking.
+        micStreamRef.current = stream;
       })
-      .catch(() => {});
+      .catch(() => {
+        // Permission denied or not available — recognition will still
+        // work, it just won't be pre-warmed (beep may still occur).
+      });
   }, []);
 
   const fetchCatalog = async (shopId: string) => {
