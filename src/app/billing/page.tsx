@@ -17,8 +17,6 @@ export default function BillingPage() {
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const silenceCtxRef = useRef<any>(null);
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
     if (!s1) return s2 || "";
@@ -453,21 +451,8 @@ export default function BillingPage() {
     setFinalTranscript("");
     isListeningRef.current = true;
     setIsListening(true);
-    setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
+    setMode('OCR');
 
-    // ── Android beep suppression ──────────────────────────────────────────────
-    // Keep the getUserMedia stream open while recognition runs.
-    // On Android Chrome 120+, recognition shares the mic with an existing
-    // getUserMedia stream instead of opening a new audio session.
-    // This means onend→start() restarts happen within the same session → no beep.
-    // Do NOT release the stream here — let recognition and the stream coexist.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    // Create ONE recognition instance for the entire session.
-    // Never destroy and recreate it — each new instance + start() call
-    // triggers the Android OS "start listening" beep. By reusing the same
-    // instance and calling .start() on it in onend, Android treats it as
-    // a continuation of the same session and suppresses the beep.
     const recognition = new SpeechRecognition();
     recognition.lang = "hi-IN";
     recognition.continuous = true;
@@ -552,13 +537,6 @@ export default function BillingPage() {
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
     }
-    // Stop the silent oscillator
-    if (silenceCtxRef.current) {
-      try { silenceCtxRef.current.osc.stop(); } catch(_) {}
-      try { silenceCtxRef.current.ctx.close(); } catch(_) {}
-      silenceCtxRef.current = null;
-    }
-    // micStreamRef stays alive — released only on page unload (see useEffect)
   };
 
   const router = useRouter();
@@ -640,28 +618,6 @@ export default function BillingPage() {
         setShop({ error: true });
       }
     });
-  }, []);
-
-  // Request mic permission on page load so the audio session is already
-  // warm when the user presses "Start Speaking". On Android Chrome, the
-  // OS beep fires when a brand-new audio session opens — if permission
-  // is granted silently in the background here, the session stays warm
-  // for the entire page lifetime and no beep plays on any button press.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!navigator.mediaDevices?.getUserMedia) return;
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(stream => {
-        micStreamRef.current = stream;
-      })
-      .catch(() => {});
-    // Cleanup only when the page is actually unloaded
-    return () => {
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach(t => t.stop());
-        micStreamRef.current = null;
-      }
-    };
   }, []);
 
   const fetchCatalog = async (shopId: string) => {
