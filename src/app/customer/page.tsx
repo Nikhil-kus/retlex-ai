@@ -14,10 +14,9 @@ export default function CustomerPage() {
   const isListeningRef = useRef(false);
   const globalTranscriptRef = useRef("");
   const currentBreathRef = useRef("");
-  const silenceRef = useRef<any>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
+  const audioCtxRef = useRef<any>(null);
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
     if (!s1) return s2 || "";
@@ -454,34 +453,6 @@ export default function CustomerPage() {
     setIsListening(true);
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
-    // 1. Start a continuous infra-sound loop (output channel keep-alive)
-    try {
-        const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-        if (AudioContext) {
-            const ctx = new AudioContext();
-            const gainNode = ctx.createGain();
-            gainNode.gain.value = 0.001;
-            gainNode.connect(ctx.destination);
-            const osc = ctx.createOscillator();
-            osc.type = 'sine';
-            osc.frequency.value = 20;
-            osc.connect(gainNode);
-            osc.start(0);
-            silenceRef.current = { ctx, osc };
-        }
-    } catch (e) {}
-
-    // 2. IMPORTANT: Acquire a persistent hardware microphone lock (input channel keep-alive)
-    // This prevents the Android OS from beeping on every recognition restart
-    // because the microphone session stays "active" at the system level.
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => {
-                micStreamRef.current = stream;
-            })
-            .catch(err => console.error("Mic keep-alive failed:", err));
-    }
-
     const initMic = () => {
         if (!isListeningRef.current) return;
         
@@ -545,9 +516,40 @@ export default function CustomerPage() {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
                 
-                // Restart microphone with a longer delay to let the system "settle"
-                // The continuous silent loop above helps suppress the beep
-                setTimeout(() => { initMic(); }, 300);
+                // Optimized silent audio suppression for Android Chrome
+                const playSilentAndRestart = async () => {
+                    try {
+                        const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+                        if (!AudioContext) throw new Error("No AudioContext");
+
+                        if (!audioCtxRef.current) {
+                            audioCtxRef.current = new AudioContext();
+                        }
+                        
+                        const ctx = audioCtxRef.current;
+                        if (ctx.state === 'suspended') {
+                            await ctx.resume();
+                        }
+
+                        // Play a brief silent buffer to "occupy" the audio session
+                        const buf = ctx.createBuffer(1, 1, 22050);
+                        const src = ctx.createBufferSource();
+                        src.buffer = buf;
+                        src.connect(ctx.destination);
+                        src.onended = () => {
+                            // Small delay before initMic to ensure session is fully transitioned
+                            setTimeout(() => {
+                                if (isListeningRef.current) initMic();
+                            }, 50);
+                        };
+                        src.start(0);
+                    } catch (err) {
+                        console.warn("Suppression failed, restarting directly:", err);
+                        setTimeout(() => { if (isListeningRef.current) initMic(); }, 100);
+                    }
+                };
+
+                playSilentAndRestart();
             } else {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
@@ -575,19 +577,6 @@ export default function CustomerPage() {
     setIsListening(false);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
-    }
-    // Stop the silent loop
-    if (silenceRef.current) {
-      try { silenceRef.current.osc.stop(); } catch(e) {}
-      try { silenceRef.current.ctx.close(); } catch(e) {}
-      silenceRef.current = null;
-    }
-    // Release the hardware microphone lock
-    if (micStreamRef.current) {
-      try {
-        micStreamRef.current.getTracks().forEach(track => track.stop());
-      } catch (e) {}
-      micStreamRef.current = null;
     }
   };
 
