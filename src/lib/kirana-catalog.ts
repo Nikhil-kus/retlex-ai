@@ -29,8 +29,18 @@ export const KIRANA_PRODUCTS = [
   { name: "Good Day", localName: "गुड डे", aliases: ["good day"], unit: "pc", baseQuantity: 1, price: 20  , imageUrl: "https://tse1.mm.bing.net/th?q=Good%20Day%20grocery%20product%20india" },
   { name: "Marie Gold", localName: "मारी", aliases: ["marie"], unit: "pc", baseQuantity: 1, price: 25  , imageUrl: "https://tse1.mm.bing.net/th?q=Marie%20Gold%20grocery%20product%20india" },
   { name: "Bourbon", localName: "बॉर्बन", aliases: ["bourbon"], unit: "pc", baseQuantity: 1, price: 30  , imageUrl: "https://tse1.mm.bing.net/th?q=Bourbon%20grocery%20product%20india" },
+
+  // ====== INSTANT FOODS & NOODLES ======
   { name: "Maggi", localName: "मैगी", aliases: ["maggi", "noodles"], unit: "pc", baseQuantity: 1, price: 14  , imageUrl: "https://tse1.mm.bing.net/th?q=Maggi%20grocery%20product%20india" },
   { name: "Yippee Noodles", localName: "नूडल्स", aliases: ["yippee"], unit: "pc", baseQuantity: 1, price: 14  , imageUrl: "https://tse1.mm.bing.net/th?q=Yippee%20Noodles%20grocery%20product%20india" },
+  { name: "Top Ramen", localName: "टॉप रामेन", aliases: ["top ramen", "ramen"], unit: "pc", baseQuantity: 1, price: 15  , imageUrl: "https://tse1.mm.bing.net/th?q=Top%20Ramen%20grocery%20product%20india" },
+  { name: "Wai Wai Noodles", localName: "वाई वाई नूडल्स", aliases: ["wai wai", "waiwai"], unit: "pc", baseQuantity: 1, price: 15  , imageUrl: "https://tse1.mm.bing.net/th?q=Wai%20Wai%20Noodles%20grocery%20product%20india" },
+  { name: "Knorr Soupy Noodles", localName: "सूपी नूडल्स", aliases: ["knorr", "soupy noodles"], unit: "pc", baseQuantity: 1, price: 20  , imageUrl: "https://tse1.mm.bing.net/th?q=Knorr%20Soupy%20Noodles%20grocery%20product%20india" },
+  { name: "MTR Upma Mix", localName: "उपमा मिक्स", aliases: ["upma", "mtr upma"], unit: "pc", baseQuantity: 1, price: 45  , imageUrl: "https://tse1.mm.bing.net/th?q=MTR%20Upma%20Mix%20grocery%20product%20india" },
+  { name: "Gits Idli Mix", localName: "इडली मिक्स", aliases: ["idli mix", "gits idli"], unit: "pc", baseQuantity: 1, price: 50  , imageUrl: "https://tse1.mm.bing.net/th?q=Gits%20Idli%20Mix%20grocery%20product%20india" },
+  { name: "MTR Poha Mix", localName: "पोहा मिक्स", aliases: ["poha mix", "mtr poha"], unit: "pc", baseQuantity: 1, price: 40  , imageUrl: "https://tse1.mm.bing.net/th?q=MTR%20Poha%20Mix%20grocery%20product%20india" },
+
+  // ====== BISCUITS & SNACKS (continued) ======
   { name: "Kurkure", localName: "कुरकुरे", aliases: ["kurkure"], unit: "pc", baseQuantity: 1, price: 20  , imageUrl: "https://tse1.mm.bing.net/th?q=Kurkure%20grocery%20product%20india" },
   { name: "Lays", localName: "लेज़", aliases: ["lays", "chips"], unit: "pc", baseQuantity: 1, price: 20  , imageUrl: "https://tse1.mm.bing.net/th?q=Lays%20grocery%20product%20india" },
   { name: "Haldiram Bhujia", localName: "भुजिया", aliases: ["bhujia"], unit: "pc", baseQuantity: 1, price: 40  , imageUrl: "https://tse1.mm.bing.net/th?q=Haldiram%20Bhujia%20grocery%20product%20india" },
