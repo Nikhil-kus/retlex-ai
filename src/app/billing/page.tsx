@@ -453,11 +453,6 @@ export default function BillingPage() {
     setIsListening(true);
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
-    // ── Android beep suppression ──────────────────────────────────────────────
-    // getUserMedia permission is pre-warmed on page load (see useEffect below).
-    // That's all we need — no AudioContext tricks required.
-    // ─────────────────────────────────────────────────────────────────────────
-
     // Create ONE recognition instance for the entire session.
     // Never destroy and recreate it — each new instance + start() call
     // triggers the Android OS "start listening" beep. By reusing the same
@@ -524,7 +519,26 @@ export default function BillingPage() {
         if (isListeningRef.current) {
             globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
             currentBreathRef.current = "";
-            // Restart the SAME instance — no new object created, no OS beep
+            // Play a 1-sample silent AudioContext buffer before restarting.
+            // This occupies the audio session so Android Chrome does not fire
+            // its "start listening" beep when recognition.start() is called.
+            try {
+                const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+                if (AudioContext) {
+                    const ctx = new AudioContext();
+                    const buf = ctx.createBuffer(1, 1, 22050);
+                    const src = ctx.createBufferSource();
+                    src.buffer = buf;
+                    src.connect(ctx.destination);
+                    src.start(0);
+                    src.onended = () => {
+                        ctx.close();
+                        if (isListeningRef.current) recognition.start();
+                    };
+                    return; // recognition.start() called from onended
+                }
+            } catch (_) {}
+            // Fallback if AudioContext not available
             try { recognition.start(); } catch(_) {}
         } else {
             globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
