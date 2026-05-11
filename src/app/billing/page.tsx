@@ -17,7 +17,6 @@ export default function BillingPage() {
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
-  const audioCtxRef = useRef<any>(null);
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
     if (!s1) return s2 || "";
@@ -454,124 +453,87 @@ export default function BillingPage() {
     setIsListening(true);
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
-    const initMic = () => {
-        if (!isListeningRef.current) return;
-        
-        const recognition = new SpeechRecognition();
-        recognition.lang = "hi-IN";
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.maxAlternatives = 1;
+    // Create ONE recognition instance for the entire session.
+    // Never destroy and recreate it — each new instance + start() call
+    // triggers the Android OS "start listening" beep. By reusing the same
+    // instance and calling .start() on it in onend, Android treats it as
+    // a continuation of the same session and suppresses the beep.
+    const recognition = new SpeechRecognition();
+    recognition.lang = "hi-IN";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognitionRef.current = recognition;
 
-        recognition.onresult = (event: any) => {
-            let merged = "";
-            for (let i = 0; i < event.results.length; ++i) {
-                const text = event.results[i][0].transcript.trim();
-                if (!text) continue;
-                merged = mergeOverlappingStrings(merged, text);
-            }
-            
-            currentBreathRef.current = merged;
-            const fullText = mergeOverlappingStrings(globalTranscriptRef.current, merged);
-            setFinalTranscript(fullText);
-            
-            if (fullText.length > 1) {
-                const newParsedItems = processVoiceTextToItems(fullText);
-                if (newParsedItems.length > 0) {
-                    const enrichedItems = newParsedItems.map((item: any) => {
-                        let finalItem = item;
-                        if (item.aiLabel && itemOverridesRef.current[item.aiLabel]) {
-                            finalItem = { ...finalItem, ...itemOverridesRef.current[item.aiLabel] };
-                        }
-                        return {
-                            ...finalItem,
-                            suggestions: getSuggestions(finalItem)
-                        };
-                    });
-                    
-                    const allItems = [...baseReviewItemsRef.current, ...enrichedItems];
-                    
-                    // Only keep suggestions for the most recently spoken item
-                    const finalItems = allItems.map((item, idx) => {
-                        if (idx === allItems.length - 1) return item;
-                        return { ...item, suggestions: [] };
-                    });
+    recognition.onresult = (event: any) => {
+        let merged = "";
+        for (let i = 0; i < event.results.length; ++i) {
+            const text = event.results[i][0].transcript.trim();
+            if (!text) continue;
+            merged = mergeOverlappingStrings(merged, text);
+        }
 
-                    setReviewItems(finalItems);
-                    setIsReviewing(true);
-                }
-            }
-        };
+        currentBreathRef.current = merged;
+        const fullText = mergeOverlappingStrings(globalTranscriptRef.current, merged);
+        setFinalTranscript(fullText);
 
-        recognition.onerror = (e: any) => {
-            console.error("Speech Error:", e.error || e);
-            if (e.error === 'not-allowed' || e.error === 'audio-capture') {
-                setIsListening(false);
-                isListeningRef.current = false;
-                alert("Microphone error: Please check permissions or hardware.");
-            }
-            // For other errors (network, aborted), just restart silently
-        };
-
-        recognition.onend = () => {
-            if (isListeningRef.current) {
-                globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
-                currentBreathRef.current = "";
-                
-                // Optimized silent audio suppression for Android Chrome
-                const playSilentAndRestart = async () => {
-                    try {
-                        const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-                        if (!AudioContext) throw new Error("No AudioContext");
-
-                        if (!audioCtxRef.current) {
-                            audioCtxRef.current = new AudioContext();
-                        }
-                        
-                        const ctx = audioCtxRef.current;
-                        if (ctx.state === 'suspended') {
-                            await ctx.resume();
-                        }
-
-                        // Play a brief silent buffer to "occupy" the audio session
-                        const buf = ctx.createBuffer(1, 1, 22050);
-                        const src = ctx.createBufferSource();
-                        src.buffer = buf;
-                        src.connect(ctx.destination);
-                        src.onended = () => {
-                            // Small delay before initMic to ensure session is fully transitioned
-                            setTimeout(() => {
-                                if (isListeningRef.current) initMic();
-                            }, 50);
-                        };
-                        src.start(0);
-                    } catch (err) {
-                        console.warn("Suppression failed, restarting directly:", err);
-                        setTimeout(() => { if (isListeningRef.current) initMic(); }, 100);
+        if (fullText.length > 1) {
+            const newParsedItems = processVoiceTextToItems(fullText);
+            if (newParsedItems.length > 0) {
+                const enrichedItems = newParsedItems.map((item: any) => {
+                    let finalItem = item;
+                    if (item.aiLabel && itemOverridesRef.current[item.aiLabel]) {
+                        finalItem = { ...finalItem, ...itemOverridesRef.current[item.aiLabel] };
                     }
-                };
+                    return {
+                        ...finalItem,
+                        suggestions: getSuggestions(finalItem)
+                    };
+                });
 
-                playSilentAndRestart();
-            } else {
-                globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
-                currentBreathRef.current = "";
+                const allItems = [...baseReviewItemsRef.current, ...enrichedItems];
+
+                // Only keep suggestions for the most recently spoken item
+                const finalItems = allItems.map((item, idx) => {
+                    if (idx === allItems.length - 1) return item;
+                    return { ...item, suggestions: [] };
+                });
+
+                setReviewItems(finalItems);
+                setIsReviewing(true);
             }
-        };
-
-        try {
-            recognition.start();
-            recognitionRef.current = recognition;
-        } catch(e) {
-            console.error("Failed to start mic:", e);
-            setTimeout(() => {
-                if (isListeningRef.current) {
-                    initMic();
-                }
-            }, 250);
         }
     };
 
-    initMic();
+    recognition.onerror = (e: any) => {
+        console.error("Speech Error:", e.error || e);
+        if (e.error === 'not-allowed' || e.error === 'audio-capture') {
+            setIsListening(false);
+            isListeningRef.current = false;
+            alert("Microphone error: Please check permissions or hardware.");
+        }
+        // For other errors (network, aborted), onend will handle restart
+    };
+
+    recognition.onend = () => {
+        if (isListeningRef.current) {
+            globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
+            currentBreathRef.current = "";
+            // Restart the SAME instance — no new object created, no OS beep
+            try { recognition.start(); } catch(_) {}
+        } else {
+            globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
+            currentBreathRef.current = "";
+        }
+    };
+
+    try {
+        recognition.start();
+    } catch(e) {
+        console.error("Failed to start mic:", e);
+        setIsListening(false);
+        isListeningRef.current = false;
+    }
   };
 
   const stopVoiceInput = () => {
