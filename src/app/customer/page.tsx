@@ -972,33 +972,17 @@ export default function CustomerPage() {
   );
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6 h-full">
+    <div className="flex flex-col max-w-7xl mx-auto h-full bg-white">
 
-      {/* Main Panel */}
-      <div className="flex-1 flex flex-col gap-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1">
-          <div className="flex border-b border-slate-100">
+      {/* Main Panel — fills full height, voice button floats over the bottom */}
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="bg-white shadow-sm border-b border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
+          <div className="flex border-b border-slate-100 flex-shrink-0">
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
             <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
             <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan Slip" />
           </div>
-
-          {/* Transcript card - always above the slider */}
-          {isListening && finalTranscript && (
-            <div className="mx-6 mt-4 relative overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-br from-rose-50 via-white to-orange-50 shadow-sm">
-              <div className="h-0.5 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400" />
-              <div className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                  </span>
-                  <span className="text-xs font-bold uppercase tracking-widest text-rose-500">Listening</span>
-                </div>
-                <p className="text-slate-800 text-base leading-relaxed font-medium">{finalTranscript}</p>
-              </div>
-            </div>
-          )}
+          </div>
 
           {/* Swipeable slider - 3 panels side by side */}
           <div className="overflow-hidden flex-1" style={{minHeight: 0}}>
@@ -1565,7 +1549,7 @@ export default function CustomerPage() {
         style={{
           minWidth: '180px',
           justifyContent: 'center',
-          bottom: cart.length > 0 ? 'calc(100vh - 7rem)' : '1.5rem',
+          bottom: cart.length > 0 ? '5rem' : '1.5rem',
         }}
       >
         {isListening ? (
