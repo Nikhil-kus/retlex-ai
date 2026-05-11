@@ -9,7 +9,7 @@ import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils
 import { useHindi } from '@/lib/hindi-context';
 
 export default function CustomerPage() {
-  const { pName } = useHindi();
+  const { pName, hindiMode } = useHindi();
   const [isListening, setIsListening] = useState(false);
   const [finalTranscript, setFinalTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
@@ -627,6 +627,32 @@ export default function CustomerPage() {
         reviewEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [reviewItems.length]);
+
+  // ── Android hardware back button support ──────────────────────────────────
+  useEffect(() => {
+    const anySubViewOpen = selectedCategory || selectedBill || isReviewing;
+    if (anySubViewOpen) {
+      window.history.pushState({ subView: true }, '');
+    }
+  }, [selectedCategory, selectedBill, isReviewing]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (selectedBill) { setSelectedBill(null); return; }
+      if (isReviewing) {
+        setIsReviewing(false);
+        setReviewItems([]);
+        globalTranscriptRef.current = '';
+        currentBreathRef.current = '';
+        setFinalTranscript('');
+        return;
+      }
+      if (selectedCategory) { setSelectedCategory(null); return; }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [selectedBill, isReviewing, selectedCategory]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   const modeIndex = mode === 'MANUAL' ? 0 : mode === 'PENDING' ? 1 : 2;
   const isProgrammaticScroll = useRef(false);
@@ -1357,45 +1383,7 @@ export default function CustomerPage() {
                     </div>
                   )}
 
-                  {/* Divider */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-px bg-slate-200" />
-                    <span className="text-xs text-slate-400 font-medium">or upload a slip</span>
-                    <div className="flex-1 h-px bg-slate-200" />
-                  </div>
-
-                  {/* Upload area */}
-                  <div
-                    className="border-2 border-dashed border-indigo-200 rounded-2xl bg-indigo-50/40 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
-                    style={{minHeight: '120px'}}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleFileChange} />
-                    {previewUrl
-                      ? <img src={previewUrl} alt="Preview" className="max-h-48 rounded-xl shadow-sm object-contain" />
-                      : (
-                        <div className="flex flex-col items-center gap-2 py-6 text-indigo-500">
-                          <Camera size={36} />
-                          <span className="font-semibold text-sm">Tap to capture or upload</span>
-                          <span className="text-xs text-indigo-400">Photo of handwritten / printed list</span>
-                        </div>
-                      )
-                    }
-                  </div>
-
-                  {file && (
-                    <button
-                      disabled={isProcessing}
-                      onClick={processImage}
-                      className="w-full bg-indigo-600 text-white font-semibold py-3.5 rounded-xl hover:bg-indigo-700 active:bg-indigo-800 transition flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
-                    >
-                      {isProcessing ? (
-                        <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Analyzing…</>
-                      ) : (
-                        <><Camera size={16} />Analyze Image</>
-                      )}
-                    </button>
-                  )}
+                  {/* Upload disabled for customers — shop owner only feature */}
                 </div>
               ) : (
                 /* ── REVIEW STATE: Detected items list ── */
@@ -1468,7 +1456,7 @@ export default function CustomerPage() {
                             </div>
                             <div className="flex-1 min-w-0">
                               <input
-                                value={item.name}
+                                value={hindiMode && item.localName ? item.localName : item.name}
                                 onChange={e => { const n = [...reviewItems]; n[idx].name = e.target.value; setReviewItems(n); }}
                                 className="font-semibold text-slate-900 w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none text-sm pb-0.5 transition-colors"
                                 placeholder="Product Name"
@@ -1476,7 +1464,9 @@ export default function CustomerPage() {
                               <div className="flex items-center gap-1 mt-0.5">
                                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
                                 <span className={`text-[10px] font-medium truncate ${item.productId ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                  {item.productId ? (item.aiLabel || 'Matched') : 'Not found in catalog'}
+                                  {item.productId
+                                    ? (hindiMode ? (item.name || item.aiLabel || 'Matched') : (item.localName || item.aiLabel || 'Matched'))
+                                    : 'Not found in catalog'}
                                 </span>
                               </div>
                             </div>
