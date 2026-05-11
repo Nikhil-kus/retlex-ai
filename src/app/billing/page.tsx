@@ -901,11 +901,11 @@ export default function BillingPage() {
   );
 
   return (
-    <div className="flex flex-col max-w-7xl mx-auto" style={{height: '100dvh', overflow: 'hidden'}}>
+    <div className="flex flex-col max-w-7xl mx-auto h-full bg-white">
 
-      {/* Main Panel */}
-      <div className="flex-1 flex flex-col min-h-0 p-4 md:p-8 pb-24">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
+      {/* Main Panel — fills full height, voice button floats over the bottom */}
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="bg-white shadow-sm border-b border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
           <div className="flex border-b border-slate-100 flex-shrink-0">
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
             <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
