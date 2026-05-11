@@ -17,7 +17,6 @@ export default function BillingPage() {
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
-  const micStreamRef = useRef<MediaStream | null>(null);
   const silenceCtxRef = useRef<any>(null);
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
@@ -565,11 +564,6 @@ export default function BillingPage() {
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
     }
-    // Release the hardware mic stream lock
-    if (micStreamRef.current) {
-      try { micStreamRef.current.getTracks().forEach(t => t.stop()); } catch(_) {}
-      micStreamRef.current = null;
-    }
     // Stop the silent oscillator and close the AudioContext
     if (silenceCtxRef.current) {
       try { silenceCtxRef.current.osc.stop(); } catch(_) {}
@@ -669,14 +663,11 @@ export default function BillingPage() {
     if (!navigator.mediaDevices?.getUserMedia) return;
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(stream => {
-        // Keep the stream alive in the ref so the session stays warm.
-        // It will be released when the user stops speaking.
-        micStreamRef.current = stream;
+        // Release immediately — we only needed the permission grant.
+        // Holding it open conflicts with SpeechRecognition on Android.
+        stream.getTracks().forEach(t => t.stop());
       })
-      .catch(() => {
-        // Permission denied or not available — recognition will still
-        // work, it just won't be pre-warmed (beep may still occur).
-      });
+      .catch(() => {});
   }, []);
 
   const fetchCatalog = async (shopId: string) => {
