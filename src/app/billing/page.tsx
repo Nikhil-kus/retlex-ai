@@ -456,14 +456,9 @@ export default function BillingPage() {
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
     // ── Android beep suppression ──────────────────────────────────────────────
-    // The getUserMedia stream was held open from page load to warm the audio
-    // session. Release it now so recognition can take exclusive mic access —
-    // keeping it open causes Android to block recognition audio input.
-    // The silent oscillator alone is enough to keep the AudioContext alive.
-    if (micStreamRef.current) {
-      try { micStreamRef.current.getTracks().forEach(t => t.stop()); } catch(_) {}
-      micStreamRef.current = null;
-    }
+    // The getUserMedia stream is already held open from page load (see useEffect
+    // above). We only need to ensure the silent oscillator is running to keep
+    // the AudioContext alive between recognition restarts.
 
     // Play a zero-volume silent oscillator to keep the AudioContext alive
     try {
