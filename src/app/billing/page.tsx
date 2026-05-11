@@ -10,7 +10,7 @@ import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils'
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
 
 export default function BillingPage() {
-  const { pName } = useHindi();
+  const { pName, hindiMode } = useHindi();
   const [isListening, setIsListening] = useState(false);
   const [finalTranscript, setFinalTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
@@ -1414,7 +1414,7 @@ export default function BillingPage() {
                             </div>
                             <div className="flex-1 min-w-0">
                               <input
-                                value={item.name}
+                                value={hindiMode && item.localName ? item.localName : item.name}
                                 onChange={e => { const n = [...reviewItems]; n[idx].name = e.target.value; setReviewItems(n); }}
                                 className="font-semibold text-slate-900 w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none text-sm pb-0.5 transition-colors"
                                 placeholder="Product Name"
@@ -1422,7 +1422,9 @@ export default function BillingPage() {
                               <div className="flex items-center gap-1 mt-0.5">
                                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
                                 <span className={`text-[10px] font-medium truncate ${item.productId ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                  {item.productId ? (item.aiLabel || 'Matched') : 'Not found in catalog'}
+                                  {item.productId
+                                    ? (hindiMode ? (item.name || item.aiLabel || 'Matched') : (item.localName || item.aiLabel || 'Matched'))
+                                    : 'Not found in catalog'}
                                 </span>
                               </div>
                             </div>
