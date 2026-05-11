@@ -78,8 +78,9 @@ export async function POST(request: Request) {
         productId: item.productId || null,
         name: item.name,
         localName: item.localName || null,
+        imageUrl: item.imageUrl || null,
         quantity: parseFloat(item.quantity),
-        unit: scannedUnit, // PRESERVES EXACTLY WHAT WAS SCANNED (e.g., 'g')
+        unit: scannedUnit,
         sellingPrice: price,
         costPrice: unitCost,
         total: finalPrice
