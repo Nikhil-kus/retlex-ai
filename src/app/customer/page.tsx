@@ -1537,7 +1537,7 @@ export default function CustomerPage() {
                   </div>
 
                   {/* Add to Bill button */}
-                  <div className="px-4 pb-4 pt-2 flex-shrink-0 border-t border-slate-100 bg-white">
+                  <div className="px-4 pb-20 pt-2 flex-shrink-0 border-t border-slate-100 bg-white">
                     <button
                       onClick={confirmReview}
                       className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-3.5 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 active:scale-[0.98] transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm"
