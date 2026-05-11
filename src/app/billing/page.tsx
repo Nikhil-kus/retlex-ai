@@ -456,18 +456,23 @@ export default function BillingPage() {
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
     // ── Android beep suppression ──────────────────────────────────────────────
-    // The getUserMedia stream is already held open from page load (see useEffect
-    // above). We only need to ensure the silent oscillator is running to keep
-    // the AudioContext alive between recognition restarts.
+    // Release the warm-up stream so SpeechRecognition can take the mic.
+    // The stream was held open since page load to keep the audio session
+    // alive — now we free the tracks so recognition gets exclusive access,
+    // but the OS audio session stays open (tracks stopped ≠ session closed).
+    if (micStreamRef.current) {
+      try { micStreamRef.current.getTracks().forEach(t => t.stop()); } catch(_) {}
+      micStreamRef.current = null;
+    }
 
-    // Play a zero-volume silent oscillator to keep the AudioContext alive
+    // Silent oscillator keeps the AudioContext alive between restarts
     try {
       const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx && !silenceCtxRef.current) {
         const ctx = new AudioCtx();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        gain.gain.value = 0; // completely silent
+        gain.gain.value = 0;
         osc.connect(gain);
         gain.connect(ctx.destination);
         osc.start(0);
@@ -565,16 +570,18 @@ export default function BillingPage() {
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
     }
-    // NOTE: micStreamRef is intentionally NOT stopped here.
-    // It must stay alive for the whole page lifetime so the audio session
-    // remains warm — stopping it would cause a beep on the next button press.
-    // It is released in the useEffect cleanup when the page unloads.
-
-    // Stop the silent oscillator and close the AudioContext
+    // Stop the silent oscillator
     if (silenceCtxRef.current) {
       try { silenceCtxRef.current.osc.stop(); } catch(_) {}
       try { silenceCtxRef.current.ctx.close(); } catch(_) {}
       silenceCtxRef.current = null;
+    }
+    // Reclaim the mic stream after recognition releases it, so the audio
+    // session stays warm for the next Start Speaking press (no beep).
+    if (navigator.mediaDevices?.getUserMedia && !micStreamRef.current) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => { micStreamRef.current = stream; })
+        .catch(() => {});
     }
   };
 
