@@ -904,7 +904,7 @@ export default function BillingPage() {
     <div className="flex flex-col max-w-7xl mx-auto" style={{height: '100dvh', overflow: 'hidden'}}>
 
       {/* Main Panel */}
-      <div className="flex-1 flex flex-col min-h-0 p-4 md:p-8 pb-0">
+      <div className="flex-1 flex flex-col min-h-0 p-4 md:p-8 pb-24">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
           <div className="flex border-b border-slate-100 flex-shrink-0">
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
@@ -1508,8 +1508,6 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* Bottom padding so voice button doesn't overlap content */}
-      <div className="flex-shrink-0" style={{height: '5rem'}} />
       {/* Floating Voice Button - fixed bottom center, visible on all tabs */}
       <button
         onClick={isListening ? stopVoiceInput : startVoiceInput}
