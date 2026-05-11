@@ -14,6 +14,7 @@ export default function CustomerPage() {
   const isListeningRef = useRef(false);
   const globalTranscriptRef = useRef("");
   const currentBreathRef = useRef("");
+  const silenceRef = useRef<any>(null);
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
 
@@ -452,6 +453,27 @@ export default function CustomerPage() {
     setIsListening(true);
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
+    // Start a continuous infra-sound loop to keep the audio channel "hot"
+    // and suppress Android Chrome's system beep sounds
+    try {
+        const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+        if (AudioContext) {
+            const ctx = new AudioContext();
+            const gainNode = ctx.createGain();
+            gainNode.gain.value = 0.001; // Extremely quiet but active
+            gainNode.connect(ctx.destination);
+            
+            const osc = ctx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.value = 20; // 20Hz is below human hearing range
+            osc.connect(gainNode);
+            osc.start(0);
+            silenceRef.current = { ctx, osc };
+        }
+    } catch (e) {
+        console.error("Silence loop failed", e);
+    }
+
     const initMic = () => {
         if (!isListeningRef.current) return;
         
@@ -515,8 +537,9 @@ export default function CustomerPage() {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
                 
-                // Restart microphone without artificial sound generation
-                setTimeout(() => { initMic(); }, 50);
+                // Restart microphone with a longer delay to let the system "settle"
+                // The continuous silent loop above helps suppress the beep
+                setTimeout(() => { initMic(); }, 300);
             } else {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
@@ -544,6 +567,12 @@ export default function CustomerPage() {
     setIsListening(false);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
+    }
+    // Stop the silent loop
+    if (silenceRef.current) {
+      try { silenceRef.current.osc.stop(); } catch(e) {}
+      try { silenceRef.current.ctx.close(); } catch(e) {}
+      silenceRef.current = null;
     }
   };
 
