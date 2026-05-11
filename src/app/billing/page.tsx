@@ -456,29 +456,11 @@ export default function BillingPage() {
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
     // ── Android beep suppression ──────────────────────────────────────────────
-    // Release the warm-up stream so SpeechRecognition can take the mic.
-    // The stream was held open since page load to keep the audio session
-    // alive — now we free the tracks so recognition gets exclusive access,
-    // but the OS audio session stays open (tracks stopped ≠ session closed).
-    if (micStreamRef.current) {
-      try { micStreamRef.current.getTracks().forEach(t => t.stop()); } catch(_) {}
-      micStreamRef.current = null;
-    }
-
-    // Silent oscillator keeps the AudioContext alive between restarts
-    try {
-      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx && !silenceCtxRef.current) {
-        const ctx = new AudioCtx();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        gain.gain.value = 0;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(0);
-        silenceCtxRef.current = { ctx, osc };
-      }
-    } catch (_) {}
+    // Keep the getUserMedia stream open while recognition runs.
+    // On Android Chrome 120+, recognition shares the mic with an existing
+    // getUserMedia stream instead of opening a new audio session.
+    // This means onend→start() restarts happen within the same session → no beep.
+    // Do NOT release the stream here — let recognition and the stream coexist.
     // ─────────────────────────────────────────────────────────────────────────
 
     // Create ONE recognition instance for the entire session.
@@ -576,13 +558,7 @@ export default function BillingPage() {
       try { silenceCtxRef.current.ctx.close(); } catch(_) {}
       silenceCtxRef.current = null;
     }
-    // Reclaim the mic stream after recognition releases it, so the audio
-    // session stays warm for the next Start Speaking press (no beep).
-    if (navigator.mediaDevices?.getUserMedia && !micStreamRef.current) {
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => { micStreamRef.current = stream; })
-        .catch(() => {});
-    }
+    // micStreamRef stays alive — released only on page unload (see useEffect)
   };
 
   const router = useRouter();
