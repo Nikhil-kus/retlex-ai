@@ -511,15 +511,16 @@ export default function BillingPage() {
     };
 
     recognition.onend = () => {
-        if (isListeningRef.current) {
-            globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
-            currentBreathRef.current = "";
-            // Restart the SAME instance — no new object created, no OS beep
-            try { recognition.start(); } catch(_) {}
-        } else {
-            globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
-            currentBreathRef.current = "";
+        // EXPERIMENT: no restart — let continuous:true keep it running on its own.
+        // If recognition stops naturally, we just commit the transcript but do NOT
+        // call recognition.start() again. This removes the mid-speech beep caused
+        // by the restart cycle. If this experiment fails, revert this change.
+        globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
+        currentBreathRef.current = "";
+        if (!isListeningRef.current) {
+            // User pressed Stop — expected end, nothing to do
         }
+        // intentionally no recognition.start() here
     };
 
     try {
