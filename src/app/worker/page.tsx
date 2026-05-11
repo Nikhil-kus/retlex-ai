@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CheckCircle, Clock, X, Check } from 'lucide-react';
+import { CheckCircle, Clock, X, Check, Package } from 'lucide-react';
 import { getBillLabel } from '@/lib/bill-utils';
 import { useHindi } from '@/lib/hindi-context';
 
@@ -235,22 +235,29 @@ export default function WorkerPage() {
                             : 'bg-slate-700/30 border-slate-700 hover:border-slate-600'
                         }`}
                       >
-                        <div className="flex items-start gap-4">
-                          <div className={`flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center mt-1 transition ${
-                            isPacked
-                              ? 'bg-emerald-500 border-emerald-500'
-                              : 'border-slate-500'
+                        <div className="flex items-center gap-4">
+                          {/* Checkbox */}
+                          <div className={`flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center transition ${
+                            isPacked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'
                           }`}>
                             {isPacked && <Check size={16} className="text-white" />}
                           </div>
+
+                          {/* Product image */}
+                          <div className="flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-slate-700 border border-slate-600 flex items-center justify-center">
+                            {item.imageUrl
+                              ? <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; (e.currentTarget.nextSibling as HTMLElement)?.classList.remove('hidden'); }} />
+                              : null
+                            }
+                            <Package className={`text-slate-500 ${item.imageUrl ? 'hidden' : ''}`} size={22} />
+                          </div>
+
+                          {/* Name + details */}
                           <div className="flex-1 min-w-0">
                             <p className={`font-semibold text-base ${isPacked ? 'text-emerald-300 line-through' : 'text-white'}`}>
                               {pName(item.name, item.localName)}
                             </p>
-                            {item.localName && (
-                              <p className="text-slate-400 text-sm">({item.localName})</p>
-                            )}
-                            <p className="text-slate-400 text-sm mt-1">
+                            <p className="text-slate-400 text-sm mt-0.5">
                               {item.quantity} {item.unit || 'pc'} • ₹{item.total?.toFixed(2) || '0.00'}
                             </p>
                           </div>
