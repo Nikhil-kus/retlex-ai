@@ -265,34 +265,27 @@ export default function BillingPage() {
     const seenItemsMap = new Set();
 
     const matchedItems = normalizedItems.map(item => {
-      const searchName = item.name
-        .replace(/\d+/g, '')
-        .replace(/\b(kg|kilo|kilograms?|g|gram|grams?|ml|l|liter|litre|litres?|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m|khula|loose|खुला)\b/gi, '')
-        .trim();
-        
+      const searchName = item.name.replace(/\d+/g, '').replace(/\b(kg|g|ml|l|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m)\b/gi, '').trim();
       const result = fuse.search(searchName);
       let bestMatch: any = null;
 
-      // Strong match for multi-word products like 'parle g' or 'aashirvaad atta'
-      if (result.length && (result[0].score ?? 1) <= 0.45) {
+      // Forgiving direct hit check to allow typos
+      if (result.length && (result[0].score ?? 1) <= 0.6) {
         bestMatch = result[0].item;
-      } else {
-        // Fallback: If full phrase fails, try individual words but only pick the absolute BEST one
-        const words = searchName.split(/\s+/);
-        let bestWordScore = 1;
-        
-        for (const w of words) {
-            const cleanW = w.toLowerCase().trim();
-            if (cleanW.length >= 3) {
-                const subResult = fuse.search(cleanW);
-                if (subResult.length && (subResult[0].score ?? 1) < bestWordScore) {
-                    bestWordScore = subResult[0].score ?? 1;
-                    if (bestWordScore <= 0.3) {
-                        bestMatch = subResult[0].item;
-                    }
-                }
-            }
-        }
+      }
+
+      // Smart Fallback: If full phrase fails due to stuttering (e.g. "टॉफी ट्रॉफी"), try matching individual words
+      if (!bestMatch) {
+          const words = searchName.split(/\s+/);
+          for (const w of words) {
+              if (w.length > 2) {
+                  const subResult = fuse.search(w);
+                  if (subResult.length && (subResult[0].score ?? 1) <= 0.4) {
+                      bestMatch = subResult[0].item;
+                      break;
+                  }
+              }
+          }
       }
 
       const key = (bestMatch?.id || item.name).toLowerCase();
@@ -524,27 +517,8 @@ export default function BillingPage() {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
                 
-                // Play a silent audio buffer before restarting to suppress
-                // Android Chrome's built-in "start listening" beep sound
-                try {
-                    const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-                    if (AudioContext) {
-                        const ctx = new AudioContext();
-                        const buf = ctx.createBuffer(1, 1, 22050);
-                        const src = ctx.createBufferSource();
-                        src.buffer = buf;
-                        src.connect(ctx.destination);
-                        src.start(0);
-                        src.onended = () => {
-                            ctx.close();
-                            if (isListeningRef.current) initMic();
-                        };
-                        return; // initMic called from onended
-                    }
-                } catch (_) {}
-
-                // Fallback if AudioContext not available
-                setTimeout(() => { initMic(); }, 100);
+                // Restart microphone without artificial sound generation
+                setTimeout(() => { initMic(); }, 50);
             } else {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
@@ -614,8 +588,6 @@ export default function BillingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reviewEndRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
-  const [sliderHeight, setSliderHeight] = useState<number | 'auto'>('auto');
-
 
   useEffect(() => {
     if (reviewEndRef.current) {
@@ -636,22 +608,13 @@ export default function BillingPage() {
     if (sliderRef.current) {
       sliderRef.current.style.transform = `translateX(-${modeIndex * 100}%)`;
     }
-    // Scroll all slides back to top when switching modes to ensure a clean view
-    [slide0Ref, slide1Ref, slide2Ref].forEach(ref => {
-      if (ref.current) ref.current.scrollTop = 0;
-    });
+    // Scroll the newly active slide back to top
+    const slideRefs = [slide0Ref, slide1Ref, slide2Ref];
+    const activeSlide = slideRefs[modeIndex]?.current;
+    if (activeSlide) {
+      activeSlide.scrollTop = 0;
+    }
   }, [modeIndex]);
-
-  // Reset scroll on Manual Search tab when category or search changes
-  useEffect(() => {
-    if (slide0Ref.current) slide0Ref.current.scrollTop = 0;
-  }, [selectedCategory, search.length > 0, searchResults.length]);
-
-  // Reset scroll on Scan Slip tab when switching between idle and review states
-  useEffect(() => {
-    if (slide2Ref.current) slide2Ref.current.scrollTop = 0;
-  }, [isReviewing]);
-
 
   useEffect(() => {
     fetch('/api/shop').then(r => r.json()).then(data => {
@@ -938,7 +901,6 @@ export default function BillingPage() {
     }
   };
 
-
   if (!shop) return <div className="p-8 text-center mt-20">Loading...</div>;
   if (shop.error) return (
     <div className="p-8 max-w-lg mx-auto mt-20 text-center space-y-6">
@@ -951,33 +913,16 @@ export default function BillingPage() {
   );
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6 h-full">
+    <div className="flex flex-col max-w-7xl mx-auto h-full" style={{overflow: 'hidden'}}>
 
       {/* Main Panel */}
-      <div className="flex-1 flex flex-col gap-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1">
-          <div className="flex border-b border-slate-100">
+      <div className="flex-1 flex flex-col min-h-0 p-4 md:p-8 pb-0">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
+          <div className="flex border-b border-slate-100 flex-shrink-0">
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
             <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
             <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan Slip" />
           </div>
-
-          {/* Transcript card - always above the slider */}
-          {isListening && finalTranscript && (
-            <div className="mx-6 mt-4 relative overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-br from-rose-50 via-white to-orange-50 shadow-sm">
-              <div className="h-0.5 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400" />
-              <div className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                  </span>
-                  <span className="text-xs font-bold uppercase tracking-widest text-rose-500">Listening</span>
-                </div>
-                <p className="text-slate-800 text-base leading-relaxed font-medium">{finalTranscript}</p>
-              </div>
-            </div>
-          )}
 
           {/* Swipeable slider - 3 panels side by side */}
           <div className="overflow-hidden flex-1" style={{minHeight: 0}}>
@@ -1022,7 +967,7 @@ export default function BillingPage() {
 
               {/* ── Category full-page view ── */}
               {selectedCategory ? (
-                <div className="flex flex-col">
+                <div className="flex flex-col flex-1">
                   {/* Header */}
                   <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-slate-100 sticky top-0 bg-white z-10">
                     <button
@@ -1339,11 +1284,10 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 2 - Scan Slip / Review */}
-            {/* No overflow-y-auto here: the slide itself must NOT scroll. Only the items list inside scrolls. */}
-            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col" style={{minHeight: 0}}>
+            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}>
               {!isReviewing ? (
                 /* ── IDLE STATE: Upload / Voice prompt ── */
-                <div className="flex flex-col gap-6 p-6">
+                <div className="flex flex-col gap-4 p-5">
                   {/* Voice hint banner */}
                   {isListening ? (
                     <div className="relative overflow-hidden rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50">
@@ -1411,8 +1355,7 @@ export default function BillingPage() {
                 </div>
               ) : (
                 /* ── REVIEW STATE: Detected items list ── */
-                {/* This div must fill all remaining height of the slide and NOT overflow — only the items list inside should scroll */}
-                <div className="flex flex-col" style={{height: 'calc(100vh - 13rem)', minHeight: '400px'}}>
+                <div className="flex flex-col" style={{height: '100%'}}>
                   {/* Header */}
                   <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 flex-shrink-0">
                     <div className="flex items-center gap-2">
@@ -1450,8 +1393,8 @@ export default function BillingPage() {
                     </div>
                   )}
 
-                  {/* Items list - this is the ONLY scrollable zone */}
-                  <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4 space-y-3" style={{minHeight: 0}}>
+                  {/* Items list */}
+                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5" style={{minHeight: 0}}>
                     {reviewItems.map((item, idx) => (
                       <div
                         key={idx}
@@ -1577,6 +1520,8 @@ export default function BillingPage() {
         </div>
       </div>
 
+      {/* Bottom padding so voice button doesn't overlap content */}
+      <div className="flex-shrink-0" style={{height: '5rem'}} />
       {/* Floating Voice Button - fixed bottom center, visible on all tabs */}
       <button
         onClick={isListening ? stopVoiceInput : startVoiceInput}
@@ -1588,7 +1533,7 @@ export default function BillingPage() {
         style={{
           minWidth: '180px',
           justifyContent: 'center',
-          bottom: cart.length > 0 ? 'calc(100vh - 7rem)' : '1.5rem',
+          bottom: cart.length > 0 ? '5rem' : '1.5rem',
         }}
       >
         {isListening ? (

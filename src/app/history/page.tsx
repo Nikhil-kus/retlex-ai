@@ -20,12 +20,6 @@ export default function HistoryPage() {
       });
   }, []);
 
-  // Reset scroll to top when search query changes
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [search.length > 0]);
-
-
   const fetchBills = async (shopId: string) => {
     const res = await fetch(`/api/bills?shopId=${shopId}`);
     if (res.ok) {

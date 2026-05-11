@@ -16,13 +16,13 @@ export const KIRANA_PRODUCTS = [
   { name: "Maida", localName: "मैदा", aliases: ["maida", "मैदा"], unit: "kg", baseQuantity: 1, price: 50  , imageUrl: "https://tse1.mm.bing.net/th?q=Maida%20loose%20in%20a%20bowl%20raw%20unbranded" },
 
   // ====== OIL / SALT / SUGAR ======
-  { name: "Tata Salt", localName: "नमक", aliases: ["namak", "salt", "टाटा नमक"], unit: "kg", baseQuantity: 1, price: 26  , imageUrl: "https://tse1.mm.bing.net/th?q=Tata%20Salt%20loose%20in%20a%20bowl%20raw%20unbranded" },
-  { name: "Sugar", localName: "चीनी", aliases: ["chini", "sugar"], unit: "kg", baseQuantity: 1, price: 45  , imageUrl: "https://tse1.mm.bing.net/th?q=Sugar%20loose%20in%20a%20bowl%20raw%20unbranded" },
-  { name: "Fortune Oil 1L", localName: "तेल", aliases: ["tel", "oil", "fortune tel"], unit: "l", baseQuantity: 1, price: 150  , imageUrl: "https://tse1.mm.bing.net/th?q=Fortune%20Oil%201L%20grocery%20product%20india" },
-  { name: "Dhara Oil 1L", localName: "तेल", aliases: ["dhara tel", "धारा तेल"], unit: "l", baseQuantity: 1, price: 145  , imageUrl: "https://tse1.mm.bing.net/th?q=Dhara%20Oil%201L%20grocery%20product%20india" },
-  { name: "Mustard Oil", localName: "सरसों तेल", aliases: ["sarso tel", "mustard oil"], unit: "l", baseQuantity: 1, price: 180  , imageUrl: "https://tse1.mm.bing.net/th?q=Mustard%20Oil%20grocery%20product%20india" },
-  { name: "Refined Oil Loose", localName: "तेल", aliases: ["refined tel", "खुला तेल"], unit: "l", baseQuantity: 1, price: 140  , imageUrl: "https://tse1.mm.bing.net/th?q=Refined%20Oil%20loose%20in%20a%20bowl%20raw%20unbranded" },
-  { name: "Gud", localName: "गुड़", aliases: ["gud", "jaggery"], unit: "kg", baseQuantity: 1, price: 60  , imageUrl: "https://tse1.mm.bing.net/th?q=Gud%20loose%20in%20a%20bowl%20raw%20unbranded" },
+  { name: "Tata Salt", localName: "नमक", aliases: ["namak", "salt", "टाटा नमक"], unit: "kg", baseQuantity: 1, price: 26   , imageUrl: "https://tse1.mm.bing.net/th?q=Tata%20Salt%20grocery%20product%20india" },
+  { name: "Sugar", localName: "चीनी", aliases: ["chini", "sugar"], unit: "kg", baseQuantity: 1, price: 45   , imageUrl: "https://tse1.mm.bing.net/th?q=Sugar%20grocery%20product%20india" },
+  { name: "Fortune Oil 1L", localName: "तेल", aliases: ["tel", "oil", "fortune tel"], unit: "l", baseQuantity: 1, price: 150   , imageUrl: "https://tse1.mm.bing.net/th?q=Fortune%20Oil%201L%20cooking%20oil%20ghee%20india" },
+  { name: "Dhara Oil 1L", localName: "तेल", aliases: ["dhara tel", "धारा तेल"], unit: "l", baseQuantity: 1, price: 145   , imageUrl: "https://tse1.mm.bing.net/th?q=Dhara%20Oil%201L%20cooking%20oil%20ghee%20india" },
+  { name: "Mustard Oil", localName: "सरसों तेल", aliases: ["sarso tel", "mustard oil"], unit: "l", baseQuantity: 1, price: 180   , imageUrl: "https://tse1.mm.bing.net/th?q=Mustard%20Oil%20cooking%20oil%20ghee%20india" },
+  { name: "Refined Oil Loose", localName: "तेल", aliases: ["refined tel", "खुला तेल"], unit: "l", baseQuantity: 1, price: 140   , imageUrl: "https://tse1.mm.bing.net/th?q=Refined%20Oil%20cooking%20oil%20in%20bowl%20raw" },
+  { name: "Gud", localName: "गुड़", aliases: ["gud", "jaggery"], unit: "kg", baseQuantity: 1, price: 60   , imageUrl: "https://tse1.mm.bing.net/th?q=Gud%20grocery%20product%20india" },
 
   // ====== BISCUITS & SNACKS ======
   { name: "Parle-G", localName: "पारले बिस्कुट", aliases: ["parle g", "बिस्कुट"], unit: "pc", baseQuantity: 1, price: 10  , imageUrl: "https://tse1.mm.bing.net/th?q=Parle-G%20grocery%20product%20india" },
@@ -31,23 +31,23 @@ export const KIRANA_PRODUCTS = [
   { name: "Bourbon", localName: "बॉर्बन", aliases: ["bourbon"], unit: "pc", baseQuantity: 1, price: 30  , imageUrl: "https://tse1.mm.bing.net/th?q=Bourbon%20grocery%20product%20india" },
 
   // ====== INSTANT FOODS & NOODLES ======
-  { name: "Maggi", localName: "मैगी", aliases: ["maggi", "noodles"], unit: "pc", baseQuantity: 1, price: 14  , imageUrl: "https://tse1.mm.bing.net/th?q=Maggi%20grocery%20product%20india" },
-  { name: "Yippee Noodles", localName: "नूडल्स", aliases: ["yippee"], unit: "pc", baseQuantity: 1, price: 14  , imageUrl: "https://tse1.mm.bing.net/th?q=Yippee%20Noodles%20grocery%20product%20india" },
-  { name: "Top Ramen", localName: "टॉप रामेन", aliases: ["top ramen", "ramen"], unit: "pc", baseQuantity: 1, price: 15  , imageUrl: "https://tse1.mm.bing.net/th?q=Top%20Ramen%20grocery%20product%20india" },
-  { name: "Wai Wai Noodles", localName: "वाई वाई नूडल्स", aliases: ["wai wai", "waiwai"], unit: "pc", baseQuantity: 1, price: 15  , imageUrl: "https://tse1.mm.bing.net/th?q=Wai%20Wai%20Noodles%20grocery%20product%20india" },
-  { name: "Knorr Soupy Noodles", localName: "सूपी नूडल्स", aliases: ["knorr", "soupy noodles"], unit: "pc", baseQuantity: 1, price: 20  , imageUrl: "https://tse1.mm.bing.net/th?q=Knorr%20Soupy%20Noodles%20grocery%20product%20india" },
-  { name: "MTR Upma Mix", localName: "उपमा मिक्स", aliases: ["upma", "mtr upma"], unit: "pc", baseQuantity: 1, price: 45  , imageUrl: "https://tse1.mm.bing.net/th?q=MTR%20Upma%20Mix%20grocery%20product%20india" },
-  { name: "Gits Idli Mix", localName: "इडली मिक्स", aliases: ["idli mix", "gits idli"], unit: "pc", baseQuantity: 1, price: 50  , imageUrl: "https://tse1.mm.bing.net/th?q=Gits%20Idli%20Mix%20grocery%20product%20india" },
-  { name: "MTR Poha Mix", localName: "पोहा मिक्स", aliases: ["poha mix", "mtr poha"], unit: "pc", baseQuantity: 1, price: 40  , imageUrl: "https://tse1.mm.bing.net/th?q=MTR%20Poha%20Mix%20grocery%20product%20india" },
-  { name: "Ponga Khule", localName: "पोंगा खुले", aliases: ["ponga", "ponga khule"], unit: "kg", baseQuantity: 1, price: 60  , imageUrl: "https://tse1.mm.bing.net/th?q=Ponga%20vermicelli%20loose%20kirana%20india" },
-  { name: "Pasta Khule", localName: "पास्ता खुले", aliases: ["pasta", "pasta khule"], unit: "kg", baseQuantity: 1, price: 70  , imageUrl: "https://tse1.mm.bing.net/th?q=Pasta%20loose%20kirana%20india" },
-  { name: "Sewai Khule", localName: "सेवई खुले", aliases: ["sewai", "seviyan", "sewai khule"], unit: "kg", baseQuantity: 1, price: 50  , imageUrl: "https://tse1.mm.bing.net/th?q=Sewai%20vermicelli%20loose%20kirana%20india" },
-  { name: "Macaroni Khule", localName: "मैकरोनी खुले", aliases: ["macaroni", "macaroni khule"], unit: "kg", baseQuantity: 1, price: 70  , imageUrl: "https://tse1.mm.bing.net/th?q=Macaroni%20loose%20kirana%20india" },
-  { name: "Noodles Khule", localName: "नूडल्स खुले", aliases: ["noodles khule", "loose noodles"], unit: "kg", baseQuantity: 1, price: 60  , imageUrl: "https://tse1.mm.bing.net/th?q=Noodles%20loose%20kirana%20india" },
+  { name: "Maggi", localName: "मैगी", aliases: ["maggi", "noodles"], unit: "pc", baseQuantity: 1, price: 14   , imageUrl: "https://tse1.mm.bing.net/th?q=Maggi%20instant%20food%20grocery%20product%20india" },
+  { name: "Yippee Noodles", localName: "नूडल्स", aliases: ["yippee"], unit: "pc", baseQuantity: 1, price: 14   , imageUrl: "https://tse1.mm.bing.net/th?q=Yippee%20Noodles%20instant%20food%20grocery%20product%20india" },
+  { name: "Top Ramen", localName: "टॉप रामेन", aliases: ["top ramen", "ramen"], unit: "pc", baseQuantity: 1, price: 15   , imageUrl: "https://tse1.mm.bing.net/th?q=Top%20Ramen%20instant%20food%20grocery%20product%20india" },
+  { name: "Wai Wai Noodles", localName: "वाई वाई नूडल्स", aliases: ["wai wai", "waiwai"], unit: "pc", baseQuantity: 1, price: 15   , imageUrl: "https://tse1.mm.bing.net/th?q=Wai%20Wai%20Noodles%20instant%20food%20grocery%20product%20india" },
+  { name: "Knorr Soupy Noodles", localName: "सूपी नूडल्स", aliases: ["knorr", "soupy noodles"], unit: "pc", baseQuantity: 1, price: 20   , imageUrl: "https://tse1.mm.bing.net/th?q=Knorr%20Soupy%20Noodles%20instant%20food%20grocery%20product%20india" },
+  { name: "MTR Upma Mix", localName: "उपमा मिक्स", aliases: ["upma", "mtr upma"], unit: "pc", baseQuantity: 1, price: 45   , imageUrl: "https://tse1.mm.bing.net/th?q=MTR%20Upma%20Mix%20instant%20food%20grocery%20product%20india" },
+  { name: "Gits Idli Mix", localName: "इडली मिक्स", aliases: ["idli mix", "gits idli"], unit: "pc", baseQuantity: 1, price: 50   , imageUrl: "https://tse1.mm.bing.net/th?q=Gits%20Idli%20Mix%20instant%20food%20grocery%20product%20india" },
+  { name: "MTR Poha Mix", localName: "पोहा मिक्स", aliases: ["poha mix", "mtr poha"], unit: "pc", baseQuantity: 1, price: 40   , imageUrl: "https://tse1.mm.bing.net/th?q=MTR%20Poha%20Mix%20instant%20food%20grocery%20product%20india" },
+  { name: "Ponga Khule", localName: "पोंगा खुले", aliases: ["ponga", "ponga khule"], unit: "kg", baseQuantity: 1, price: 60   , imageUrl: "https://tse1.mm.bing.net/th?q=Ponga%20Khule%20heap%20isolated%20on%20white%20background%20without%20packet" },
+  { name: "Pasta Khule", localName: "पास्ता खुले", aliases: ["pasta", "pasta khule"], unit: "kg", baseQuantity: 1, price: 70   , imageUrl: "https://tse1.mm.bing.net/th?q=Pasta%20Khule%20heap%20isolated%20on%20white%20background%20without%20packet" },
+  { name: "Sewai Khule", localName: "सेवई खुले", aliases: ["sewai", "seviyan", "sewai khule"], unit: "kg", baseQuantity: 1, price: 50   , imageUrl: "https://tse1.mm.bing.net/th?q=Sewai%20Khule%20heap%20isolated%20on%20white%20background%20without%20packet" },
+  { name: "Macaroni Khule", localName: "मैकरोनी खुले", aliases: ["macaroni", "macaroni khule"], unit: "kg", baseQuantity: 1, price: 70   , imageUrl: "https://tse1.mm.bing.net/th?q=Macaroni%20Khule%20heap%20isolated%20on%20white%20background%20without%20packet" },
+  { name: "Noodles Khule", localName: "नूडल्स खुले", aliases: ["noodles khule", "loose noodles"], unit: "kg", baseQuantity: 1, price: 60   , imageUrl: "https://tse1.mm.bing.net/th?q=Noodles%20Khule%20heap%20isolated%20on%20white%20background%20without%20packet" },
 
   // ====== BISCUITS & SNACKS (continued) ======
-  { name: "Kurkure", localName: "कुरकुरे", aliases: ["kurkure"], unit: "pc", baseQuantity: 1, price: 20  , imageUrl: "https://tse1.mm.bing.net/th?q=Kurkure%20grocery%20product%20india" },
-  { name: "Lays", localName: "लेज़", aliases: ["lays", "chips"], unit: "pc", baseQuantity: 1, price: 20  , imageUrl: "https://tse1.mm.bing.net/th?q=Lays%20grocery%20product%20india" },
+  { name: "Kurkure", localName: "कुरकुरे", aliases: ["kurkure"], unit: "pc", baseQuantity: 1, price: 20   , imageUrl: "https://tse1.mm.bing.net/th?q=Kurkure%20instant%20food%20grocery%20product%20india" },
+  { name: "Lays", localName: "लेज़", aliases: ["lays", "chips"], unit: "pc", baseQuantity: 1, price: 20   , imageUrl: "https://tse1.mm.bing.net/th?q=Lays%20instant%20food%20grocery%20product%20india" },
   { name: "Haldiram Bhujia", localName: "भुजिया", aliases: ["bhujia"], unit: "pc", baseQuantity: 1, price: 40  , imageUrl: "https://tse1.mm.bing.net/th?q=Haldiram%20Bhujia%20grocery%20product%20india" },
 
   // ====== PERSONAL CARE ======
@@ -98,7 +98,7 @@ export const KIRANA_PRODUCTS = [
 
   // ====== MISC ======
   { name: "Matchbox", localName: "माचिस", aliases: ["matchbox"], unit: "pc", baseQuantity: 1, price: 5  , imageUrl: "https://tse1.mm.bing.net/th?q=Matchbox%20grocery%20product%20india" },
-  { name: "Agarbatti", localName: "अगरबत्ती", aliases: ["agarbatti"], unit: "pc", baseQuantity: 1, price: 30  , imageUrl: "https://tse1.mm.bing.net/th?q=Agarbatti%20grocery%20product%20india" },
+  { name: "Agarbatti", localName: "अगरबत्ती", aliases: ["agarbatti"], unit: "pc", baseQuantity: 1, price: 30   , imageUrl: "https://tse1.mm.bing.net/th?q=Agarbatti%20agarbatti%20incense%20india" },
   { name: "Foil", localName: "फॉइल", aliases: ["foil"], unit: "pc", baseQuantity: 1, price: 50  , imageUrl: "https://tse1.mm.bing.net/th?q=Foil%20grocery%20product%20india" },
   { name: "Tissue", localName: "टिशू", aliases: ["tissue"], unit: "pc", baseQuantity: 1, price: 30  , imageUrl: "https://tse1.mm.bing.net/th?q=Tissue%20grocery%20product%20india" },
   { name: "Carry Bag", localName: "थैला", aliases: ["bag"], unit: "pc", baseQuantity: 1, price: 5  , imageUrl: "https://tse1.mm.bing.net/th?q=Carry%20Bag%20grocery%20product%20india" }

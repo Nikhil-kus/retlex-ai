@@ -515,26 +515,8 @@ export default function CustomerPage() {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
                 
-                // Play a silent audio buffer before restarting to suppress
-                // Android Chrome's built-in "start listening" beep sound
-                try {
-                    const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-                    if (AudioContext) {
-                        const ctx = new AudioContext();
-                        const buf = ctx.createBuffer(1, 1, 22050);
-                        const src = ctx.createBufferSource();
-                        src.buffer = buf;
-                        src.connect(ctx.destination);
-                        src.start(0);
-                        src.onended = () => {
-                            ctx.close();
-                            if (isListeningRef.current) initMic();
-                        };
-                        return;
-                    }
-                } catch (_) {}
-
-                setTimeout(() => { initMic(); }, 100);
+                // Restart microphone without artificial sound generation
+                setTimeout(() => { initMic(); }, 50);
             } else {
                 globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
                 currentBreathRef.current = "";
