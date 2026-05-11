@@ -9,7 +9,7 @@ import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils
 import { useHindi } from '@/lib/hindi-context';
 
 export default function CustomerPage() {
-  const { pName, hindiMode } = useHindi();
+  const { pName, hindiMode, catName } = useHindi();
   const [isListening, setIsListening] = useState(false);
   const [finalTranscript, setFinalTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
@@ -1036,7 +1036,7 @@ export default function CustomerPage() {
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
                     </button>
-                    <h2 className="font-bold text-slate-900 text-base">{selectedCategory}</h2>
+                    <h2 className="font-bold text-slate-900 text-base">{catName(selectedCategory)}</h2>
                     <span className="ml-auto text-xs text-slate-400">
                       {catalog.filter(p => (p.category || 'Uncategorized') === selectedCategory).length} items
                     </span>
@@ -1256,7 +1256,7 @@ export default function CustomerPage() {
                                     </div>
                                   </div>
                                   <div className="p-2 text-center w-full">
-                                    <p className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight">{cat}</p>
+                                    <p className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight">{catName(cat)}</p>
                                     <p className="text-[10px] text-slate-400 mt-0.5">{count} items</p>
                                   </div>
                                 </button>
