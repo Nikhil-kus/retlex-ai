@@ -39,6 +39,11 @@ export const KIRANA_PRODUCTS = [
   { name: "MTR Upma Mix", localName: "उपमा मिक्स", aliases: ["upma", "mtr upma"], unit: "pc", baseQuantity: 1, price: 45  , imageUrl: "https://tse1.mm.bing.net/th?q=MTR%20Upma%20Mix%20grocery%20product%20india" },
   { name: "Gits Idli Mix", localName: "इडली मिक्स", aliases: ["idli mix", "gits idli"], unit: "pc", baseQuantity: 1, price: 50  , imageUrl: "https://tse1.mm.bing.net/th?q=Gits%20Idli%20Mix%20grocery%20product%20india" },
   { name: "MTR Poha Mix", localName: "पोहा मिक्स", aliases: ["poha mix", "mtr poha"], unit: "pc", baseQuantity: 1, price: 40  , imageUrl: "https://tse1.mm.bing.net/th?q=MTR%20Poha%20Mix%20grocery%20product%20india" },
+  { name: "Ponga Khule", localName: "पोंगा खुले", aliases: ["ponga", "ponga khule"], unit: "kg", baseQuantity: 1, price: 60  , imageUrl: "https://tse1.mm.bing.net/th?q=Ponga%20vermicelli%20loose%20kirana%20india" },
+  { name: "Pasta Khule", localName: "पास्ता खुले", aliases: ["pasta", "pasta khule"], unit: "kg", baseQuantity: 1, price: 70  , imageUrl: "https://tse1.mm.bing.net/th?q=Pasta%20loose%20kirana%20india" },
+  { name: "Sewai Khule", localName: "सेवई खुले", aliases: ["sewai", "seviyan", "sewai khule"], unit: "kg", baseQuantity: 1, price: 50  , imageUrl: "https://tse1.mm.bing.net/th?q=Sewai%20vermicelli%20loose%20kirana%20india" },
+  { name: "Macaroni Khule", localName: "मैकरोनी खुले", aliases: ["macaroni", "macaroni khule"], unit: "kg", baseQuantity: 1, price: 70  , imageUrl: "https://tse1.mm.bing.net/th?q=Macaroni%20loose%20kirana%20india" },
+  { name: "Noodles Khule", localName: "नूडल्स खुले", aliases: ["noodles khule", "loose noodles"], unit: "kg", baseQuantity: 1, price: 60  , imageUrl: "https://tse1.mm.bing.net/th?q=Noodles%20loose%20kirana%20india" },
 
   // ====== BISCUITS & SNACKS (continued) ======
   { name: "Kurkure", localName: "कुरकुरे", aliases: ["kurkure"], unit: "pc", baseQuantity: 1, price: 20  , imageUrl: "https://tse1.mm.bing.net/th?q=Kurkure%20grocery%20product%20india" },

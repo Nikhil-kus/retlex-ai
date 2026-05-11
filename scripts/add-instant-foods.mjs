@@ -30,12 +30,60 @@ const SHOP_ID = "NjGBnhsc25w4jb2q6Ol4";
 const CAT = "Instant Foods & Noodles";
 
 const NEW_PRODUCTS = [
+  // ── Loose / Khule items (sold per kg) ──
+  {
+    name: "Ponga Khule",
+    localName: "पोंगा खुले",
+    aliases: ["ponga", "ponga khule", "खुले पोंगा"],
+    price: 60,
+    costPrice: 48,
+    baseUnit: "kg",
+    imageUrl: "https://tse1.mm.bing.net/th?q=Ponga%20vermicelli%20loose%20kirana%20india",
+  },
+  {
+    name: "Pasta Khule",
+    localName: "पास्ता खुले",
+    aliases: ["pasta", "pasta khule", "खुले पास्ता"],
+    price: 70,
+    costPrice: 56,
+    baseUnit: "kg",
+    imageUrl: "https://tse1.mm.bing.net/th?q=Pasta%20loose%20kirana%20india",
+  },
+  {
+    name: "Sewai Khule",
+    localName: "सेवई खुले",
+    aliases: ["sewai", "sewai khule", "seviyan", "सेवई"],
+    price: 50,
+    costPrice: 40,
+    baseUnit: "kg",
+    imageUrl: "https://tse1.mm.bing.net/th?q=Sewai%20vermicelli%20loose%20kirana%20india",
+  },
+  {
+    name: "Macaroni Khule",
+    localName: "मैकरोनी खुले",
+    aliases: ["macaroni", "macaroni khule", "मैकरोनी"],
+    price: 70,
+    costPrice: 56,
+    baseUnit: "kg",
+    imageUrl: "https://tse1.mm.bing.net/th?q=Macaroni%20loose%20kirana%20india",
+  },
+  {
+    name: "Noodles Khule",
+    localName: "नूडल्स खुले",
+    aliases: ["noodles khule", "khule noodles", "loose noodles"],
+    price: 60,
+    costPrice: 48,
+    baseUnit: "kg",
+    imageUrl: "https://tse1.mm.bing.net/th?q=Noodles%20loose%20kirana%20india",
+  },
+  // ── Packed instant items ──
   {
     name: "Top Ramen",
     localName: "टॉप रामेन",
     aliases: ["top ramen", "ramen"],
     price: 15,
     costPrice: 12,
+    baseUnit: "pkt",
     imageUrl: "https://tse1.mm.bing.net/th?q=Top%20Ramen%20noodles%20grocery%20product%20india",
   },
   {
@@ -44,6 +92,7 @@ const NEW_PRODUCTS = [
     aliases: ["wai wai", "waiwai"],
     price: 15,
     costPrice: 12,
+    baseUnit: "pkt",
     imageUrl: "https://tse1.mm.bing.net/th?q=Wai%20Wai%20Noodles%20grocery%20product%20india",
   },
   {
@@ -52,6 +101,7 @@ const NEW_PRODUCTS = [
     aliases: ["knorr", "soupy noodles"],
     price: 20,
     costPrice: 16,
+    baseUnit: "pkt",
     imageUrl: "https://tse1.mm.bing.net/th?q=Knorr%20Soupy%20Noodles%20grocery%20product%20india",
   },
   {
@@ -60,6 +110,7 @@ const NEW_PRODUCTS = [
     aliases: ["upma", "mtr upma"],
     price: 45,
     costPrice: 36,
+    baseUnit: "pkt",
     imageUrl: "https://tse1.mm.bing.net/th?q=MTR%20Upma%20Mix%20grocery%20product%20india",
   },
   {
@@ -68,6 +119,7 @@ const NEW_PRODUCTS = [
     aliases: ["idli mix", "gits idli"],
     price: 50,
     costPrice: 40,
+    baseUnit: "pkt",
     imageUrl: "https://tse1.mm.bing.net/th?q=Gits%20Idli%20Mix%20grocery%20product%20india",
   },
   {
@@ -76,6 +128,7 @@ const NEW_PRODUCTS = [
     aliases: ["poha mix", "mtr poha"],
     price: 40,
     costPrice: 32,
+    baseUnit: "pkt",
     imageUrl: "https://tse1.mm.bing.net/th?q=MTR%20Poha%20Mix%20grocery%20product%20india",
   },
 ];
@@ -106,7 +159,7 @@ async function main() {
       aliases: p.aliases,
       price: p.price,
       costPrice: p.costPrice,
-      baseUnit: "pkt",
+      baseUnit: p.baseUnit,
       baseQuantity: 1,
       packetWeight: null,
       packetUnit: null,

@@ -51,7 +51,7 @@ const CATEGORY_RULES = [
   { keywords: ['coffee','nescafe','bru','horlicks'], cat: 'Tea & Coffee' },
   { keywords: ['milk','doodh','amul milk','sanchi milk','mother dairy'], cat: 'Dairy & Milk Products' },
   { keywords: ['paneer','curd','dahi','butter','cheese','cream','ghee amul'], cat: 'Dairy & Milk Products' },
-  { keywords: ['maggi','noodles','yippee','top ramen','instant','wai wai','waiwai','knorr soupy','soupy noodles','upma mix','idli mix','poha mix','mtr upma','mtr poha','gits idli','gits'], cat: 'Instant Foods & Noodles' },
+  { keywords: ['maggi','noodles','yippee','top ramen','instant','wai wai','waiwai','knorr soupy','soupy noodles','upma mix','idli mix','poha mix','mtr upma','mtr poha','gits idli','gits','ponga khule','pasta khule','sewai khule','macaroni khule','noodles khule','sewai','seviyan','macaroni'], cat: 'Instant Foods & Noodles' },
   { keywords: ['biscuit','parle-g','parle g','marie gold','good day','bourbon','hide & seek','oreo','digestive','glucose'], cat: 'Biscuits & Snacks' },
   { keywords: ['namkeen','kurkure','lays','chips','bhujia','haldiram','mixture','sev','chivda'], cat: 'Biscuits & Snacks' },
   { keywords: ['chocolate','dairy milk','kitkat','perk','5 star','munch','gems','candy','toffee','pulse candy','center fresh','chewing gum'], cat: 'Confectionery' },

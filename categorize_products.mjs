@@ -38,7 +38,7 @@ const categoryMapping = {
   "Snacks & Confectionery": ["namkeen", "chips", "lays", "kurkure", "candy", "toffee", "chocolate", "kitkat", "dairy milk", "perk", "marie", "bourbon", "good day", "bhujia", "haldiram"],
   
   // Instant Foods & Noodles
-  "Instant Foods & Noodles": ["maggi", "noodles", "yippee", "instant", "top ramen", "ramen", "wai wai", "waiwai", "knorr", "soupy", "upma", "idli mix", "poha mix", "mtr", "gits"],
+  "Instant Foods & Noodles": ["maggi", "noodles", "yippee", "instant", "top ramen", "ramen", "wai wai", "waiwai", "knorr", "soupy", "upma", "idli mix", "poha mix", "mtr", "gits", "ponga", "pasta khule", "sewai", "seviyan", "macaroni", "noodles khule"],
   
   // Personal Care & Hygiene
   "Personal Care & Hygiene": ["soap", "shampoo", "toothpaste", "pepsodent", "colgate", "boroplus", "dettol", "lifebuoy", "lux", "oil", "amla", "hair"],
