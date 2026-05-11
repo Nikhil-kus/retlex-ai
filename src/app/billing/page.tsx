@@ -565,11 +565,11 @@ export default function BillingPage() {
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
     }
-    // Release the hardware mic stream lock
-    if (micStreamRef.current) {
-      try { micStreamRef.current.getTracks().forEach(t => t.stop()); } catch(_) {}
-      micStreamRef.current = null;
-    }
+    // NOTE: micStreamRef is intentionally NOT stopped here.
+    // It must stay alive for the whole page lifetime so the audio session
+    // remains warm — stopping it would cause a beep on the next button press.
+    // It is released in the useEffect cleanup when the page unloads.
+
     // Stop the silent oscillator and close the AudioContext
     if (silenceCtxRef.current) {
       try { silenceCtxRef.current.osc.stop(); } catch(_) {}
@@ -662,21 +662,23 @@ export default function BillingPage() {
   // Request mic permission on page load so the audio session is already
   // warm when the user presses "Start Speaking". On Android Chrome, the
   // OS beep fires when a brand-new audio session opens — if permission
-  // is granted silently in the background here, the session is already
-  // active and no beep plays when recognition starts.
+  // is granted silently in the background here, the session stays warm
+  // for the entire page lifetime and no beep plays on any button press.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!navigator.mediaDevices?.getUserMedia) return;
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(stream => {
-        // Keep the stream alive in the ref so the session stays warm.
-        // It will be released when the user stops speaking.
         micStreamRef.current = stream;
       })
-      .catch(() => {
-        // Permission denied or not available — recognition will still
-        // work, it just won't be pre-warmed (beep may still occur).
-      });
+      .catch(() => {});
+    // Cleanup only when the page is actually unloaded
+    return () => {
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(t => t.stop());
+        micStreamRef.current = null;
+      }
+    };
   }, []);
 
   const fetchCatalog = async (shopId: string) => {
