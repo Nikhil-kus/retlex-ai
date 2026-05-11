@@ -3,8 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Package, Search, Plus, Pencil, Trash, X, ChevronDown, CheckSquare, Square, Camera, Sparkles, Upload } from 'lucide-react';
 import Image from 'next/image';
+import { useHindi } from '@/lib/hindi-context';
 
 export default function ProductsPage() {
+  const { pName } = useHindi();
   const [products, setProducts] = useState<any[]>([]);
   const [shop, setShop] = useState<any>(null);
   const [search, setSearch] = useState('');
@@ -461,7 +463,7 @@ export default function ProductsPage() {
                         <div className="p-3">
                           {/* Name */}
                           <h3 className="font-semibold text-slate-900 text-sm line-clamp-2 mb-1">
-                            {p.name}
+                            {pName(p.name, p.localName)}
                           </h3>
                           {p.localName && (
                             <p className="text-xs text-slate-500 mb-2 line-clamp-1">{p.localName}</p>

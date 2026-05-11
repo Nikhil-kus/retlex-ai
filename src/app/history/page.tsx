@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { History as HistoryIcon, Search, Eye, Download, CheckCircle } from 'lucide-react';
 import { getBillLabel } from '@/lib/bill-utils';
+import { useHindi } from '@/lib/hindi-context';
 
 export default function HistoryPage() {
+  const { pName } = useHindi();
   const [bills, setBills] = useState<any[]>([]);
   const [shop, setShop] = useState<any>(null);
   const [search, setSearch] = useState('');

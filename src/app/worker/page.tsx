@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle, Clock, X, Check } from 'lucide-react';
 import { getBillLabel } from '@/lib/bill-utils';
+import { useHindi } from '@/lib/hindi-context';
 
 export default function WorkerPage() {
+  const { pName } = useHindi();
   const [bills, setBills] = useState<any[]>([]);
   const [shop, setShop] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -243,7 +245,7 @@ export default function WorkerPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className={`font-semibold text-base ${isPacked ? 'text-emerald-300 line-through' : 'text-white'}`}>
-                              {item.name}
+                              {pName(item.name, item.localName)}
                             </p>
                             {item.localName && (
                               <p className="text-slate-400 text-sm">({item.localName})</p>
