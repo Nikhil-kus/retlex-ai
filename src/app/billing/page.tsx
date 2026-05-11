@@ -456,19 +456,11 @@ export default function BillingPage() {
     setMode('OCR'); // auto-switch to Scan Slip tab so review list is visible
 
     // ── Android beep suppression ──────────────────────────────────────────────
-    // Android Chrome plays a system beep whenever a new audio session opens.
-    // Holding an open getUserMedia stream + a silent AudioContext oscillator
-    // keeps the audio session alive continuously, so recognition restarts are
-    // treated as session continuations — no new session open → no beep.
+    // The getUserMedia stream is already held open from page load (see useEffect
+    // above). We only need to ensure the silent oscillator is running to keep
+    // the AudioContext alive between recognition restarts.
 
-    // 1. Grab a raw mic stream to hold the hardware audio session open
-    if (navigator.mediaDevices?.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => { micStreamRef.current = stream; })
-        .catch(() => {}); // non-fatal — recognition still works without it
-    }
-
-    // 2. Play a zero-volume silent oscillator to keep the AudioContext alive
+    // Play a zero-volume silent oscillator to keep the AudioContext alive
     try {
       const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx && !silenceCtxRef.current) {
@@ -665,6 +657,26 @@ export default function BillingPage() {
         setShop({ error: true });
       }
     });
+  }, []);
+
+  // Request mic permission on page load so the audio session is already
+  // warm when the user presses "Start Speaking". On Android Chrome, the
+  // OS beep fires when a brand-new audio session opens — if permission
+  // is granted silently in the background here, the session is already
+  // active and no beep plays when recognition starts.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => {
+        // Keep the stream alive in the ref so the session stays warm.
+        // It will be released when the user stops speaking.
+        micStreamRef.current = stream;
+      })
+      .catch(() => {
+        // Permission denied or not available — recognition will still
+        // work, it just won't be pre-warmed (beep may still occur).
+      });
   }, []);
 
   const fetchCatalog = async (shopId: string) => {
