@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { CheckCircle, Clock, X, Check, Package } from 'lucide-react';
 import { getBillLabel } from '@/lib/bill-utils';
 import { useHindi } from '@/lib/hindi-context';
+import { shopCache, catalogCache } from '@/lib/session-cache';
 
 export default function WorkerPage() {
   const { pName } = useHindi();
@@ -17,22 +18,40 @@ export default function WorkerPage() {
 
   // Fetch shop info + catalog
   useEffect(() => {
-    fetch('/api/shop')
-      .then(r => r.json())
-      .then(data => {
-        setShop(data);
-        if (data?.id) {
-          fetchPendingBills(data.id);
-          // Fetch catalog to get images for bill items that don't have imageUrl saved
+    const cachedShop = shopCache.get();
+    const loadShop = (data: any) => {
+      setShop(data);
+      if (data?.id) {
+        fetchPendingBills(data.id);
+        // Use cached catalog for product images if available
+        const cachedCatalog = catalogCache.get(data.id);
+        if (cachedCatalog) {
+          const map: Record<string, string> = {};
+          cachedCatalog.forEach((p: any) => { if (p.id && p.imageUrl) map[p.id] = p.imageUrl; });
+          setCatalog(map);
+        } else {
           fetch(`/api/products?shopId=${data.id}`)
             .then(r => r.json())
             .then((products: any[]) => {
+              catalogCache.set(data.id, products);
               const map: Record<string, string> = {};
               products.forEach(p => { if (p.id && p.imageUrl) map[p.id] = p.imageUrl; });
               setCatalog(map);
             })
             .catch(() => {});
         }
+      }
+    };
+
+    if (cachedShop) {
+      loadShop(cachedShop);
+      return;
+    }
+    fetch('/api/shop')
+      .then(r => r.json())
+      .then(data => {
+        if (data?.id) shopCache.set(data);
+        loadShop(data);
       });
   }, []);
 

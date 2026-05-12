@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
 import { useHindi, CATEGORY_HINDI } from '@/lib/hindi-context';
+import { shopCache, catalogCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
 
@@ -636,8 +637,18 @@ export default function BillingPage() {
   }, [modeIndex]);
 
   useEffect(() => {
+    const cached = shopCache.get();
+    if (cached && !cached.error) {
+      setShop(cached);
+      if (cached?.id) {
+        fetchCatalog(cached.id);
+        fetchBills(cached.id);
+      }
+      return;
+    }
     fetch('/api/shop').then(r => r.json()).then(data => {
       if (data && !data.error) {
+        shopCache.set(data);
         setShop(data);
         if (data?.id) {
           fetchCatalog(data.id);
@@ -650,8 +661,14 @@ export default function BillingPage() {
   }, []);
 
   const fetchCatalog = async (shopId: string) => {
+    const cached = catalogCache.get(shopId);
+    if (cached) { setCatalog(cached); return; }
     const res = await fetch(`/api/products?shopId=${shopId}`);
-    if (res.ok) setCatalog(await res.json());
+    if (res.ok) {
+      const data = await res.json();
+      catalogCache.set(shopId, data);
+      setCatalog(data);
+    }
   };
 
   const fetchBills = async (shopId: string) => {
