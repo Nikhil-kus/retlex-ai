@@ -29,6 +29,10 @@ export default function Sidebar() {
   // If path is public QR route, hide sidebar
   if (pathname.startsWith('/qr/')) return null;
 
+  // Hide sidebar entirely on customer and worker pages — they are not shop owner pages
+  const isRestrictedPage = pathname.startsWith('/customer') || pathname.startsWith('/worker');
+  if (isRestrictedPage) return null;
+
   return (
     <>
       {/* Mobile Toggle Button */}
