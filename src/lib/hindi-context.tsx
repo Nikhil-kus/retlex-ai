@@ -11,7 +11,7 @@ interface HindiContextType {
   catName: (cat: string) => string;
 }
 
-const CATEGORY_HINDI: Record<string, string> = {
+export const CATEGORY_HINDI: Record<string, string> = {
   'Grains & Cereals':       'अनाज व दालें',
   'Pulses & Dals':          'दालें',
   'Salt & Sugar':           'नमक व चीनी',

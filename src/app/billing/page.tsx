@@ -5,7 +5,7 @@ import Fuse from 'fuse.js';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
-import { useHindi } from '@/lib/hindi-context';
+import { useHindi, CATEGORY_HINDI } from '@/lib/hindi-context';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
 
@@ -995,7 +995,7 @@ export default function BillingPage() {
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
                     </button>
-                    <h2 className="font-bold text-slate-900 text-base">{catName(selectedCategory)}</h2>
+                    <h2 className="font-bold text-slate-900 text-base">{hindiMode ? (CATEGORY_HINDI[selectedCategory] || selectedCategory) : selectedCategory}</h2>
                     <span className="ml-auto text-xs text-slate-400">
                       {catalog.filter(p => (p.category || 'Uncategorized') === selectedCategory).length} items
                     </span>
@@ -1215,7 +1215,7 @@ export default function BillingPage() {
                                     </div>
                                   </div>
                                   <div className="p-2 text-center w-full">
-                                    <p className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight">{catName(cat)}</p>
+                                    <p className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight">{hindiMode ? (CATEGORY_HINDI[cat] || cat) : cat}</p>
                                     <p className="text-[10px] text-slate-400 mt-0.5">{count} items</p>
                                   </div>
                                 </button>
