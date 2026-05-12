@@ -28,6 +28,23 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const data = await request.json();
+    const { id } = await params;
+    const updateData: Record<string, any> = {};
+    if (data.price !== undefined) updateData.price = parseFloat(data.price);
+    if (data.costPrice !== undefined) updateData.costPrice = parseFloat(data.costPrice);
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+    }
+    await updateDoc(doc(db, "products", id), updateData);
+    return NextResponse.json({ id, ...updateData });
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to patch product' }, { status: 500 });
+  }
+}
+
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;

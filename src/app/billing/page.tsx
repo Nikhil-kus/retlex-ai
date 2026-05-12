@@ -784,6 +784,25 @@ export default function BillingPage() {
     return bBase > 0 ? (qBase / bBase) * price : 0;
   };
 
+  const handlePriceUpdate = async (productId: string, newPrice: number) => {
+    if (!productId) return;
+    try {
+      await fetch(`/api/products/${productId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ price: newPrice }),
+      });
+      // Update local catalog so future adds use the new price
+      setCatalog(prev => {
+        const updated = prev.map(p => p.id === productId ? { ...p, price: newPrice } : p);
+        if (shop?.id) catalogCache.set(shop.id, updated);
+        return updated;
+      });
+    } catch (e) {
+      console.error('Failed to update product price:', e);
+    }
+  };
+
   const totalAmount = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
 
   const handleGenerateBill = async (overrideInfo?: any) => {
@@ -1605,6 +1624,7 @@ export default function BillingPage() {
           onExpand={() => setShowCartSheet(true)}
           onCollapse={() => setShowCartSheet(false)}
           onClearCart={() => { setCart([]); setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' }); setShowCartSheet(false); }}
+          onPriceUpdate={handlePriceUpdate}
         />
       )}
 
@@ -1721,7 +1741,7 @@ function TabButton({ active, onClick, icon, label }: any) {
   );
 }
 
-function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, savingBill, calculateItemTotal, updateCartItem, removeFromCart, handleGenerateBill, expanded, onExpand, onCollapse, onClearCart }: any) {
+function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, savingBill, calculateItemTotal, updateCartItem, removeFromCart, handleGenerateBill, expanded, onExpand, onCollapse, onClearCart, onPriceUpdate }: any) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragStartY = useRef(0);
   const dragCurrentY = useRef(0);
@@ -1744,6 +1764,11 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
     const newPrice = parseFloat(editingPriceValue);
     if (!isNaN(newPrice) && newPrice >= 0) {
       updateCartItem(editingPriceIdx, 'price', newPrice);
+      // Also persist to the product database
+      const productId = cart[editingPriceIdx]?.productId;
+      if (productId && onPriceUpdate) {
+        onPriceUpdate(productId, newPrice);
+      }
     }
     setEditingPriceIdx(null);
   };
@@ -1995,7 +2020,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
             </div>
 
             <p className="text-xs text-slate-400 mt-2 mb-5">
-              Original price: ₹{(cart[editingPriceIdx]?.price || 0).toFixed(2)} — change applies only to this bill
+              Original price: ₹{(cart[editingPriceIdx]?.price || 0).toFixed(2)} — change will update the product catalog
             </p>
 
             {/* Actions */}
