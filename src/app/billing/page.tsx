@@ -1728,6 +1728,26 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
   const isDragging = useRef(false);
   const { pName } = useHindi();
 
+  // Price edit state
+  const [editingPriceIdx, setEditingPriceIdx] = useState<number | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState('');
+  const priceInputRef = useRef<HTMLInputElement>(null);
+
+  const openPriceEdit = (idx: number) => {
+    setEditingPriceValue(String(cart[idx].price || 0));
+    setEditingPriceIdx(idx);
+    setTimeout(() => { priceInputRef.current?.select(); }, 80);
+  };
+
+  const confirmPriceEdit = () => {
+    if (editingPriceIdx === null) return;
+    const newPrice = parseFloat(editingPriceValue);
+    if (!isNaN(newPrice) && newPrice >= 0) {
+      updateCartItem(editingPriceIdx, 'price', newPrice);
+    }
+    setEditingPriceIdx(null);
+  };
+
   // Full sheet height (85vh) vs mini bar height (~64px)
   const MINI_HEIGHT = 64;
   const FULL_HEIGHT_VH = 88;
@@ -1865,13 +1885,20 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
               ) : (
                 cart.map((item: any, idx: number) => (
                   <div key={idx} className="flex gap-3 items-center bg-slate-50 rounded-xl p-3 border border-slate-100">
-                    <div className="w-10 h-10 rounded-lg bg-white overflow-hidden shrink-0 flex items-center justify-center border border-slate-200">
-                      {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-400" size={16} />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-900 text-sm truncate">{pName(item.name, item.localName)}</p>
-                      <p className="text-xs text-slate-500">₹{(item.price || 0).toFixed(2)} / {item.baseUnit}</p>
-                    </div>
+                    {/* Tappable left section — opens price editor */}
+                    <button
+                      className="flex items-center gap-3 flex-1 min-w-0 text-left active:opacity-70 transition-opacity"
+                      onClick={() => openPriceEdit(idx)}
+                      title="Tap to edit selling price"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-white overflow-hidden shrink-0 flex items-center justify-center border border-slate-200">
+                        {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-400" size={16} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-900 text-sm truncate">{pName(item.name, item.localName)}</p>
+                        <p className="text-xs text-indigo-500 font-medium">₹{(item.price || 0).toFixed(2)} / {item.baseUnit} <span className="text-slate-400 font-normal">· tap to edit</span></p>
+                      </div>
+                    </button>
                     <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg h-7 shrink-0">
                       <button onClick={() => { const q = item.quantity - 1; q <= 0 ? removeFromCart(idx) : updateCartItem(idx, 'quantity', q); }} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">−</button>
                       <span className="text-xs font-bold text-slate-800 px-1">{item.quantity}</span>
@@ -1931,6 +1958,64 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
           </>
         )}
       </div>
+
+      {/* Price Edit Modal — shown when a cart item card is tapped */}
+      {editingPriceIdx !== null && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center"
+          onClick={() => setEditingPriceIdx(null)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-t-3xl shadow-2xl px-5 pt-5 pb-8 border-t border-slate-100"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Handle */}
+            <div className="w-10 h-1.5 rounded-full bg-slate-300 mx-auto mb-4" />
+
+            {/* Product name */}
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">Edit Selling Price</p>
+            <p className="font-bold text-slate-900 text-base mb-4 truncate">
+              {pName(cart[editingPriceIdx]?.name, cart[editingPriceIdx]?.localName)}
+            </p>
+
+            {/* Price input */}
+            <div className="flex items-center bg-slate-50 border-2 border-indigo-300 rounded-2xl px-4 h-14 gap-2 focus-within:border-indigo-500 transition-colors">
+              <span className="text-2xl font-bold text-slate-400">₹</span>
+              <input
+                ref={priceInputRef}
+                type="number"
+                inputMode="decimal"
+                className="flex-1 bg-transparent text-2xl font-bold text-slate-900 focus:outline-none"
+                value={editingPriceValue}
+                onChange={e => setEditingPriceValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') confirmPriceEdit(); if (e.key === 'Escape') setEditingPriceIdx(null); }}
+                autoFocus
+              />
+              <span className="text-sm text-slate-400 font-medium">/ {cart[editingPriceIdx]?.baseUnit}</span>
+            </div>
+
+            <p className="text-xs text-slate-400 mt-2 mb-5">
+              Original price: ₹{(cart[editingPriceIdx]?.price || 0).toFixed(2)} — change applies only to this bill
+            </p>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setEditingPriceIdx(null)}
+                className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmPriceEdit}
+                className="flex-1 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200"
+              >
+                Update Price
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
