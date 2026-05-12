@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import { HindiProvider } from "@/lib/hindi-context";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -34,6 +35,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} bg-slate-50 text-slate-900 flex h-screen overflow-hidden`}>
         <HindiProvider>
+          <ServiceWorkerRegister />
           <Sidebar />
           <main className="flex-1 overflow-y-auto h-full">
             {children}

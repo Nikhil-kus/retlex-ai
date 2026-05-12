@@ -1,11 +1,4 @@
 import type { NextConfig } from "next";
-import withPWA from "next-pwa";
-
-const pwa = withPWA({
-  dest: "public",
-  register: true,
-  skipWaiting: true,
-});
 
 const nextConfig: NextConfig = {
   typescript: {
@@ -22,4 +15,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default pwa(nextConfig);
+export default nextConfig;
