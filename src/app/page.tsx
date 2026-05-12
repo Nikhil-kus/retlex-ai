@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 export const dynamic = 'force-dynamic';
@@ -5,6 +6,7 @@ import Link from "next/link"
 import { ArrowRight, Package, Receipt, IndianRupee, Store, History } from "lucide-react"
 import { getBillLabel } from "@/lib/bill-utils";
 export default async function Dashboard() {
+  redirect('/billing');
   const querySnapshot = await getDocs(collection(db, "shops"));
   const shop = querySnapshot.empty ? null : { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as any;
   

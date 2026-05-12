@@ -2,7 +2,7 @@
   "name": "Retlex AI",
   "short_name": "Retlex AI",
   "description": "AI Powered Kirana Billing",
-  "start_url": "/",
+  "start_url": "/billing",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
