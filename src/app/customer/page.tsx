@@ -1168,11 +1168,12 @@ export default function CustomerPage() {
                     {catalog.filter(p => (p.category || 'Uncategorized') === selectedCategory).map((p: any) => {
                       const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
                       const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
+                      const step = Number(p.baseQuantity) || 1;
                       return (
                         <ProductCard key={p.id} p={p} qty={qty}
                           onAdd={() => addToCart(p)}
-                          onInc={() => updateCartItem(cartIdx, 'quantity', qty + 1)}
-                          onDec={() => { cartIdx >= 0 && (qty <= 1 ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - 1)); }}
+                          onInc={() => updateCartItem(cartIdx, 'quantity', qty + step)}
+                          onDec={() => { cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
                         />
                       );
                     })}
@@ -1215,11 +1216,12 @@ export default function CustomerPage() {
                           {searchResults.map((p: any) => {
                             const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
                             const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
+                            const step = Number(p.baseQuantity) || 1;
                             return (
                               <ProductCard key={p.id} p={p} qty={qty}
                                 onAdd={() => addToCart(p)}
-                                onInc={() => updateCartItem(cartIdx, 'quantity', qty + 1)}
-                                onDec={() => { cartIdx >= 0 && (qty <= 1 ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - 1)); }}
+                                onInc={() => updateCartItem(cartIdx, 'quantity', qty + step)}
+                                onDec={() => { cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
                               />
                             );
                           })}
@@ -1251,6 +1253,7 @@ export default function CustomerPage() {
                             {catalog.slice(0, 10).map((p: any) => {
                               const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
                               const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
+                              const step = Number(p.baseQuantity) || 1;
                               const isActive = activeSuggestionId === p.id;
                               return (
                                 <div
@@ -1260,8 +1263,8 @@ export default function CustomerPage() {
                                 >
                                   <ProductCard p={p} qty={qty} mini
                                     onAdd={() => { addToCart(p); setActiveSuggestionId(p.id); }}
-                                    onInc={() => updateCartItem(cartIdx, 'quantity', qty + 1)}
-                                    onDec={() => { cartIdx >= 0 && (qty <= 1 ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - 1)); }}
+                                    onInc={() => updateCartItem(cartIdx, 'quantity', qty + step)}
+                                    onDec={() => { cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
                                   />
                                   {/* Active indicator dot */}
                                   {isActive && (
