@@ -710,11 +710,18 @@ export default function BillingPage() {
     }
   }, [search, catalog]);
 
-  const addToCart = (product: any, qty: number = 1) => {
+  const addToCart = (product: any, qty?: number) => {
+    const baseUnit = product.baseUnit || 'pc';
+    const baseQuantity = Number(product.baseQuantity) || 1;
+    // For weight/volume units with baseQuantity > 1 (e.g. 100g, 250ml),
+    // default one "unit" = baseQuantity so the price is correct immediately
+    const isWeightVol = ['g', 'ml', 'kg', 'l'].includes(baseUnit.toLowerCase());
+    const defaultQty = qty !== undefined ? qty : (isWeightVol && baseQuantity > 1 ? baseQuantity : 1);
+
     setCart(prev => {
-      const existing = prev.find(item => item.productId === product.id && item.unit === product.baseUnit);
+      const existing = prev.find(item => item.productId === product.id && item.unit === baseUnit);
       if (existing) {
-        return prev.map(item => item === existing ? { ...item, quantity: item.quantity + qty } : item);
+        return prev.map(item => item === existing ? { ...item, quantity: item.quantity + defaultQty } : item);
       }
       return [...prev, {
         productId: product.id,
@@ -723,12 +730,12 @@ export default function BillingPage() {
         imageUrl: product.imageUrl || null,
         price: product.price || 0,
         costPrice: product.costPrice || 0,
-        unit: product.baseUnit || 'pc',
-        baseUnit: product.baseUnit || 'pc',
-        baseQuantity: product.baseQuantity || 1,
+        unit: baseUnit,
+        baseUnit: baseUnit,
+        baseQuantity: baseQuantity,
         packetWeight: product.packetWeight || null,
         packetUnit: product.packetUnit || null,
-        quantity: qty
+        quantity: defaultQty
       }];
     });
 
@@ -1044,8 +1051,8 @@ export default function BillingPage() {
                       return (
                         <ProductCard key={p.id} p={p} qty={qty}
                           onAdd={() => addToCart(p)}
-                          onInc={() => updateCartItem(cartIdx, 'quantity', qty + 1)}
-                          onDec={() => { cartIdx >= 0 && (qty <= 1 ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - 1)); }}
+                          onInc={() => updateCartItem(cartIdx, 'quantity', qty + (Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1))}
+                          onDec={() => { const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1; cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
                         />
                       );
                     })}
@@ -1091,8 +1098,8 @@ export default function BillingPage() {
                             return (
                               <ProductCard key={p.id} p={p} qty={qty}
                                 onAdd={() => addToCart(p)}
-                                onInc={() => updateCartItem(cartIdx, 'quantity', qty + 1)}
-                                onDec={() => { cartIdx >= 0 && (qty <= 1 ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - 1)); }}
+                                onInc={() => updateCartItem(cartIdx, 'quantity', qty + (Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1))}
+                                onDec={() => { const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1; cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
                               />
                             );
                           })}
@@ -1133,8 +1140,8 @@ export default function BillingPage() {
                                 >
                                   <ProductCard p={p} qty={qty} mini
                                     onAdd={() => { addToCart(p); setActiveSuggestionId(p.id); }}
-                                    onInc={() => updateCartItem(cartIdx, 'quantity', qty + 1)}
-                                    onDec={() => { cartIdx >= 0 && (qty <= 1 ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - 1)); }}
+                                    onInc={() => updateCartItem(cartIdx, 'quantity', qty + (Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1))}
+                                    onDec={() => { const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1; cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
                                   />
                                   {/* Active indicator dot */}
                                   {isActive && (
@@ -1921,14 +1928,27 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-slate-900 text-sm truncate">{pName(item.name, item.localName)}</p>
-                        <p className="text-xs text-indigo-500 font-medium">₹{(item.price || 0).toFixed(2)} / {item.baseUnit} <span className="text-slate-400 font-normal">· tap to edit</span></p>
+                        {(() => {
+                          const bq = Number(item.baseQuantity) || 1;
+                          const bu = (item.baseUnit || 'pc').toLowerCase();
+                          const isWV = ['g','ml','kg','l'].includes(bu);
+                          const unitLabel = isWV && bq > 1 ? `${bq}${bu}` : bu;
+                          return <p className="text-xs text-indigo-500 font-medium">₹{(item.price || 0).toFixed(2)} / {unitLabel} <span className="text-slate-400 font-normal">· tap to edit</span></p>;
+                        })()}
                       </div>
                     </button>
-                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg h-7 shrink-0">
-                      <button onClick={() => { const q = item.quantity - 1; q <= 0 ? removeFromCart(idx) : updateCartItem(idx, 'quantity', q); }} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">−</button>
-                      <span className="text-xs font-bold text-slate-800 px-1">{item.quantity}</span>
-                      <button onClick={() => updateCartItem(idx, 'quantity', item.quantity + 1)} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">+</button>
-                    </div>
+                    {(() => {
+                      const bq = Number(item.baseQuantity) || 1;
+                      const bu = (item.baseUnit || 'pc').toLowerCase();
+                      const step = ['g','ml','kg','l'].includes(bu) && bq > 1 ? bq : 1;
+                      return (
+                        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg h-7 shrink-0">
+                          <button onClick={() => { const q = item.quantity - step; q <= 0 ? removeFromCart(idx) : updateCartItem(idx, 'quantity', q); }} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">−</button>
+                          <span className="text-xs font-bold text-slate-800 px-1">{item.quantity}</span>
+                          <button onClick={() => updateCartItem(idx, 'quantity', item.quantity + step)} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">+</button>
+                        </div>
+                      );
+                    })()}
                     <p className="text-sm font-bold text-indigo-600 shrink-0 w-14 text-right">₹{calculateItemTotal(item).toFixed(0)}</p>
                   </div>
                 ))

@@ -1,9 +1,23 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
 import { HindiProvider } from "@/lib/hindi-context";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+
+/**
+ * Root layout — wraps ALL routes.
+ *
+ * Architecture note:
+ *   The Sidebar is NOT rendered here anymore. Each route group provides
+ *   its own navigation:
+ *     - /[shopId]/* → ShopSidebar (multi-tenant, shop-aware nav)
+ *     - /qr/*       → no sidebar (public customer page)
+ *     - /customer   → no sidebar (customer-facing page)
+ *     - /worker     → no sidebar (legacy worker page, kept for backward compat)
+ *
+ *   Legacy routes (/billing, /products, etc.) still render the old Sidebar
+ *   via their own layout for backward compatibility.
+ */
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -16,9 +30,7 @@ export const metadata: Metadata = {
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-    ],
+    apple: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
   },
 };
 
@@ -36,10 +48,7 @@ export default function RootLayout({
       <body className={`${inter.className} bg-slate-50 text-slate-900 flex h-screen overflow-hidden`}>
         <HindiProvider>
           <ServiceWorkerRegister />
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto h-full">
-            {children}
-          </main>
+          {children}
         </HindiProvider>
       </body>
     </html>

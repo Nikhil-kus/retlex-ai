@@ -1,11 +1,23 @@
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, getDoc, query, where, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 export const dynamic = 'force-dynamic';
 import { ChartColumn, TrendingUp, IndianRupee, PackageOpen } from 'lucide-react';
 
 export default async function AnalyticsPage() {
-  const querySnapshot = await getDocs(collection(db, "shops"));
-  const shop = querySnapshot.empty ? null : { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as any;
+  // Use ACTIVE_SHOP_ID if set, otherwise fall back to first shop (legacy)
+  const activeShopId = process.env.ACTIVE_SHOP_ID;
+  let shop: any = null;
+
+  if (activeShopId) {
+    const shopDoc = await getDoc(doc(db, "shops", activeShopId));
+    if (shopDoc.exists()) shop = { id: shopDoc.id, ...shopDoc.data() };
+  }
+
+  if (!shop) {
+    const querySnapshot = await getDocs(collection(db, "shops"));
+    shop = querySnapshot.empty ? null : { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
+  }
+
   if (!shop) return <div className="p-8">Please setup shop first.</div>;
 
   const now = new Date();

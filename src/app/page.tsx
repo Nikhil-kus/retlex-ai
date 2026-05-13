@@ -1,131 +1,176 @@
-import { redirect } from "next/navigation";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-export const dynamic = 'force-dynamic';
-import Link from "next/link"
-import { ArrowRight, Package, Receipt, IndianRupee, Store, History } from "lucide-react"
-import { getBillLabel } from "@/lib/bill-utils";
-export default async function Dashboard() {
-  redirect('/billing');
-  const querySnapshot = await getDocs(collection(db, "shops"));
-  const shop = querySnapshot.empty ? null : { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as any;
-  
-  if (!shop) {
+'use client';
+
+/**
+ * Root page — smart entry point.
+ *
+ * Flow:
+ *   1. Check localStorage for `lastShopId` → redirect to /[shopId]/billing
+ *   2. Fetch /api/shop (uses ACTIVE_SHOP_ID or first shop) → redirect
+ *   3. No shop found → show inline "Create your first shop" form
+ *
+ * This means:
+ *   - Returning users land directly in their shop (zero extra clicks)
+ *   - New users see a clean onboarding form right here
+ *   - No dead-end redirects to broken /shop/setup pages
+ */
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Store, Loader2, ArrowRight } from 'lucide-react';
+
+export default function RootPage() {
+  const router = useRouter();
+  const [checking, setChecking] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({ name: '', mobile: '', address: '' });
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const go = async () => {
+      // 1. localStorage fast path
+      try {
+        const lastId = localStorage.getItem('lastShopId');
+        if (lastId) { router.replace(`/${lastId}/billing`); return; }
+      } catch {}
+
+      // 2. Server-side pinned shop
+      try {
+        const res = await fetch('/api/shop');
+        if (res.ok) {
+          const shop = await res.json();
+          if (shop?.id) {
+            try { localStorage.setItem('lastShopId', shop.id); } catch {}
+            router.replace(`/${shop.id}/billing`);
+            return;
+          }
+        }
+      } catch {}
+
+      // 3. No shop — show create form
+      setChecking(false);
+      setShowCreate(true);
+    };
+    go();
+  }, [router]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!form.name.trim() || !form.mobile.trim()) {
+      setError('Shop name and mobile are required.');
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch('/api/shops', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setError(d.error || 'Failed to create shop');
+        return;
+      }
+      const shop = await res.json();
+      try { localStorage.setItem('lastShopId', shop.id); } catch {}
+      router.replace(`/${shop.id}/billing`);
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // Loading spinner while checking
+  if (checking && !showCreate) {
     return (
-      <div className="p-8 max-w-lg mx-auto mt-20 text-center space-y-6">
-        <Store className="mx-auto h-16 w-16 text-indigo-500" />
-        <h1 className="text-3xl font-bold">Welcome to Kirana MVP</h1>
-        <p className="text-slate-600">Please set up your shop profile to get started.</p>
-        <Link href="/shop/setup" className="inline-flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 font-medium transition-colors">
-          Set up Shop <ArrowRight size={20} />
-        </Link>
+      <div className="flex items-center justify-center h-screen bg-slate-50">
+        <div className="flex flex-col items-center gap-3 text-slate-400">
+          <Loader2 size={32} className="animate-spin text-indigo-500" />
+          <p className="text-sm">Loading your shop…</p>
+        </div>
       </div>
-    )
+    );
   }
 
-  const today = new Date()
-  today.setHours(0,0,0,0)
-
-  // Fetch some stats
-  const productsSnapshot = await getDocs(query(collection(db, "products"), where("shopId", "==", shop.id)));
-  const totalProducts = productsSnapshot.size;
-
-  const billsSnapshot = await getDocs(query(collection(db, "bills"), where("shopId", "==", shop.id)));
-  const allBills = billsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as any);
-
-  const todayBills = allBills.filter((b: any) => {
-    const bDate = b.createdAt ? new Date(b.createdAt) : (b.date ? new Date(b.date) : new Date(0));
-    b.date = bDate; // attach date object for UI
-    return bDate >= today;
-  });
-
-  const allUnpaid = allBills.filter((b: any) => b.status === 'UNPAID');
-
-  const todaySales = todayBills.reduce((acc: number, bill: any) => acc + bill.totalAmount, 0)
-  const todayProfit = todayBills.reduce((acc: number, bill: any) => acc + bill.profit, 0)
-  const totalUnpaid = allUnpaid.reduce((acc: number, bill: any) => acc + bill.totalAmount, 0)
-
+  // First-time setup
   return (
-    <div className="p-6 md:p-10 max-w-6xl mx-auto space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 text-slate-800">Dashboard</h1>
-          <p className="text-slate-500 mt-1">Welcome back to {shop.name}</p>
-        </div>
-        <Link href="/billing" className="bg-indigo-600 text-white px-6 py-3 font-semibold rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 shadow-sm">
-          <Receipt size={20} />
-          New Bill
-        </Link>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Today's Sales" value={`₹ ${todaySales.toFixed(2)}`} icon={<IndianRupee />} trend={`${todayBills.length} bills`} color="bg-emerald-50 text-emerald-600" />
-        <StatCard title="Today's Profit" value={`₹ ${todayProfit.toFixed(2)}`} icon={<IndianRupee />} color="bg-blue-50 text-blue-600" />
-        <StatCard title="Unpaid Amount" value={`₹ ${totalUnpaid.toFixed(2)}`} icon={<Receipt />} trend={`${allUnpaid.length} bills`} color="bg-rose-50 text-rose-600" />
-        <StatCard title="Total Products" value={totalProducts} icon={<Package />} color="bg-indigo-50 text-indigo-600" />
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2 mt-8">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <ActionCard href="/products" title="Manage Catalog" icon={<Package />} />
-            <ActionCard href="/shop/setup" title="Shop Settings" icon={<Store />} />
-            <ActionCard href="/history" title="View History" icon={<History />} />
-            <ActionCard href={`/qr/${shop.qrCodeId}`} title="Customer QR" icon={<Receipt />} external />
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-600 rounded-2xl shadow-lg mb-4">
+            <Store size={32} className="text-white" />
           </div>
+          <h1 className="text-3xl font-bold text-slate-900">
+            Retlex<span className="text-indigo-600">AI</span>
+          </h1>
+          <p className="text-slate-500 mt-2 text-sm">AI-powered kirana billing</p>
         </div>
-        
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h2 className="text-lg font-semibold mb-4">Recent Bills</h2>
-          {todayBills.length === 0 ? (
-            <p className="text-slate-500 text-sm">No bills generated today.</p>
-          ) : (
-            <div className="space-y-4">
-              {todayBills.slice(0, 5).map((b: any) => (
-                <div key={b.id} className="flex justify-between items-center pb-2 border-b border-slate-50 last:border-0 text-sm">
-                  <div>
-                    <span className="font-medium">{getBillLabel(b)}</span>
-                    <p className="text-slate-500 text-xs">{b.date.toLocaleTimeString()}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-semibold text-slate-800">₹{b.totalAmount.toFixed(2)}</span>
-                    <p className={`text-xs ${b.status === 'PAID' ? 'text-emerald-600' : 'text-rose-600'}`}>{b.status}</p>
-                  </div>
-                </div>
-              ))}
+
+        {/* Create shop card */}
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-8">
+          <h2 className="text-xl font-bold text-slate-800 mb-1">Set up your shop</h2>
+          <p className="text-slate-500 text-sm mb-6">Enter your shop details to get started.</p>
+
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Shop Name *</label>
+              <input
+                required
+                type="text"
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. Sharma Kirana Store"
+                className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
             </div>
-          )}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Mobile Number *</label>
+              <input
+                required
+                type="tel"
+                value={form.mobile}
+                onChange={e => setForm({ ...form, mobile: e.target.value })}
+                placeholder="e.g. 9876543210"
+                className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Address <span className="text-slate-400">(optional)</span></label>
+              <input
+                type="text"
+                value={form.address}
+                onChange={e => setForm({ ...form, address: e.target.value })}
+                placeholder="Shop address"
+                className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            {error && (
+              <p className="text-rose-500 text-sm bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={creating}
+              className="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-xl hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-60 text-sm"
+            >
+              {creating
+                ? <><Loader2 size={18} className="animate-spin" /> Creating shop…</>
+                : <><ArrowRight size={18} /> Create Shop & Start Billing</>}
+            </button>
+          </form>
         </div>
+
+        <p className="text-center text-xs text-slate-400 mt-6">
+          Retlex AI · AI-powered kirana billing
+        </p>
       </div>
     </div>
-  )
-}
-
-function StatCard({ title, value, icon, color, trend }: any) {
-  return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-      <div className="flex justify-between items-start mb-4">
-        <h3 className="text-slate-500 font-medium text-sm">{title}</h3>
-        <div className={`p-2 rounded-lg ${color}`}>{icon}</div>
-      </div>
-      <div>
-        <p className="text-3xl font-bold text-slate-800">{value}</p>
-        {trend && <p className="text-xs text-slate-500 mt-1">{trend}</p>}
-      </div>
-    </div>
-  )
-}
-
-function ActionCard({ href, title, icon, external }: any) {
-  return (
-    <Link 
-      href={href} 
-      target={external ? "_blank" : undefined}
-      className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 transition-colors text-slate-700 gap-2 border border-transparent hover:border-indigo-100 text-sm font-medium"
-    >
-      {icon}
-      <span>{title}</span>
-    </Link>
-  )
+  );
 }

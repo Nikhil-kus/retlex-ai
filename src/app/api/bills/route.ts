@@ -83,7 +83,9 @@ export async function POST(request: Request) {
         unit: scannedUnit,
         sellingPrice: price,
         costPrice: unitCost,
-        total: finalPrice
+        total: finalPrice,
+        packetWeight: item.packetWeight || null,
+        packetUnit: item.packetUnit || null,
       };
     });
 

@@ -1,10 +1,23 @@
 import { NextResponse } from 'next/server';
-import { collection, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, getDocs, updateDoc, doc, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export async function GET(request: Request) {
   try {
-    const querySnapshot = await getDocs(collection(db, "products"));
+    const { searchParams } = new URL(request.url);
+    const shopId = searchParams.get('shopId');
+
+    // SECURITY: shopId is required — never scan the entire products collection
+    if (!shopId) {
+      return NextResponse.json(
+        { error: 'shopId query parameter is required' },
+        { status: 400 }
+      );
+    }
+
+    // Scoped to this shop only
+    const q = query(collection(db, "products"), where("shopId", "==", shopId));
+    const querySnapshot = await getDocs(q);
     const updates = [];
 
     for (const document of querySnapshot.docs) {

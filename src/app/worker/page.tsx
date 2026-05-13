@@ -293,7 +293,13 @@ export default function WorkerPage() {
                               {pName(item.name, item.localName)}
                             </p>
                             <p className="text-slate-400 text-sm mt-0.5">
-                              {item.quantity} {item.unit || 'pc'} • ₹{item.total?.toFixed(2) || '0.00'}
+                              {item.quantity} {item.unit || 'pc'}
+                              {item.packetWeight
+                                ? <span className="text-slate-500"> · {item.packetWeight}{item.packetUnit || 'g'}/pc</span>
+                                : null}
+                            </p>
+                            <p className="text-amber-300 text-sm font-semibold mt-0.5">
+                              ₹{(item.sellingPrice ?? item.price)?.toFixed(2) || '0.00'} per {item.unit || 'pc'}
                             </p>
                           </div>
                         </div>
