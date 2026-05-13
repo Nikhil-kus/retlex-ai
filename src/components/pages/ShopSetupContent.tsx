@@ -137,7 +137,7 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
   // ── URLs ──────────────────────────────────────────────────────────────────
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const workerUrl = `${origin}/${shopId}/worker`;
-  const customerUrl = shop.qrCodeId ? `${origin}/qr/${shop.qrCodeId}` : '';
+  const customerUrl = `${origin}/${shopId}/customer`;
 
   // ── tabs config ───────────────────────────────────────────────────────────
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -405,8 +405,8 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
               Customer QR Code
             </h2>
             <p className="text-slate-500 text-sm mt-1">
-              Print this QR and place it at your counter. Customers scan it to view their latest bill
-              (generated in the last 5 minutes) and can download it.
+              Print this QR and place it at your counter. Customers scan it to view their bills,
+              place orders, and save bills to WhatsApp.
             </p>
           </div>
 
@@ -415,9 +415,9 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
             <p className="text-xs font-bold text-indigo-800 uppercase tracking-wide">How it works</p>
             <ul className="text-xs text-indigo-700 space-y-1 list-disc list-inside">
               <li>Print this QR and stick it at your billing counter</li>
-              <li>After billing, customer scans QR → sees their bill instantly</li>
-              <li>Customer can download or share the bill via WhatsApp</li>
-              <li>QR link is permanent — never changes</li>
+              <li>Customer scans QR → opens the shop page directly</li>
+              <li>Customer views their last 5 bills and saves to WhatsApp</li>
+              <li>Customer can also browse products and place orders</li>
             </ul>
           </div>
 
@@ -455,7 +455,7 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
                   <ExternalLink size={15} /> Preview
                 </a>
                 <a
-                  href={`/qr/${shop.qrCodeId}/print`}
+                  href={`/${shopId}/customer/print`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
