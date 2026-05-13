@@ -142,18 +142,18 @@ export default function CustomerQRClient({ shop, recentBills, shopId }: Props) {
           <div className="bg-white rounded-2xl shadow-xl p-6 border border-slate-100">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4">
               <Clock className="text-indigo-500" size={20} />
-              Recent Bills
+              Last 5 Bills
             </h2>
 
             <p className="text-xs text-slate-500 mb-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
-              Bills from the last 5 minutes. Tap <strong>Save to WhatsApp</strong> to receive your bill on your number.
+              Last 5 bills from this shop. Tap <strong>Save to WhatsApp</strong> to receive your bill on your number.
             </p>
 
             {recentBills.length === 0 ? (
               <div className="py-10 text-center flex flex-col items-center justify-center gap-2">
                 <Receipt size={48} className="text-slate-200" />
-                <p className="text-slate-500 font-medium">No recent bills found.</p>
-                <p className="text-xs text-slate-400">Ask the shopkeeper to generate your bill.</p>
+                <p className="text-slate-500 font-medium">No bills found.</p>
+                <p className="text-xs text-slate-400">No bills have been generated for this shop yet.</p>
               </div>
             ) : (
               <div className="space-y-4">

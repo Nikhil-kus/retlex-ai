@@ -21,8 +21,7 @@ export default async function CustomerQRPage({ params }: { params: Promise<{ sho
     );
   }
 
-  // Find bills generated in the last 5 minutes for this shop
-  const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000);
+  // Fetch last 5 bills for this shop, sorted newest first
   const billsQuery = query(collection(db, "bills"), where("shopId", "==", shop.id));
   const billsSnapshot = await getDocs(billsQuery);
 
@@ -40,8 +39,8 @@ export default async function CustomerQRPage({ params }: { params: Promise<{ sho
         items: data.items || [],
       } as any;
     })
-    .filter(b => new Date(b.date) >= fiveMinsAgo)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 5);
 
   return (
     <CustomerQRClient
