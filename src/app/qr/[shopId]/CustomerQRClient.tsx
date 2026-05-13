@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Store, Receipt, Clock, MessageCircle, Phone, X, ChevronRight } from 'lucide-react';
+import { Store, Receipt, Clock, MessageCircle, Phone, X, ChevronRight, ShoppingBag } from 'lucide-react';
 import { getBillLabel } from '@/lib/bill-utils';
 
 interface BillItem {
@@ -32,6 +32,7 @@ interface Shop {
 interface Props {
   shop: Shop;
   recentBills: Bill[];
+  shopId: string;
 }
 
 const STORAGE_KEY = 'customer_whatsapp_number';
@@ -58,7 +59,7 @@ function formatPhone(raw: string): string {
   return `91${digits}`;
 }
 
-export default function CustomerQRClient({ shop, recentBills }: Props) {
+export default function CustomerQRClient({ shop, recentBills, shopId }: Props) {
   // The bill the customer wants to save
   const [pendingBill, setPendingBill] = useState<Bill | null>(null);
   // Phone number state
@@ -107,7 +108,8 @@ export default function CustomerQRClient({ shop, recentBills }: Props) {
 
   return (
     <>
-      <div className="min-h-screen bg-slate-50 pb-10">
+      {/* min-h-screen alone doesn't scroll when content overflows — use overflow-y-auto on a fixed-height wrapper */}
+      <div className="h-screen overflow-y-auto bg-slate-50 pb-10">
         {/* Header */}
         <div className="bg-indigo-600 text-white p-8 pt-12 text-center shadow-md rounded-b-[2rem]">
           <div className="bg-white/20 p-4 rounded-full inline-flex mb-4">
@@ -119,7 +121,24 @@ export default function CustomerQRClient({ shop, recentBills }: Props) {
           )}
         </div>
 
-        <div className="max-w-md mx-auto p-6 -mt-6">
+        <div className="max-w-md mx-auto p-6 -mt-6 space-y-4">
+
+          {/* ── Order Products card ── */}
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-5 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-bold text-slate-900 text-base">Want to order something?</p>
+              <p className="text-xs text-slate-500 mt-0.5">Browse products and place your order</p>
+            </div>
+            <a
+              href={`/${shopId}/customer`}
+              className="flex-shrink-0 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-sm whitespace-nowrap"
+            >
+              <ShoppingBag size={15} />
+              Order Now
+            </a>
+          </div>
+
+          {/* ── Recent Bills card ── */}
           <div className="bg-white rounded-2xl shadow-xl p-6 border border-slate-100">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4">
               <Clock className="text-indigo-500" size={20} />
@@ -197,7 +216,7 @@ export default function CustomerQRClient({ shop, recentBills }: Props) {
           </div>
         </div>
 
-        <p className="text-center text-xs text-slate-400 mt-6 font-medium tracking-wide">
+        <p className="text-center text-xs text-slate-400 mt-6 mb-4 font-medium tracking-wide">
           POWERED BY RETLEX AI
         </p>
       </div>

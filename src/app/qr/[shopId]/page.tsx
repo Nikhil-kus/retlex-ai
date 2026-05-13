@@ -47,6 +47,7 @@ export default async function CustomerQRPage({ params }: { params: Promise<{ sho
     <CustomerQRClient
       shop={shop}
       recentBills={recentBills}
+      shopId={shop.id}
     />
   );
 }
