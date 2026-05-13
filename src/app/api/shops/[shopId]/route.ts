@@ -19,6 +19,10 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shop } from '@/types';
 
+function generateQrCodeId(): string {
+  return Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+}
+
 type Params = { params: Promise<{ shopId: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
@@ -33,7 +37,16 @@ export async function GET(_req: Request, { params }: Params) {
       return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
     }
 
-    const shop: Shop = { id: shopDoc.id, ...(shopDoc.data() as Omit<Shop, 'id'>) };
+    const data = shopDoc.data() as Omit<Shop, 'id'>;
+
+    // Backfill qrCodeId if missing — happens for shops created before this field existed
+    if (!data.qrCodeId) {
+      const qrCodeId = generateQrCodeId();
+      await updateDoc(doc(db, 'shops', shopId), { qrCodeId });
+      data.qrCodeId = qrCodeId;
+    }
+
+    const shop: Shop = { id: shopDoc.id, ...data };
     return NextResponse.json(shop);
   } catch (error) {
     console.error('GET /api/shops/[shopId] error:', error);
@@ -57,14 +70,22 @@ export async function PUT(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
     }
 
+    const existing = shopDoc.data() as Omit<Shop, 'id'>;
+
+    // Backfill qrCodeId if the shop was created before this field was introduced
+    const qrCodeId =
+      existing.qrCodeId ||
+      Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+
     const updateData = {
       name: data.name,
       mobile: data.mobile,
       address: data.address,
+      qrCodeId,
     };
 
     await updateDoc(doc(db, 'shops', shopId), updateData);
-    const updated: Shop = { id: shopId, ...(shopDoc.data() as Omit<Shop, 'id'>), ...updateData };
+    const updated: Shop = { id: shopId, ...existing, ...updateData };
     return NextResponse.json(updated);
   } catch (error) {
     console.error('PUT /api/shops/[shopId] error:', error);

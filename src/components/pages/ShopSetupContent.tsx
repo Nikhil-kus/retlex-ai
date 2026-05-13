@@ -17,7 +17,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Store, Save, Plus, ChevronDown, Check,
-  Users, ShoppingBag, Package, Loader2, X,
+  Users, ShoppingBag, Package, Loader2, X, Printer, ExternalLink,
 } from 'lucide-react';
 import QRCodeDisplay from '@/components/QRCodeDisplay';
 import type { Shop } from '@/types';
@@ -441,6 +441,26 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
                   className="text-indigo-600 text-xs break-all hover:underline"
                 >
                   {customerUrl}
+                </a>
+              </div>
+
+              {/* Print Poster button */}
+              <div className="flex gap-2 w-full max-w-[280px] mx-auto">
+                <a
+                  href={customerUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition"
+                >
+                  <ExternalLink size={15} /> Preview
+                </a>
+                <a
+                  href={`/qr/${shop.qrCodeId}/print`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
+                >
+                  <Printer size={15} /> Print Poster
                 </a>
               </div>
             </>

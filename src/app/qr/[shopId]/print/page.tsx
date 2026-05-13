@@ -1,6 +1,7 @@
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { headers } from "next/headers";
+import QRCode from "qrcode";
 export const dynamic = 'force-dynamic';
 
 export default async function QRPrintPage({ params }: { params: Promise<{ shopId: string }> }) {
@@ -8,11 +9,13 @@ export default async function QRPrintPage({ params }: { params: Promise<{ shopId
 
   const shopQuery = query(collection(db, "shops"), where("qrCodeId", "==", shopId));
   const shopSnapshot = await getDocs(shopQuery);
-  const shop = shopSnapshot.empty ? null : { id: shopSnapshot.docs[0].id, ...shopSnapshot.docs[0].data() } as any;
+  const shop = shopSnapshot.empty
+    ? null
+    : ({ id: shopSnapshot.docs[0].id, ...shopSnapshot.docs[0].data() } as any);
 
   if (!shop) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-slate-500">
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontFamily: 'sans-serif' }}>
         Shop not found.
       </div>
     );
@@ -25,7 +28,17 @@ export default async function QRPrintPage({ params }: { params: Promise<{ shopId
   const baseUrl = `${proto}://${host}`;
 
   const qrUrl = `${baseUrl}/qr/${shopId}`;
-  const qrImageUrl = `https://chart.googleapis.com/chart?cht=qr&chs=400x400&chl=${encodeURIComponent(qrUrl)}&choe=UTF-8&chld=H|1`;
+
+  // Generate QR as a data URL on the server — no external API, always works
+  const qrDataUrl = await QRCode.toDataURL(qrUrl, {
+    width: 500,
+    margin: 2,
+    errorCorrectionLevel: 'H',
+    color: {
+      dark: '#1e1b4b',
+      light: '#ffffff',
+    },
+  });
 
   return (
     <>
@@ -33,178 +46,290 @@ export default async function QRPrintPage({ params }: { params: Promise<{ shopId
       <script dangerouslySetInnerHTML={{ __html: `window.onload = function(){ window.print(); }` }} />
 
       <style dangerouslySetInnerHTML={{ __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700;900&family=Inter:wght@400;600;700;900&display=swap');
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', 'Noto Sans Devanagari', sans-serif; background: white; }
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700;900&family=Inter:wght@400;500;600;700;900&display=swap');
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+          font-family: 'Inter', 'Noto Sans Devanagari', sans-serif;
+          background: #f8fafc;
+          color: #1e293b;
+        }
+
+        .page-wrapper {
+          width: 210mm;
+          min-height: 297mm;
+          margin: 0 auto;
+          background: white;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        /* ── Top banner ── */
+        .top-banner {
+          background: linear-gradient(135deg, #4338ca 0%, #6d28d9 60%, #7c3aed 100%);
+          padding: 28px 32px 24px;
+          text-align: center;
+          color: white;
+          position: relative;
+          overflow: hidden;
+        }
+        .top-banner::before {
+          content: '';
+          position: absolute;
+          top: -40px; right: -40px;
+          width: 160px; height: 160px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.06);
+        }
+        .top-banner::after {
+          content: '';
+          position: absolute;
+          bottom: -30px; left: -30px;
+          width: 120px; height: 120px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.05);
+        }
+
+        .brand-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(255,255,255,0.15);
+          border: 1px solid rgba(255,255,255,0.25);
+          border-radius: 100px;
+          padding: 4px 14px;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          margin-bottom: 14px;
+          color: rgba(255,255,255,0.95);
+        }
+
+        .shop-name {
+          font-size: 28px;
+          font-weight: 900;
+          letter-spacing: -0.5px;
+          line-height: 1.1;
+          margin-bottom: 6px;
+        }
+        .shop-meta {
+          font-size: 13px;
+          opacity: 0.8;
+          line-height: 1.6;
+        }
+
+        /* ── Main content ── */
+        .main-content {
+          flex: 1;
+          padding: 28px 32px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 22px;
+        }
+
+        /* ── Headline ── */
+        .headline-block { text-align: center; max-width: 420px; }
+        .headline-hi { font-size: 34px; font-weight: 900; color: #1e1b4b; line-height: 1.15; letter-spacing: -0.5px; }
+        .headline-en { font-size: 20px; font-weight: 700; color: #4f46e5; margin-top: 4px; }
+        .subline-hi { font-size: 14px; color: #475569; margin-top: 10px; line-height: 1.5; }
+        .subline-en { font-size: 12px; color: #94a3b8; margin-top: 3px; }
+
+        /* ── QR box ── */
+        .qr-container {
+          background: white;
+          border: 3px solid #e0e7ff;
+          border-radius: 28px;
+          padding: 22px 22px 16px;
+          box-shadow: 0 12px 40px rgba(79,70,229,0.14), 0 2px 8px rgba(0,0,0,0.06);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          position: relative;
+        }
+        .qr-corner {
+          position: absolute;
+          width: 20px; height: 20px;
+          border-color: #4f46e5;
+          border-style: solid;
+        }
+        .qr-corner-tl { top: 10px; left: 10px; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+        .qr-corner-tr { top: 10px; right: 10px; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+        .qr-corner-bl { bottom: 10px; left: 10px; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+        .qr-corner-br { bottom: 10px; right: 10px; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+
+        .qr-img { width: 240px; height: 240px; display: block; border-radius: 8px; }
+        .qr-scan-hint { font-size: 13px; font-weight: 700; color: #4f46e5; letter-spacing: 0.02em; }
+        .qr-url { font-size: 10px; color: #94a3b8; text-align: center; word-break: break-all; max-width: 260px; }
+
+        /* ── Steps flow ── */
+        .steps-section {
+          width: 100%; max-width: 440px;
+          background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+          border: 1.5px solid #bbf7d0;
+          border-radius: 20px;
+          padding: 18px 20px;
+        }
+        .steps-title {
+          font-size: 11px; font-weight: 800; color: #166534;
+          text-transform: uppercase; letter-spacing: 0.08em;
+          text-align: center; margin-bottom: 14px;
+        }
+        .steps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .step-item { display: flex; align-items: flex-start; gap: 10px; }
+        .step-num {
+          width: 26px; height: 26px; border-radius: 50%;
+          background: #16a34a; color: white;
+          font-size: 12px; font-weight: 800;
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
+        }
+        .step-icon { font-size: 18px; line-height: 1; margin-bottom: 2px; }
+        .step-hi { font-size: 12px; font-weight: 700; color: #14532d; line-height: 1.3; }
+        .step-en { font-size: 10px; color: #166534; opacity: 0.8; line-height: 1.3; }
+
+        /* ── Scan tip ── */
+        .scan-tip {
+          width: 100%; max-width: 440px;
+          background: #fafafa; border: 1.5px solid #e2e8f0;
+          border-radius: 16px; padding: 12px 18px;
+          display: flex; align-items: center; gap: 14px;
+        }
+        .scan-tip-text-hi { font-size: 13px; font-weight: 700; color: #1e293b; }
+        .scan-tip-text-en { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+        /* ── Footer ── */
+        .page-footer {
+          padding: 16px 32px 20px; text-align: center;
+          border-top: 1px solid #f1f5f9;
+        }
+        .footer-tagline-hi { font-size: 16px; font-weight: 800; color: #4f46e5; }
+        .footer-tagline-en { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+        .footer-powered { font-size: 10px; color: #cbd5e1; margin-top: 8px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+        /* ── Print button ── */
+        .no-print { padding: 16px; text-align: center; background: #f8fafc; border-top: 1px solid #e2e8f0; }
+        .print-btn {
+          background: #4f46e5; color: white; border: none;
+          padding: 12px 36px; border-radius: 12px;
+          font-size: 15px; font-weight: 700; cursor: pointer;
+          font-family: inherit;
+        }
+        .print-btn:hover { background: #4338ca; }
+
+        /* ── Print media ── */
         @media print {
           @page { size: A4; margin: 0; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .no-print { display: none !important; }
+          .page-wrapper { margin: 0; }
+        }
+
+        @media screen {
+          body { padding: 20px 0 40px; }
         }
       `}} />
 
-      <div style={{
-        width: '210mm',
-        minHeight: '297mm',
-        margin: '0 auto',
-        background: 'white',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: '0',
-        overflow: 'hidden',
-      }}>
+      <div className="page-wrapper">
 
-        {/* Top gradient banner */}
-        <div style={{
-          width: '100%',
-          background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-          padding: '32px 24px 24px',
-          textAlign: 'center',
-          color: 'white',
-        }}>
-          {/* Shop name */}
-          <div style={{ fontSize: '26px', fontWeight: 900, letterSpacing: '-0.5px', marginBottom: '4px' }}>
-            {shop.name}
-          </div>
-          {shop.address && (
-            <div style={{ fontSize: '13px', opacity: 0.85, marginBottom: '2px' }}>{shop.address}</div>
-          )}
-          {shop.mobile && (
-            <div style={{ fontSize: '13px', opacity: 0.85 }}>📞 {shop.mobile}</div>
+        {/* ── Top banner ── */}
+        <div className="top-banner">
+          <div className="brand-badge">✦ Retlex AI · Kirana Tech</div>
+          <div className="shop-name">{shop.name}</div>
+          {(shop.address || shop.mobile) && (
+            <div className="shop-meta">
+              {shop.address && <div>{shop.address}</div>}
+              {shop.mobile && <div>📞 {shop.mobile}</div>}
+            </div>
           )}
         </div>
 
-        {/* Main content */}
-        <div style={{ width: '100%', padding: '28px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+        {/* ── Main content ── */}
+        <div className="main-content">
 
-          {/* Headline bilingual */}
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '32px', fontWeight: 900, color: '#1e1b4b', lineHeight: 1.15 }}>
-              अपना बिल खुद देखें
-            </div>
-            <div style={{ fontSize: '22px', fontWeight: 700, color: '#4f46e5', marginTop: '4px' }}>
-              View Your Bill Instantly
-            </div>
-            <div style={{ fontSize: '14px', color: '#64748b', marginTop: '8px', maxWidth: '340px', margin: '8px auto 0' }}>
-              बिलिंग के बाद इस QR को स्कैन करें और अपना बिल तुरंत देखें
-            </div>
-            <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>
-              Scan after billing to see your receipt in seconds
-            </div>
+          {/* Headline */}
+          <div className="headline-block">
+            <div className="headline-hi">सेकंडों में अपना सामान खरीदें</div>
+            <div className="headline-en">Buy Yourself in Seconds</div>
+            <div className="subline-hi">QR स्कैन करें और तुरंत ऑर्डर करें — बिना इंतज़ार के</div>
+            <div className="subline-en">Scan the QR and order products instantly — no waiting</div>
           </div>
 
-          {/* QR code box */}
-          <div style={{
-            background: 'white',
-            border: '3px solid #e0e7ff',
-            borderRadius: '24px',
-            padding: '20px',
-            boxShadow: '0 8px 32px rgba(79,70,229,0.12)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '12px',
-          }}>
+          {/* QR code — server-generated data URL, always works */}
+          <div className="qr-container">
+            <div className="qr-corner qr-corner-tl" />
+            <div className="qr-corner qr-corner-tr" />
+            <div className="qr-corner qr-corner-bl" />
+            <div className="qr-corner qr-corner-br" />
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={qrImageUrl}
-              alt="Scan QR Code"
-              width={220}
-              height={220}
-              style={{ borderRadius: '12px', display: 'block' }}
-            />
-            <div style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center' }}>
-              {qrUrl}
-            </div>
+            <img src={qrDataUrl} alt="Scan QR Code to order" className="qr-img" />
+            <div className="qr-scan-hint">📷 यहाँ स्कैन करें · Scan Here</div>
+            <div className="qr-url">{qrUrl}</div>
           </div>
 
-          {/* How to scan — Google Lens instruction */}
-          <div style={{
-            background: '#f0fdf4',
-            border: '1.5px solid #bbf7d0',
-            borderRadius: '16px',
-            padding: '16px 20px',
-            width: '100%',
-            maxWidth: '420px',
-          }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: '#166534', marginBottom: '10px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              📷 कैसे स्कैन करें / How to Scan
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {[
-                { step: '1', hi: 'Google Lens खोलें', en: 'Open Google Lens (camera icon in Google app)' },
-                { step: '2', hi: 'QR कोड पर कैमरा लगाएं', en: 'Point your camera at this QR code' },
-                { step: '3', hi: 'लिंक पर टैप करें', en: 'Tap the link that appears' },
-                { step: '4', hi: 'अपना बिल देखें और डाउनलोड करें', en: 'View & download your bill instantly' },
-              ].map(({ step, hi, en }) => (
-                <div key={step} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <div style={{
-                    width: '22px', height: '22px', borderRadius: '50%',
-                    background: '#16a34a', color: 'white',
-                    fontSize: '11px', fontWeight: 700,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0, marginTop: '1px',
-                  }}>{step}</div>
+          {/* Steps */}
+          <div className="steps-section">
+            <div className="steps-title">📋 कैसे करें · How It Works</div>
+            <div className="steps-grid">
+              {([
+                { num: 1, icon: '📷', hi: 'Camera खोलें', en: 'Open Camera / Google Lens' },
+                { num: 2, icon: '🔍', hi: 'QR स्कैन करें', en: 'Scan the QR code' },
+                { num: 3, icon: '🛒', hi: 'Products चुनें', en: 'Select your products' },
+                { num: 4, icon: '✅', hi: 'Order करें', en: 'Place your order' },
+              ] as const).map(({ num, icon, hi, en }) => (
+                <div key={num} className="step-item">
+                  <div className="step-num">{num}</div>
                   <div>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#14532d' }}>{hi}</div>
-                    <div style={{ fontSize: '11px', color: '#166534', opacity: 0.8 }}>{en}</div>
+                    <div className="step-icon">{icon}</div>
+                    <div className="step-hi">{hi}</div>
+                    <div className="step-en">{en}</div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Google Lens icon hint */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '12px',
-            background: '#fafafa', border: '1.5px solid #e2e8f0',
-            borderRadius: '14px', padding: '12px 20px',
-            width: '100%', maxWidth: '420px',
-          }}>
-            {/* Google Lens colored icon (SVG) */}
-            <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="36" height="36" rx="8" fill="#f8fafc"/>
-              <path d="M18 8C12.477 8 8 12.477 8 18s4.477 10 10 10 10-4.477 10-10S23.523 8 18 8z" fill="#e8f0fe"/>
-              <path d="M18 13a5 5 0 100 10A5 5 0 0018 13z" fill="white" stroke="#4285F4" strokeWidth="1.5"/>
-              <circle cx="18" cy="18" r="2.5" fill="#4285F4"/>
-              <path d="M18 8v3M18 25v3M8 18h3M25 18h3" stroke="#4285F4" strokeWidth="1.5" strokeLinecap="round"/>
-              <path d="M11.5 11.5l2 2M22.5 22.5l2 2M11.5 24.5l2-2M22.5 13.5l2-2" stroke="#34A853" strokeWidth="1.2" strokeLinecap="round"/>
+          {/* Google Lens tip */}
+          <div className="scan-tip">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+              <rect width="40" height="40" rx="10" fill="#f0f4ff"/>
+              <circle cx="20" cy="20" r="10" fill="white" stroke="#4285F4" strokeWidth="2"/>
+              <circle cx="20" cy="20" r="4" fill="#4285F4"/>
+              <line x1="20" y1="8" x2="20" y2="12" stroke="#4285F4" strokeWidth="2" strokeLinecap="round"/>
+              <line x1="20" y1="28" x2="20" y2="32" stroke="#4285F4" strokeWidth="2" strokeLinecap="round"/>
+              <line x1="8" y1="20" x2="12" y2="20" stroke="#4285F4" strokeWidth="2" strokeLinecap="round"/>
+              <line x1="28" y1="20" x2="32" y2="20" stroke="#4285F4" strokeWidth="2" strokeLinecap="round"/>
+              <line x1="11.5" y1="11.5" x2="14.5" y2="14.5" stroke="#34A853" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="25.5" y1="25.5" x2="28.5" y2="28.5" stroke="#34A853" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="11.5" y1="28.5" x2="14.5" y2="25.5" stroke="#FBBC04" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="25.5" y1="14.5" x2="28.5" y2="11.5" stroke="#EA4335" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
             <div>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>
-                Google Lens से स्कैन करें
-              </div>
-              <div style={{ fontSize: '11px', color: '#64748b' }}>
-                Any camera app works · किसी भी कैमरा ऐप से काम करता है
-              </div>
+              <div className="scan-tip-text-hi">Google Lens या Camera से स्कैन करें</div>
+              <div className="scan-tip-text-en">Works with any camera app · किसी भी कैमरा ऐप से काम करता है</div>
             </div>
           </div>
 
-          {/* Bottom tagline */}
-          <div style={{ textAlign: 'center', marginTop: '4px' }}>
-            <div style={{ fontSize: '15px', fontWeight: 700, color: '#4f46e5' }}>
-              🛒 खरीदारी आसान, बिल तुरंत
-            </div>
-            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
-              Shopping made simple · Powered by Retlex
-            </div>
-          </div>
         </div>
 
-        {/* Print button — hidden when printing */}
-        <div className="no-print" style={{ padding: '16px', textAlign: 'center' }}>
-          <button
-            onClick={() => window.print()}
-            style={{
-              background: '#4f46e5', color: 'white', border: 'none',
-              padding: '12px 32px', borderRadius: '12px', fontSize: '15px',
-              fontWeight: 700, cursor: 'pointer',
-            }}
-          >
-            🖨️ Print / Download
+        {/* ── Footer ── */}
+        <div className="page-footer">
+          <div className="footer-tagline-hi">🛒 खरीदारी आसान, बिल तुरंत</div>
+          <div className="footer-tagline-en">Shopping made simple · Bills in seconds</div>
+          <div className="footer-powered">Powered by Retlex AI · retlex.ai</div>
+        </div>
+
+        {/* ── Print button (hidden when printing) ── */}
+        <div className="no-print">
+          <button className="print-btn" onClick={() => window.print()}>
+            🖨️ Print / Download PDF
           </button>
         </div>
+
       </div>
     </>
   );
