@@ -338,10 +338,11 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Quick Links</p>
             <a
               href={`/${shopId}/shop/catalog-setup`}
-              className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 transition text-sm font-medium text-slate-700"
+              className="flex items-center gap-3 p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 transition text-sm font-semibold text-indigo-700 border border-indigo-100"
             >
               <Package size={16} className="text-indigo-500" />
-              Import Catalog Templates
+              Import Products from Global Catalog
+              <span className="ml-auto text-indigo-400 text-xs">→</span>
             </a>
           </div>
         </div>

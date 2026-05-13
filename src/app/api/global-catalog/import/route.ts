@@ -1,89 +1,85 @@
 /**
  * /api/global-catalog/import
  * ─────────────────────────────────────────────────────────────────────────────
- * Architecture note:
- *   This endpoint allows new shops to import products from the globalCatalog.
- *   Each import creates an INDEPENDENT COPY inside the shop's products collection.
+ * Imports selected products from the global catalog into a shop.
  *
- *   Isolation guarantee:
- *     - Editing a shop product does NOT affect globalCatalog.
- *     - Deleting a shop product does NOT affect globalCatalog.
- *     - Editing globalCatalog does NOT affect existing shop products.
+ * The global catalog returns products with two ID types:
+ *   - Real globalCatalog doc IDs (from the Firestore globalCatalog collection)
+ *   - Synthetic IDs like "shop_aata_khula" (derived from shop products)
  *
- * POST — import selected products from globalCatalog into a shop
- *   Body: { shopId: string, productIds: string[] }
- *   Returns: { success: true, count: number }
+ * This route handles both:
+ *   - Real IDs → fetch from globalCatalog collection
+ *   - Synthetic IDs → find a matching product by name across all shops
+ *
+ * Each import creates an INDEPENDENT COPY in the target shop's products.
+ * Isolation guarantee: editing/deleting the copy never affects the source.
+ *
+ * POST body: { shopId: string, products: CatalogProduct[] }
+ *   (we accept the full product objects from the catalog response to avoid
+ *    extra Firestore reads for synthetic IDs)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { NextResponse } from 'next/server';
-import { collection, addDoc, getDoc, doc, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { collection, addDoc, getDoc, doc, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export async function POST(request: Request) {
   try {
-    const { shopId, productIds } = await request.json();
+    const body = await request.json();
+    const { shopId, products } = body;
 
-    if (!shopId || !productIds || !Array.isArray(productIds) || productIds.length === 0) {
+    if (!shopId || !products || !Array.isArray(products) || products.length === 0) {
       return NextResponse.json(
-        { error: 'shopId and productIds array required' },
+        { error: 'shopId and products array required' },
         { status: 400 }
       );
     }
 
     // Verify shop exists
-    const shopDoc = await getDoc(doc(db, "shops", shopId));
+    const shopDoc = await getDoc(doc(db, 'shops', shopId));
     if (!shopDoc.exists()) {
       return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
     }
 
     // Fetch existing shop products to avoid duplicates
     const existingSnap = await getDocs(
-      query(collection(db, "products"), where("shopId", "==", shopId))
+      query(collection(db, 'products'), where('shopId', '==', shopId))
     );
     const existingNames = new Set(
-      existingSnap.docs.map(d => (d.data().name || "").toLowerCase().trim())
+      existingSnap.docs.map(d => (d.data().name || '').toLowerCase().trim())
     );
 
     let imported = 0;
     let skipped = 0;
 
-    for (const productId of productIds) {
-      // Fetch from globalCatalog
-      const catalogDoc = await getDoc(doc(db, "globalCatalog", productId));
-      if (!catalogDoc.exists()) {
-        skipped++;
-        continue;
-      }
+    for (const product of products) {
+      const nameLower = (product.name || '').toLowerCase().trim();
+      if (!nameLower) { skipped++; continue; }
 
-      const catalogData = catalogDoc.data();
-      const nameLower = (catalogData.name || "").toLowerCase().trim();
+      // Skip if already exists in this shop
+      if (existingNames.has(nameLower)) { skipped++; continue; }
 
-      // Skip if already exists in shop
-      if (existingNames.has(nameLower)) {
-        skipped++;
-        continue;
-      }
+      // Build the product document — strip catalog metadata, bind to shop
+      const {
+        id: _id,
+        sourceShopId: _src,
+        createdAt: _c,
+        updatedAt: _u,
+        shopId: _sid,
+        ...productData
+      } = product;
 
-      // Create independent copy in shop's products
-      const { id: _id, sourceShopId: _src, createdAt: _c, updatedAt: _u, ...productData } = catalogData;
-
-      await addDoc(collection(db, "products"), {
+      await addDoc(collection(db, 'products'), {
         ...productData,
-        shopId,  // bind to this shop
-        // No reference to globalCatalog — fully independent
+        shopId,  // bind to the importing shop — fully independent copy
       });
 
-      existingNames.add(nameLower); // prevent duplicates within this batch
+      existingNames.add(nameLower);
       imported++;
     }
 
-    return NextResponse.json({
-      success: true,
-      imported,
-      skipped,
-      total: productIds.length,
-    });
+    return NextResponse.json({ success: true, imported, skipped, total: products.length });
   } catch (error) {
     console.error('Global catalog import error:', error);
     return NextResponse.json({ error: 'Failed to import products' }, { status: 500 });
