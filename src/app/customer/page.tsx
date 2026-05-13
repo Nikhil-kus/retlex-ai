@@ -1,6 +1,6 @@
 'use client';
 import Fuse from 'fuse.js';
-
+import React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
@@ -586,7 +586,7 @@ export default function CustomerPage() {
   const router = useRouter();
   const [shop, setShop] = useState<any>(null);
   const [catalog, setCatalog] = useState<any[]>([]);
-  const [mode, setMode] = useState<'MANUAL' | 'OCR' | 'PENDING'>('MANUAL');
+  const [mode, setMode] = useState<'MANUAL' | 'PENDING' | 'OCR'>('PENDING');
 
   // Cart state
   const [cart, setCart] = useState<any[]>([]);
@@ -655,7 +655,7 @@ export default function CustomerPage() {
   }, [selectedBill, isReviewing, selectedCategory]);
   // ─────────────────────────────────────────────────────────────────────────
 
-  const modeIndex = mode === 'MANUAL' ? 0 : mode === 'PENDING' ? 1 : 2;
+  const modeIndex = mode === 'PENDING' ? 0 : mode === 'MANUAL' ? 1 : 2;
   const isProgrammaticScroll = useRef(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
@@ -995,8 +995,8 @@ export default function CustomerPage() {
       <div className="flex-1 flex flex-col min-h-0">
         <div className="bg-white shadow-sm border-b border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
           <div className="flex border-b border-slate-100 flex-shrink-0">
-            <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
-            <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
+            <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="My Bills" />
+            <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Order" />
             <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan Slip" />
           </div>
 
@@ -1027,7 +1027,7 @@ export default function CustomerPage() {
               if (!isSwiping.current) return;
               const dx = e.changedTouches[0].clientX - touchStartX.current;
               const threshold = 50;
-              const modes: Array<'MANUAL' | 'PENDING' | 'OCR'> = ['MANUAL', 'PENDING', 'OCR'];
+              const modes: Array<'PENDING' | 'MANUAL' | 'OCR'> = ['PENDING', 'MANUAL', 'OCR'];
               if (dx < -threshold && modeIndex < 2) {
                 setMode(modes[modeIndex + 1]);
                 setSelectedCategory(null);
@@ -1038,8 +1038,84 @@ export default function CustomerPage() {
               isSwiping.current = false;
             }}
           >
-            {/* Slide 0 - Manual Search */}
-            <div ref={slide0Ref} className="w-full shrink-0 overflow-y-auto flex flex-col">
+            {/* Slide 0 - My Bills (Last 5) */}
+            <div ref={slide0Ref} className="w-full shrink-0 p-4 space-y-3 overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between pt-2 pb-1">
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <ShoppingCart size={18} className="text-indigo-500" />
+                  Last 5 Bills
+                </h2>
+                <button
+                  onClick={() => shop?.id && fetchBills(shop.id)}
+                  className="text-xs text-indigo-600 font-semibold hover:underline"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-400 bg-slate-50 rounded-xl px-3 py-2 border border-slate-100">
+                Tap <strong>Save to WhatsApp</strong> to receive your bill on your number.
+              </p>
+
+              {loadingBills ? (
+                <div className="space-y-3">
+                  {[1,2,3].map(i => <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse" />)}
+                </div>
+              ) : allCompletedBills.length === 0 && pendingBills.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
+                  <ShoppingCart size={36} className="opacity-20" />
+                  <p className="text-sm font-medium">No bills yet</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {[...allPendingBills, ...allCompletedBills]
+                    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+                    .slice(0, 5)
+                    .map(bill => (
+                      <div key={bill.id} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
+                        {/* Bill header */}
+                        <div className="bg-slate-50 px-4 py-3 flex justify-between items-center border-b border-slate-100">
+                          <div>
+                            <p className="font-bold text-slate-900 text-sm">{getBillLabel(bill)}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {new Date(bill.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-indigo-600">₹{(bill.totalAmount || 0).toFixed(2)}</p>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold tracking-wider ${
+                              bill.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                            }`}>{bill.status}</span>
+                          </div>
+                        </div>
+                        {/* Items */}
+                        <div className="px-4 py-3 space-y-1.5">
+                          {(bill.items || []).map((item: any, idx: number) => (
+                            <div key={idx} className="flex justify-between text-sm">
+                              <span className="text-slate-700 truncate pr-4">
+                                {item.quantity}× {item.name}
+                                {item.unit && item.unit !== 'pc' ? ` (${item.unit})` : ''}
+                              </span>
+                              <span className="font-medium text-slate-900 whitespace-nowrap">
+                                ₹{(item.total || 0).toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        {/* WhatsApp button */}
+                        <div className="px-4 pb-3">
+                          <WhatsAppBillButton shopName={shop?.name || ''} bill={bill} />
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+            </div>
+
+            {/* Slide 1 - Manual Search / Order */}
+            <div ref={slide1Ref} className="w-full shrink-0 overflow-y-auto flex flex-col">
 
               {/* ── Category full-page view ── */}
               {selectedCategory ? (
@@ -1285,72 +1361,6 @@ export default function CustomerPage() {
                   )}
                 </div>
               )}
-            </div>
-
-            {/* Slide 1 - Pending Bills */}
-            <div ref={slide1Ref} className="w-full shrink-0 p-6 space-y-8 overflow-y-auto">
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Pending</h3></div>
-                  {pendingBills.length > 0 && <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pendingBills.length}</span>}
-                </div>
-                {loadingBills ? (
-                  <div className="space-y-2">{[1,2].map(i => <div key={i} className="h-16 rounded-xl bg-slate-100 animate-pulse" />)}</div>
-                ) : pendingBills.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><ShoppingCart size={28} className="opacity-30" /><p className="text-sm">No pending orders</p></div>
-                ) : (
-                  <div className="space-y-2">
-                    {pendingBills.map((bill) => (
-                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-orange-300 hover:shadow-md hover:shadow-orange-50 transition-all">
-                        <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0"><span className="text-orange-500 text-lg">🕐</span></div>
-                        <div className="flex-1 min-w-0"><p className="font-semibold text-slate-900 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{bill.items?.length || 0} items · {new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <div className="text-right shrink-0"><p className="font-bold text-slate-900 text-sm">₹{bill.totalAmount?.toFixed(0) || '0'}</p><span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md">Pending</span></div>
-                        <div className="absolute inset-y-0 left-0 w-1 bg-orange-400 rounded-full" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Completed</h3></div>
-                  {allCompletedBills.length > 0 && <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">{allCompletedBills.length}</span>}
-                </div>
-                {completedBills.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><p className="text-sm">No completed orders yet</p></div>
-                ) : (
-                  <div className="space-y-2">
-                    {completedBills.map((bill) => (
-                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-50 transition-all">
-                        <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0"><CheckCircle size={16} className="text-emerald-500" /></div>
-                        <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <p className="font-semibold text-slate-700 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
-                        <div className="absolute inset-y-0 left-0 w-0.5 bg-emerald-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.6)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Unpaid</h3></div>
-                  {allUnpaidBills.length > 0 && <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">{allUnpaidBills.length}</span>}
-                </div>
-                {unpaidBills.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><p className="text-sm">No unpaid bills</p></div>
-                ) : (
-                  <div className="space-y-2">
-                    {unpaidBills.map((bill) => (
-                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-rose-300 hover:shadow-md hover:shadow-rose-50 transition-all">
-                        <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0"><TriangleAlert size={15} className="text-rose-500" /></div>
-                        <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <p className="font-semibold text-rose-600 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
-                        <div className="absolute inset-y-0 left-0 w-0.5 bg-rose-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* Slide 2 - Scan Slip / Review */}
@@ -1714,6 +1724,80 @@ function TabButton({ active, onClick, icon, label }: any) {
       {icon}
       <span className="hidden sm:inline">{label}</span>
     </button>
+  );
+}
+
+const WHATSAPP_PHONE_KEY = 'customer_whatsapp_number';
+
+function WhatsAppBillButton({ shopName, bill }: { shopName: string; bill: any }) {
+  const [open, setOpen] = React.useState(false);
+  const [phone, setPhone] = React.useState('');
+  const [saved, setSaved] = React.useState('');
+  const [err, setErr] = React.useState('');
+
+  React.useEffect(() => {
+    try {
+      const s = localStorage.getItem(WHATSAPP_PHONE_KEY) || '';
+      if (s) { setSaved(s); setPhone(s); }
+    } catch {}
+  }, []);
+
+  const send = () => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) { setErr('Enter a valid 10-digit number'); return; }
+    try { localStorage.setItem(WHATSAPP_PHONE_KEY, phone); } catch {}
+    setSaved(phone);
+    const formatted = digits.length === 10 ? `91${digits}` : digits;
+    let msg = `🏪 ${shopName}\nItems:\n`;
+    (bill.items || []).forEach((item: any) => {
+      msg += `${item.name} (${item.quantity} ${item.unit || 'pc'}) - ₹${(item.total || 0).toFixed(2)}\n`;
+    });
+    msg += `Total Amount: ₹${(bill.totalAmount || 0).toFixed(2)}\n`;
+    msg += `Status: ${bill.status === 'PAID' ? '✅ Paid' : '⏳ Unpaid'}\n`;
+    msg += `🙏 Thank you for shopping with us!\nVisit again 😊`;
+    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(msg)}`, '_blank');
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => { setErr(''); setOpen(true); }}
+        className="w-full bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-xl flex items-center justify-center gap-2 text-sm font-bold transition-colors"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.528 5.852L0 24l6.335-1.652A11.954 11.954 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.374l-.36-.214-3.727.977.994-3.634-.235-.374A9.818 9.818 0 1112 21.818z"/></svg>
+        Save to WhatsApp
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={() => setOpen(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative bg-white rounded-t-3xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-5" />
+            <p className="font-bold text-slate-900 text-base mb-1">Send Bill to WhatsApp</p>
+            <p className="text-xs text-slate-500 mb-4">Bill will be sent to your own number</p>
+            <div className="flex items-center gap-2 border-2 border-slate-200 rounded-xl px-3 py-2.5 focus-within:border-green-400 mb-1">
+              <span className="text-slate-500 text-sm font-medium">+91</span>
+              <input
+                type="tel" inputMode="numeric" maxLength={10}
+                placeholder="10-digit WhatsApp number"
+                value={phone}
+                onChange={e => { setPhone(e.target.value.replace(/\D/g,'').slice(0,10)); setErr(''); }}
+                onKeyDown={e => e.key === 'Enter' && send()}
+                autoFocus
+                className="flex-1 outline-none text-slate-900 text-sm bg-transparent"
+              />
+            </div>
+            {err && <p className="text-xs text-rose-500 mb-2">{err}</p>}
+            {saved && saved === phone && <p className="text-xs text-green-600 mb-2">✓ Using your saved number</p>}
+            <p className="text-[11px] text-slate-400 mb-4">Saved on this device only. Never stored on servers.</p>
+            <button onClick={send} className="w-full bg-green-500 hover:bg-green-600 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2">
+              Send to My WhatsApp →
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

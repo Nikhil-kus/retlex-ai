@@ -137,8 +137,6 @@ export default function CustomerQRClient({ shop, recentBills, shopId }: Props) {
               Order Now
             </a>
           </div>
-
-          {/* ── Recent Bills card ── */}
           <div className="bg-white rounded-2xl shadow-xl p-6 border border-slate-100">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4">
               <Clock className="text-indigo-500" size={20} />
