@@ -7,6 +7,7 @@ import { getBillLabel } from '@/lib/bill-utils';
 interface BillItem {
   id?: string;
   name: string;
+  localName?: string;
   quantity: number;
   unit?: string;
   total?: number;
@@ -43,7 +44,8 @@ function buildMessage(shopName: string, bill: Bill): string {
   msg += `Items:\n`;
   bill.items.forEach(item => {
     const unit = item.unit || 'pc';
-    msg += `${item.name} (${item.quantity} ${unit}) - ₹${(item.total || 0).toFixed(2)}\n`;
+    const displayName = item.localName || item.name;
+    msg += `${displayName} (${item.quantity} ${unit}) - ₹${(item.total || 0).toFixed(2)}\n`;
   });
   msg += `Total Amount: ₹${(bill.totalAmount || 0).toFixed(2)}\n`;
   msg += `Status: ${bill.status === 'PAID' ? '✅ Paid' : '⏳ Unpaid'}\n`;
@@ -182,13 +184,16 @@ export default function CustomerQRClient({ shop, recentBills, shopId }: Props) {
                       </div>
                     </div>
 
-                    {/* Items */}
+                    {/* Items list */}
                     <div className="p-4 bg-white">
                       <div className="space-y-2 mb-4">
                         {bill.items.map((item, idx) => (
                           <div key={item.id ?? idx} className="flex justify-between text-sm">
                             <span className="text-slate-700 truncate pr-4">
-                              {item.quantity}× {item.name}
+                              {item.quantity}× {item.localName || item.name}
+                              {item.localName && item.localName !== item.name && (
+                                <span className="text-slate-400 text-xs ml-1">({item.name})</span>
+                              )}
                               {item.unit && item.unit !== 'pc' ? ` (${item.unit})` : ''}
                             </span>
                             <span className="font-medium text-slate-900 whitespace-nowrap">

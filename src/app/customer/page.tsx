@@ -750,11 +750,18 @@ export default function CustomerPage() {
     }
   }, [search, catalog]);
 
-  const addToCart = (product: any, qty: number = 1) => {
+  const addToCart = (product: any, qty?: number) => {
+    const baseUnit = product.baseUnit || 'pc';
+    const baseQuantity = Number(product.baseQuantity) || 1;
+    // For weight/volume units with baseQuantity > 1 (e.g. 100g, 250ml),
+    // default one "unit" = baseQuantity so the price is correct immediately
+    const isWeightVol = ['g', 'ml', 'kg', 'l'].includes(baseUnit.toLowerCase());
+    const defaultQty = qty !== undefined ? qty : (isWeightVol && baseQuantity > 1 ? baseQuantity : 1);
+
     setCart(prev => {
-      const existing = prev.find(item => item.productId === product.id && item.unit === product.baseUnit);
+      const existing = prev.find(item => item.productId === product.id && item.unit === baseUnit);
       if (existing) {
-        return prev.map(item => item === existing ? { ...item, quantity: item.quantity + qty } : item);
+        return prev.map(item => item === existing ? { ...item, quantity: item.quantity + defaultQty } : item);
       }
       return [...prev, {
         productId: product.id,
@@ -763,12 +770,12 @@ export default function CustomerPage() {
         imageUrl: product.imageUrl || null,
         price: product.price || 0,
         costPrice: product.costPrice || 0,
-        unit: product.baseUnit || 'pc',
-        baseUnit: product.baseUnit || 'pc',
-        baseQuantity: product.baseQuantity || 1,
+        unit: baseUnit,
+        baseUnit: baseUnit,
+        baseQuantity: baseQuantity,
         packetWeight: product.packetWeight || null,
         packetUnit: product.packetUnit || null,
-        quantity: qty
+        quantity: defaultQty
       }];
     });
 
@@ -1114,7 +1121,10 @@ export default function CustomerPage() {
                           {(bill.items || []).map((item: any, idx: number) => (
                             <div key={idx} className="flex justify-between text-sm">
                               <span className="text-slate-700 truncate pr-4">
-                                {item.quantity}× {item.name}
+                                {item.quantity}× {item.localName || item.name}
+                                {item.localName && item.localName !== item.name && (
+                                  <span className="text-slate-400 text-xs ml-1">({item.name})</span>
+                                )}
                                 {item.unit && item.unit !== 'pc' ? ` (${item.unit})` : ''}
                               </span>
                               <span className="font-medium text-slate-900 whitespace-nowrap">
@@ -1772,7 +1782,8 @@ function WhatsAppBillButton({ shopName, bill }: { shopName: string; bill: any })
     const formatted = digits.length === 10 ? `91${digits}` : digits;
     let msg = `🏪 ${shopName}\nItems:\n`;
     (bill.items || []).forEach((item: any) => {
-      msg += `${item.name} (${item.quantity} ${item.unit || 'pc'}) - ₹${(item.total || 0).toFixed(2)}\n`;
+      const displayName = item.localName || item.name;
+      msg += `${displayName} (${item.quantity} ${item.unit || 'pc'}) - ₹${(item.total || 0).toFixed(2)}\n`;
     });
     msg += `Total Amount: ₹${(bill.totalAmount || 0).toFixed(2)}\n`;
     msg += `Status: ${bill.status === 'PAID' ? '✅ Paid' : '⏳ Unpaid'}\n`;
