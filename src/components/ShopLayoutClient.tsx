@@ -30,7 +30,7 @@ export default function ShopLayoutClient({ shopId, children }: Props) {
   return (
     <ShopProvider shopId={shopId}>
       {!isWorkerPage && <ShopSidebar shopId={shopId} />}
-      <main className="flex-1 overflow-hidden h-full">
+      <main className="flex-1 overflow-y-auto h-full">
         {children}
       </main>
     </ShopProvider>
