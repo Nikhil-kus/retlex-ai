@@ -63,13 +63,17 @@ export async function POST(request: Request) {
       // Update the pinned shop
       const shopDoc = await getDoc(doc(db, "shops", activeShopId));
       if (shopDoc.exists()) {
-        const updateData = {
+        const existing = shopDoc.data() as any;
+        // Backfill qrCodeId if missing (shops created before this field was introduced)
+        const qrCodeId = existing.qrCodeId || (Math.random().toString(36).substring(2, 10) + Date.now().toString(36));
+        const updateData: any = {
           name: data.name,
           mobile: data.mobile,
           address: data.address,
+          qrCodeId,
         };
         await updateDoc(doc(db, "shops", activeShopId), updateData);
-        return NextResponse.json({ id: activeShopId, ...shopDoc.data(), ...updateData });
+        return NextResponse.json({ id: activeShopId, ...existing, ...updateData });
       }
     }
 
@@ -77,10 +81,12 @@ export async function POST(request: Request) {
     const querySnapshot = await getDocs(collection(db, "shops"));
 
     if (!querySnapshot.empty) {
-      const existingShop = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
-      const updateData = { name: data.name, mobile: data.mobile, address: data.address };
-      await updateDoc(doc(db, "shops", existingShop.id), updateData);
-      return NextResponse.json({ ...existingShop, ...updateData });
+      const existingDoc = querySnapshot.docs[0];
+      const existing = existingDoc.data() as any;
+      const qrCodeId = existing.qrCodeId || (Math.random().toString(36).substring(2, 10) + Date.now().toString(36));
+      const updateData = { name: data.name, mobile: data.mobile, address: data.address, qrCodeId };
+      await updateDoc(doc(db, "shops", existingDoc.id), updateData);
+      return NextResponse.json({ id: existingDoc.id, ...existing, ...updateData });
     }
 
     // Create new shop (first-time setup)
