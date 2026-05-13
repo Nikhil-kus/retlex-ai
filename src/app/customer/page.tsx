@@ -1040,6 +1040,26 @@ export default function CustomerPage() {
           >
             {/* Slide 0 - My Bills (Last 5) */}
             <div ref={slide0Ref} className="w-full shrink-0 p-4 space-y-3 overflow-y-auto">
+
+              {/* ── Order hint banner ── */}
+              <button
+                onClick={() => setMode('MANUAL')}
+                className="w-full flex items-center justify-between gap-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-4 py-3 rounded-2xl shadow-md transition-colors"
+              >
+                <div className="flex items-center gap-2.5">
+                  <ShoppingCart size={18} className="shrink-0" />
+                  <div className="text-left">
+                    <p className="text-sm font-bold leading-tight">Want to order something?</p>
+                    <p className="text-[11px] text-indigo-200 mt-0.5">Tap here to browse &amp; order products</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-xs font-semibold text-indigo-200">Order</span>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </button>
               {/* Header */}
               <div className="flex items-center justify-between pt-2 pb-1">
                 <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
