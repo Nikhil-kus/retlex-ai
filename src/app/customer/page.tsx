@@ -995,7 +995,7 @@ export default function CustomerPage() {
       <div className="flex-1 flex flex-col min-h-0">
         <div className="bg-white shadow-sm border-b border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
           <div className="flex border-b border-slate-100 flex-shrink-0">
-            <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="My Bills" />
+            <TabButton active={mode === 'PENDING'} onClick={() => { if (isListening) stopVoiceInput(); setMode('PENDING'); }} icon={<ShoppingCart size={18} />} label="My Bills" />
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Order" />
             <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan Slip" />
           </div>
@@ -1564,7 +1564,8 @@ export default function CustomerPage() {
         </div>
       </div>
 
-      {/* Floating Voice Button - fixed bottom center, visible on all tabs */}
+      {/* Floating Voice Button - hidden on My Bills tab, visible on Order/Scan tabs */}
+      {mode !== 'PENDING' && (
       <button
         onClick={isListening ? stopVoiceInput : startVoiceInput}
         className={`fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-6 py-3.5 rounded-full font-bold text-white shadow-2xl transition-all duration-500 ${
@@ -1593,6 +1594,7 @@ export default function CustomerPage() {
           </>
         )}
       </button>
+      )}
 
       {/* Cart Bottom Sheet — shown after "Add items to Bill" on mobile */}
       {/* Cart Bottom Sheet — mini bar when collapsed, full sheet when expanded */}
