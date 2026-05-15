@@ -5,6 +5,8 @@ import { Package, Search, Plus, Pencil, Trash, X, ChevronDown, CheckSquare, Squa
 import Image from 'next/image';
 import { useHindi } from '@/lib/hindi-context';
 
+import { shopCache } from '@/lib/session-cache';
+
 export default function ProductsPage() {
   const { pName } = useHindi();
   const [products, setProducts] = useState<any[]>([]);
@@ -37,6 +39,14 @@ export default function ProductsPage() {
   const [quickPriceEdit, setQuickPriceEdit] = useState<{ id: string; price: string } | null>(null);
 
   useEffect(() => {
+    // Use shopCache first (set by ProductsPageContent with the correct URL shopId).
+    // Fall back to /api/shop only on the legacy /products route.
+    const cached = shopCache.get();
+    if (cached && !cached.error) {
+      setShop(cached);
+      fetchProducts(cached.id, '');
+      return;
+    }
     fetch('/api/shop')
       .then(r => r.json())
       .then(data => {
