@@ -14,7 +14,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Store, Package, Receipt,
-  History, ChartColumn, Menu, X, FileText, Users
+  History, ChartColumn, Menu, X, FileText, Users, Sparkles
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useHindi } from '@/lib/hindi-context';
@@ -31,13 +31,14 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
   const base = `/${shopId}`;
 
   const navItems = [
-    { href: `${base}/billing`,      label: 'Billing',      icon: Receipt },
-    { href: `${base}/products`,     label: 'Products',     icon: Package },
-    { href: `${base}/history`,      label: 'Bill History', icon: History },
-    { href: `${base}/unpaid`,       label: 'Unpaid Bills', icon: FileText },
-    { href: `${base}/analytics`,    label: 'Analytics',    icon: ChartColumn },
-    { href: `${base}/worker`,       label: 'Worker View',  icon: Users },
-    { href: `${base}/shop/setup`,   label: 'Shop Setup',   icon: Store },
+    { href: `${base}/billing`,        label: 'Billing',        icon: Receipt },
+    { href: `${base}/products`,       label: 'Products',       icon: Package },
+    { href: `${base}/shop/ingest`,    label: 'AI Ingest',      icon: Sparkles },
+    { href: `${base}/history`,        label: 'Bill History',   icon: History },
+    { href: `${base}/unpaid`,         label: 'Unpaid Bills',   icon: FileText },
+    { href: `${base}/analytics`,      label: 'Analytics',      icon: ChartColumn },
+    { href: `${base}/worker`,         label: 'Worker View',    icon: Users },
+    { href: `${base}/shop/setup`,     label: 'Shop Setup',     icon: Store },
   ];
 
   useEffect(() => {
