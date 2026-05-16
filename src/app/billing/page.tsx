@@ -1767,7 +1767,11 @@ export default function BillingPage() {
                               {item.suggestions.brandVariants?.length > 0 && (
                                 <div>
                                   <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span></p>
-                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
+                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
+                                    onTouchStart={e => e.stopPropagation()}
+                                    onTouchMove={e => e.stopPropagation()}
+                                    onTouchEnd={e => e.stopPropagation()}
+                                  >
                                     {item.suggestions.brandVariants.map((sug: any, sIdx: number) => {
                                       const isSelected = selectedBrand?.id === sug.id;
                                       const isPinned = pinnedProductId === sug.id;
@@ -1816,7 +1820,11 @@ export default function BillingPage() {
                                     {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} — Pack Sizes` : 'Pack Sizes'}
                                     <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span>
                                   </p>
-                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
+                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
+                                    onTouchStart={e => e.stopPropagation()}
+                                    onTouchMove={e => e.stopPropagation()}
+                                    onTouchEnd={e => e.stopPropagation()}
+                                  >
                                     {activeSizeVariants.map((sug: any, sIdx: number) => {
                                       const isPinned = pinnedProductId === sug.id;
                                       return (
