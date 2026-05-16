@@ -7,7 +7,7 @@ import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, Tria
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
 import { useHindi, CATEGORY_HINDI } from '@/lib/hindi-context';
-import { shopCache, catalogCache } from '@/lib/session-cache';
+import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 
 export default function CustomerPage() {
   const { pName, hindiMode, catName } = useHindi();
@@ -20,8 +20,11 @@ export default function CustomerPage() {
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
   // Tracks which brand card is "previewed" per review item index
-  // so the Pack Sizes row updates to show that brand's variants
   const [selectedBrandPerItem, setSelectedBrandPerItem] = useState<Record<number, any>>({});
+  // Long-press timer for pinning a suggestion as default
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Toast: id of the product just pinned as default (auto-clears after 1.8s)
+  const [pinnedProductId, setPinnedProductId] = useState<string | null>(null);
   const audioCtxRef = useRef<any>(null);
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
@@ -553,8 +556,32 @@ export default function CustomerPage() {
                 if (newParsedItems.length > 0) {
                     const enrichedItems = newParsedItems.map((item: any) => {
                         let finalItem = item;
+                        // 1. Session override (tapped a suggestion card during this voice session)
                         if (item.aiLabel && itemOverridesRef.current[item.aiLabel]) {
                             finalItem = { ...finalItem, ...itemOverridesRef.current[item.aiLabel] };
+                        }
+                        // 2. Persistent preference (long-pressed in a previous session)
+                        if (!itemOverridesRef.current[item.aiLabel]) {
+                            const spokenKey = item.spokenWord || item.aiLabel || item.name;
+                            const pref = shop?.id ? voicePrefsCache.get(shop.id, spokenKey) : null;
+                            if (pref) {
+                                const prefProduct = catalog.find((p: any) => p.id === pref.productId);
+                                if (prefProduct) {
+                                    finalItem = {
+                                        ...finalItem,
+                                        productId: prefProduct.id,
+                                        name: prefProduct.name,
+                                        localName: prefProduct.localName,
+                                        price: prefProduct.price,
+                                        costPrice: prefProduct.costPrice,
+                                        baseUnit: prefProduct.baseUnit,
+                                        baseQuantity: prefProduct.baseQuantity,
+                                        packetWeight: prefProduct.packetWeight,
+                                        packetUnit: prefProduct.packetUnit,
+                                        imageUrl: prefProduct.imageUrl,
+                                    };
+                                }
+                            }
                         }
                         return {
                             ...finalItem,
@@ -1680,15 +1707,41 @@ export default function CustomerPage() {
                             const activeSizeVariants = selectedBrand
                               ? getSizeVariantsForBrand(selectedBrand)
                               : (item.suggestions.sizeVariants || []);
+                            const spokenKey = item.spokenWord || item.aiLabel || item.name;
+
+                            const buildOverrides = (sug: any) => ({
+                              productId: sug.id, name: sug.name, localName: sug.localName,
+                              price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity,
+                              packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl
+                            });
+
+                            const pinAsDefault = (sug: any) => {
+                              if (shop?.id && spokenKey) {
+                                voicePrefsCache.set(shop.id, spokenKey, { productId: sug.id });
+                                setPinnedProductId(sug.id);
+                                setTimeout(() => setPinnedProductId(null), 1800);
+                              }
+                            };
+
+                            const longPressHandlers = (sug: any) => ({
+                              onPointerDown: () => {
+                                longPressTimerRef.current = setTimeout(() => pinAsDefault(sug), 650);
+                              },
+                              onPointerUp: () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); },
+                              onPointerLeave: () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); },
+                              onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+                            });
+
                             return (
                             <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2.5">
                               {/* Row 1: Brand / Variant suggestions */}
                               {item.suggestions.brandVariants?.length > 0 && (
                                 <div>
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands</p>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span></p>
                                   <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
                                     {item.suggestions.brandVariants.map((sug: any, sIdx: number) => {
                                       const isSelected = selectedBrand?.id === sug.id;
+                                      const isPinned = pinnedProductId === sug.id;
                                       const sugSizes = getSizeVariantsForBrand(sug);
                                       return (
                                         <button
@@ -1697,19 +1750,23 @@ export default function CustomerPage() {
                                             if (sugSizes.length > 0) {
                                               setSelectedBrandPerItem(prev => ({ ...prev, [idx]: isSelected ? null : sug }));
                                             } else {
-                                              const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl };
+                                              const overrides = buildOverrides(sug);
                                               if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
                                               const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
                                               setReviewItems(newItems);
                                               setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
                                             }
                                           }}
-                                          className={`flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border-2 ${
-                                            isSelected
-                                              ? 'border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-100'
-                                              : 'border-slate-200 bg-white hover:border-indigo-300'
+                                          {...longPressHandlers(sug)}
+                                          className={`relative flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border-2 ${
+                                            isPinned ? 'border-emerald-500 bg-emerald-50 scale-105'
+                                            : isSelected ? 'border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-100'
+                                            : 'border-slate-200 bg-white hover:border-indigo-300'
                                           }`}
                                         >
+                                          {isPinned && (
+                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
+                                          )}
                                           <div className="w-full h-12 bg-slate-50 overflow-hidden flex items-center justify-center">
                                             {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={16} />}
                                           </div>
@@ -1728,29 +1785,40 @@ export default function CustomerPage() {
                                 <div>
                                   <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">
                                     {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} — Pack Sizes` : 'Pack Sizes'}
+                                    <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span>
                                   </p>
                                   <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
-                                    {activeSizeVariants.map((sug: any, sIdx: number) => (
-                                      <button
-                                        key={sIdx}
-                                        onClick={() => {
-                                          const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl };
-                                          if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
-                                          const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
-                                          setReviewItems(newItems);
-                                          setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
-                                        }}
-                                        className="flex-shrink-0 flex flex-col items-center bg-white border border-amber-200 hover:border-amber-400 rounded-xl overflow-hidden w-16 transition-all"
-                                      >
-                                        <div className="w-full h-12 bg-amber-50 overflow-hidden flex items-center justify-center">
-                                          {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-amber-300" size={16} />}
-                                        </div>
-                                        <div className="p-1 text-center">
-                                          <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                          <p className="text-[9px] font-black text-amber-600">₹{(sug.price || 0).toFixed(0)}</p>
-                                        </div>
-                                      </button>
-                                    ))}
+                                    {activeSizeVariants.map((sug: any, sIdx: number) => {
+                                      const isPinned = pinnedProductId === sug.id;
+                                      return (
+                                        <button
+                                          key={sIdx}
+                                          onClick={() => {
+                                            const overrides = buildOverrides(sug);
+                                            if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                            const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
+                                            setReviewItems(newItems);
+                                            setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
+                                          }}
+                                          {...longPressHandlers(sug)}
+                                          className={`relative flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border ${
+                                            isPinned ? 'border-emerald-500 bg-emerald-50 scale-105'
+                                            : 'border-amber-200 bg-white hover:border-amber-400'
+                                          }`}
+                                        >
+                                          {isPinned && (
+                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
+                                          )}
+                                          <div className="w-full h-12 bg-amber-50 overflow-hidden flex items-center justify-center">
+                                            {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-amber-300" size={16} />}
+                                          </div>
+                                          <div className="p-1 text-center">
+                                            <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                            <p className="text-[9px] font-black text-amber-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}

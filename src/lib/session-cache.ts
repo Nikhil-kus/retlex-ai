@@ -45,3 +45,32 @@ export const catalogCache = {
     } catch {}
   },
 };
+
+/**
+ * Persistent voice keyword preferences (localStorage — survives tab close).
+ * Keyed by shopId + spoken word so each shop has independent preferences.
+ * When a shop owner long-presses a suggestion card, that product becomes
+ * the default match for that spoken word in future voice sessions.
+ */
+export const voicePrefsCache = {
+  _key(shopId: string, spokenWord: string) {
+    return `voice_pref_${shopId}_${spokenWord.toLowerCase().trim()}`;
+  },
+  get(shopId: string, spokenWord: string): any | null {
+    if (!shopId || !spokenWord) return null;
+    try {
+      const raw = localStorage.getItem(this._key(shopId, spokenWord));
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  },
+  set(shopId: string, spokenWord: string, productOverride: any) {
+    if (!shopId || !spokenWord) return;
+    try {
+      localStorage.setItem(this._key(shopId, spokenWord), JSON.stringify(productOverride));
+    } catch {}
+  },
+  clear(shopId: string, spokenWord: string) {
+    if (!shopId || !spokenWord) return;
+    try { localStorage.removeItem(this._key(shopId, spokenWord)); } catch {}
+  },
+};
