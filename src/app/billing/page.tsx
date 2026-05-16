@@ -568,7 +568,33 @@ export default function BillingPage() {
   };
 
   const getSuggestions = (item: any) => {
-    if (!item.productId) return { brandVariants: [], sizeVariants: [] };
+    // ── CASE: No catalog match (e.g. user said "ghee" but it didn't fuzzy-match anything) ──
+    // Still search by the spoken word to surface all products in that category.
+    if (!item.productId) {
+      const spokenWord = (item.spokenWord || item.name || '').toLowerCase().trim();
+      const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length >= 2);
+      if (spokenWords.length === 0) return { brandVariants: [], sizeVariants: [] };
+
+      // Find all catalog products whose name or localName contains any spoken word
+      const allMatches = catalog.filter(p => {
+        const pn = (p.name || '').toLowerCase();
+        const pl = (p.localName || '').toLowerCase();
+        return spokenWords.some((w: string) => pn.includes(w) || pl.includes(w));
+      });
+
+      if (allMatches.length === 0) return { brandVariants: [], sizeVariants: [] };
+
+      // Group by brand (first word) — show one card per brand (cheapest)
+      const brandMap = new Map<string, any>();
+      for (const p of allMatches) {
+        const pBrand = (p.name || '').toLowerCase().split(' ')[0];
+        const existing = brandMap.get(pBrand);
+        if (!existing || (p.price > 0 && (existing.price === 0 || p.price < existing.price))) {
+          brandMap.set(pBrand, p);
+        }
+      }
+      return { brandVariants: Array.from(brandMap.values()).slice(0, 12), sizeVariants: [] };
+    }
 
     const itemNameLower = (item.name || '').toLowerCase();
     const itemLocal = (item.localName || '').toLowerCase();
@@ -580,7 +606,7 @@ export default function BillingPage() {
     // Detect generic category word (e.g. "masala", "biscuit", "namkeen")
     // vs specific brand+product (e.g. "everest masala", "parle-g")
     const spokenWord = (item.spokenWord || item.name || '').toLowerCase().trim();
-    const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length > 2);
+    const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length >= 2);
 
     // Build the pool of all related products using the best search keyword
     let related: any[] = [];
