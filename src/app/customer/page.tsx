@@ -490,6 +490,8 @@ export default function CustomerPage() {
       .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
       .slice(0, 8);
   };
+
+  const startVoiceInput = () => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
