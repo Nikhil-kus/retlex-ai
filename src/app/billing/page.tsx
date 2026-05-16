@@ -56,7 +56,7 @@ export default function BillingPage() {
     if (maxOverlap > 0) {
         return words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ");
     }
-    return s1.trim() + " , " + s2.trim();
+    return s1.trim() + " " + s2.trim();
   };
 
   const parseVoiceItems = (text: string) => {
@@ -65,11 +65,10 @@ export default function BillingPage() {
       // Remove prices so they aren't parsed as quantities (e.g. "50 wala namak" -> "namak")
       .replace(/(\d+(?:\.\d+)?)\s*(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)/gi, ' ')
       .replace(/\b(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)\b/gi, ' ')
-      // Treat conjunctions and pauses as item separators
-      .replace(/\b(and|plus)\b/gi, ' , ')
-      .replace(/और|तथा|भी|या/g, ' , ')
-      .replace(/\b(aur|tatha|bhi|ya)\b/gi, ' , ')
-      .replace(/,/g, ' , ')
+      // Remove filler words that cause incorrect item grouping
+      .replace(/\b(and|plus)\b/gi, ' ')
+      .replace(/और|तथा|भी|या/g, ' ')
+      .replace(/\b(aur|tatha|bhi|ya)\b/gi, ' ')
       // Fix misheard numbers (phonetic matching)
       .replace(/\b(to|too|tu|two|तो|टो|do|दो)\b/gi, ' 2 ')
       .replace(/\b(for|four|फ़ॉर|फॉर|फोर)\b/gi, ' 4 ')
@@ -154,7 +153,6 @@ export default function BillingPage() {
     const hasNameAhead = (startIndex: number) => {
       for (let j = startIndex; j < words.length; j++) {
         const w = words[j];
-        if (w === ',') break; // stop looking ahead if we hit a separator
         if (unitMap[w]) continue;
         let isNum = false;
         if (!isNaN(Number(w))) isNum = true;
@@ -172,12 +170,6 @@ export default function BillingPage() {
     while (i < words.length) {
       const word = words[i];
       const nextWord = words[i + 1] || "";
-
-      if (word === ',') {
-        commitItem();
-        i++;
-        continue;
-      }
 
       let isNumber = false;
       let parsedNum = NaN;
@@ -287,56 +279,43 @@ export default function BillingPage() {
       const result = fuse.search(searchName);
       let bestMatch: any = null;
 
-      // 1. Forgiving direct hit check to allow typos
-      let directMatch: any = null;
+      // Forgiving direct hit check to allow typos
       if (result.length && (result[0].score ?? 1) <= 0.6) {
-        directMatch = result[0].item;
+        bestMatch = result[0].item;
       }
 
-      // 2. Enhanced multi-word word-hit scoring
-      // Score each catalog product by how many spoken words match it.
-      // This handles cases where an extra word in the product name ("Original") 
-      // breaks the full-phrase fuzzy score (e.g. "detol sabun" matching "vivel sabun" 
-      // instead of "Dettol Original Sabun").
-      let wordHitMatch: any = null;
-      let maxHits = 0;
-      const words = searchName.split(/\s+/).filter((w: string) => w.length > 2);
-      if (words.length > 0) {
-        // For each word, find catalog products it matches well (score ≤ 0.45)
-        const productHits = new Map<string, { item: any; hitCount: number; bestScore: number }>();
-        for (const w of words) {
-          const subResult = fuse.search(w);
-          for (const r of subResult) {
-            if ((r.score ?? 1) > 0.45) break; // results are sorted by score
-            const id = r.item.id;
-            const existing = productHits.get(id);
-            if (!existing) {
-              productHits.set(id, { item: r.item, hitCount: 1, bestScore: r.score ?? 1 });
-            } else {
-              existing.hitCount += 1;
-              existing.bestScore = Math.min(existing.bestScore, r.score ?? 1);
+      // Enhanced multi-word fallback:
+      // When the full phrase fails (e.g. "detol sabun" vs "Dettol Original Sabun"),
+      // score each catalog product by how many spoken words match it, then pick
+      // the product with the most word-hits. This handles cases where an extra word
+      // in the product name ("Original") breaks the full-phrase fuzzy score.
+      if (!bestMatch) {
+        const words = searchName.split(/\s+/).filter((w: string) => w.length > 2);
+        if (words.length > 0) {
+          // For each word, find catalog products it matches well (score ≤ 0.45)
+          const productHits = new Map<string, { item: any; hitCount: number; bestScore: number }>();
+          for (const w of words) {
+            const subResult = fuse.search(w);
+            for (const r of subResult) {
+              if ((r.score ?? 1) > 0.45) break; // results are sorted by score
+              const id = r.item.id;
+              const existing = productHits.get(id);
+              if (!existing) {
+                productHits.set(id, { item: r.item, hitCount: 1, bestScore: r.score ?? 1 });
+              } else {
+                existing.hitCount += 1;
+                existing.bestScore = Math.min(existing.bestScore, r.score ?? 1);
+              }
             }
           }
+          if (productHits.size > 0) {
+            // Pick product with most word-hits; break ties by best (lowest) score
+            const best = Array.from(productHits.values()).sort((a, b) =>
+              b.hitCount !== a.hitCount ? b.hitCount - a.hitCount : a.bestScore - b.bestScore
+            )[0];
+            bestMatch = best.item;
+          }
         }
-        if (productHits.size > 0) {
-          // Pick product with most word-hits; break ties by best (lowest) score
-          const best = Array.from(productHits.values()).sort((a, b) =>
-            b.hitCount !== a.hitCount ? b.hitCount - a.hitCount : a.bestScore - b.bestScore
-          )[0];
-          wordHitMatch = best.item;
-          maxHits = best.hitCount;
-        }
-      }
-
-      // 3. Resolve best match
-      // If word-hit logic found a match with multiple word hits, it is semantically 
-      // stronger than a purely structural fuzzy match (solves dettol sabun vs vivel sabun).
-      if (wordHitMatch && maxHits >= 2) {
-        bestMatch = wordHitMatch;
-      } else if (directMatch) {
-        bestMatch = directMatch;
-      } else if (wordHitMatch) {
-        bestMatch = wordHitMatch;
       }
 
       const key = (bestMatch?.id || item.name).toLowerCase();
