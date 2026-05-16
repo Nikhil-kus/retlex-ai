@@ -308,6 +308,49 @@ export default function BillingPage() {
       };
     });
 
+    // PHASE 2.5: DEDUPLICATE SPOKEN ITEMS (pre-catalog)
+    // If the same spoken word appears twice (once as a stutter without qty, once with qty),
+    // collapse them into one. This handles "aata | aata 2 kilo" → just "aata 2 kilo".
+    const deduplicatedSpokenItems = (() => {
+      // Pass 1: exact name dedup
+      const exactMap = new Map<string, any>();
+      for (const item of normalizedItems) {
+        const nameKey = item.name.trim().toLowerCase();
+        if (!exactMap.has(nameKey)) {
+          exactMap.set(nameKey, item);
+        } else {
+          const existing = exactMap.get(nameKey);
+          if (item.hasExplicitQty && !existing.hasExplicitQty) {
+            exactMap.set(nameKey, item);
+          } else if (item.hasExplicitQty && existing.hasExplicitQty && existing.unit === item.unit) {
+            existing.quantity += item.quantity;
+          }
+        }
+      }
+      let items = Array.from(exactMap.values());
+
+      // Pass 2: stutter-echo dedup
+      // If item A has no explicit qty and item B's name STARTS WITH or EQUALS item A's name
+      // AND item B has explicit qty, then item A is a stutter echo → drop it.
+      const toRemove = new Set<number>();
+      for (let a = 0; a < items.length; a++) {
+        if (toRemove.has(a)) continue;
+        if (items[a].hasExplicitQty) continue; // only look for qty-less echoes
+        const nameA = items[a].name.toLowerCase();
+        for (let b = 0; b < items.length; b++) {
+          if (a === b || toRemove.has(b)) continue;
+          if (!items[b].hasExplicitQty) continue; // only pair with qty-bearing items
+          const nameB = items[b].name.toLowerCase();
+          // A is a stutter of B if B starts with A (A is a shorter prefix of B)
+          if (nameB.startsWith(nameA) || nameA.startsWith(nameB)) {
+            toRemove.add(a);
+            break;
+          }
+        }
+      }
+      return items.filter((_, idx) => !toRemove.has(idx));
+    })();
+
     // PHASE 3: CONNECT WITH EXISTING CATALOG (FORGIVING MODE)
     const fuse = new Fuse(catalog, {
       keys: ['name', 'localName'],
@@ -319,7 +362,7 @@ export default function BillingPage() {
 
     const seenItemsMap = new Set();
 
-    const matchedItems = normalizedItems.map(item => {
+    const matchedItems = deduplicatedSpokenItems.map(item => {
       const searchName = item.name.replace(/\d+/g, '').replace(/\b(kg|g|ml|l|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m)\b/gi, '').trim();
       const result = fuse.search(searchName);
       let bestMatch: any = null;
