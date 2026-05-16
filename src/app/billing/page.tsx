@@ -59,7 +59,7 @@ export default function BillingPage() {
     return s1.trim() + " " + s2.trim();
   };
 
-  const parseVoiceItems = (text: string) => {
+  const parseVoiceItems = (text: string, fuse?: any) => {
     // PRE-PROCESSING: Normalization for robust parsing
     text = text.toLowerCase().trim()
       // Remove prices so they aren't parsed as quantities (e.g. "50 wala namak" -> "namak")
@@ -231,6 +231,38 @@ export default function BillingPage() {
            pendingUnit = unitMap[word];
         } else {
            pendingName.push(word);
+
+           // Semantic Catalog-Aware Splitting
+           // If we have recognized a valid product, and the next word ruins the match 
+           // BUT the next word is a valid word (not a number/unit), then we've hit a boundary!
+           if (fuse && nextWord && !unitMap[nextWord]) {
+               let isNextNum = false;
+               if (!isNaN(Number(nextWord))) isNextNum = true;
+               else if (numMap[nextWord] !== undefined) isNextNum = true;
+               else {
+                 const match = nextWord.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
+                 if (match) isNextNum = true;
+               }
+
+               if (!isNextNum) {
+                   const currentPhrase = pendingName.join(" ");
+                   const currentResult = fuse.search(currentPhrase);
+                   const currentScore = currentResult.length > 0 ? (currentResult[0].score ?? 1) : 1;
+                   
+                   // Score threshold for a "recognized product" (0.45 is a strong match)
+                   if (currentScore <= 0.45) {
+                       const nextPhrase = currentPhrase + " " + nextWord;
+                       const nextResult = fuse.search(nextPhrase);
+                       const nextScore = nextResult.length > 0 ? (nextResult[0].score ?? 1) : 1;
+                       
+                       // If adding the next word makes the match significantly worse,
+                       // it means the next word belongs to a NEW product.
+                       if (nextScore > 0.45) {
+                           commitItem();
+                       }
+                   }
+               }
+           }
         }
       }
       i++;
@@ -242,7 +274,17 @@ export default function BillingPage() {
 
   const processVoiceTextToItems = (text: string) => {
     if (!text || text.trim().length === 0) return [];
-    const parsedItems = parseVoiceItems(text);
+
+    // Create fuse instance early to help with semantic splitting in parseVoiceItems
+    const fuse = new Fuse(catalog, {
+      keys: ['name', 'localName'],
+      threshold: 0.6,
+      includeScore: true,
+      ignoreLocation: true,
+      minMatchCharLength: 2
+    });
+
+    const parsedItems = parseVoiceItems(text, fuse);
     
     // PHASE 2: NORMALIZATION LAYER
     const normalizedItems = parsedItems.map(item => {
@@ -264,14 +306,6 @@ export default function BillingPage() {
     });
 
     // PHASE 3: CONNECT WITH EXISTING CATALOG (FORGIVING MODE)
-    const fuse = new Fuse(catalog, {
-      keys: ['name', 'localName'],
-      threshold: 0.6,
-      includeScore: true,
-      ignoreLocation: true,
-      minMatchCharLength: 2
-    });
-
     const seenItemsMap = new Set();
 
     const matchedItems = normalizedItems.map(item => {
