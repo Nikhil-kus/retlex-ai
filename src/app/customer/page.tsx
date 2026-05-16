@@ -422,20 +422,44 @@ export default function CustomerPage() {
   };
 
   const getSuggestions = (item: any) => {
-    if (!item.productId) return [];
-    
-    // Use first word of the product name for a broader search
+    if (!item.productId) return { brandVariants: [], sizeVariants: [] };
+
     const searchWord = (item.name || '').split(' ')[0].toLowerCase();
-    
-    return catalog.filter(product => {
+    const itemNameLower = (item.name || '').toLowerCase();
+    const itemLocal = (item.localName || '').toLowerCase();
+
+    // Collect all related products (same category / same keyword)
+    const related = catalog.filter(product => {
       if (product.id === item.productId) return false;
-      
       const prodName = (product.name || '').toLowerCase();
       const prodLocal = (product.localName || '').toLowerCase();
-      const itemLocal = (item.localName || '').toLowerCase();
-      
       return (itemLocal && prodLocal === itemLocal) || prodName.includes(searchWord);
-    }).slice(0, 5);
+    });
+
+    // Row 1 — Brand/Variant row: products with a DIFFERENT name (different brand or type)
+    // Deduplicate by name so we show one card per distinct product name
+    const seenNames = new Set<string>();
+    const brandVariants: any[] = [];
+    for (const p of related) {
+      const pNameLower = (p.name || '').toLowerCase();
+      if (pNameLower !== itemNameLower && !seenNames.has(pNameLower)) {
+        seenNames.add(pNameLower);
+        brandVariants.push(p);
+        if (brandVariants.length >= 8) break;
+      }
+    }
+
+    // Row 2 — Size/Price row: products with the SAME name but different price or baseQuantity
+    // These are pack-size variants of the exact same product
+    const sizeVariants = related.filter(p => {
+      const pNameLower = (p.name || '').toLowerCase();
+      return (
+        pNameLower === itemNameLower &&
+        (p.price !== item.price || p.baseQuantity !== item.baseQuantity)
+      );
+    }).slice(0, 8);
+
+    return { brandVariants, sizeVariants };
   };
 
   const startVoiceInput = () => {
@@ -1282,7 +1306,8 @@ export default function CustomerPage() {
                             const activeProduct = catalog.find(p => p.id === activeSuggestionId);
                             if (!activeProduct) return null;
                             const suggestions = getSuggestions({ productId: activeProduct.id, name: activeProduct.name, localName: activeProduct.localName });
-                            if (suggestions.length === 0) return null;
+                            const allSugs = [...suggestions.brandVariants, ...suggestions.sizeVariants];
+                            if (allSugs.length === 0) return null;
                             return (
                               <div className="mx-4 mt-2 mb-1 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white overflow-hidden shadow-sm">
                                 {/* Header */}
@@ -1298,52 +1323,108 @@ export default function CustomerPage() {
                                     <X size={10} />
                                   </button>
                                 </div>
-                                {/* Suggestion cards — horizontal scroll */}
-                                <div
-                                  className="flex gap-2.5 overflow-x-auto px-3 pb-3"
-                                  style={{scrollbarWidth:'none'}}
-                                  onTouchStart={e => e.stopPropagation()}
-                                  onTouchMove={e => e.stopPropagation()}
-                                  onTouchEnd={e => e.stopPropagation()}
-                                >
-                                  {suggestions.map((sug: any) => {
-                                    const sugCartItem = cart.find(c => c.productId === sug.id && c.unit === sug.baseUnit);
-                                    const sugQty = sugCartItem ? sugCartItem.quantity : 0;
-                                    return (
-                                      <div
-                                        key={sug.id}
-                                        className="flex-shrink-0 w-24 bg-white rounded-xl border border-indigo-100 overflow-hidden shadow-sm cursor-pointer active:scale-95 transition-all"
-                                        onClick={e => {
-                                          e.stopPropagation();
-                                          addToCart(sug);
-                                          setActiveSuggestionId(null);
-                                        }}
-                                      >
-                                        <div className="relative w-full bg-slate-100 overflow-hidden" style={{paddingBottom:'85%'}}>
-                                          <div className="absolute inset-0">
-                                            {sug.imageUrl
-                                              ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
-                                              : <div className="w-full h-full flex items-center justify-center"><Package className="text-indigo-200" size={20} /></div>
-                                            }
-                                          </div>
-                                          {sugQty > 0 && (
-                                            <div className="absolute top-1 right-1 bg-indigo-600 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">
-                                              {sugQty}
+                                {/* Row 1: Other Brands */}
+                                {suggestions.brandVariants.length > 0 && (
+                                  <div className="px-3 pb-2">
+                                    <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands</p>
+                                    <div
+                                      className="flex gap-2.5 overflow-x-auto pb-1"
+                                      style={{scrollbarWidth:'none'}}
+                                      onTouchStart={e => e.stopPropagation()}
+                                      onTouchMove={e => e.stopPropagation()}
+                                      onTouchEnd={e => e.stopPropagation()}
+                                    >
+                                      {suggestions.brandVariants.map((sug: any) => {
+                                        const sugCartItem = cart.find(c => c.productId === sug.id && c.unit === sug.baseUnit);
+                                        const sugQty = sugCartItem ? sugCartItem.quantity : 0;
+                                        return (
+                                          <div
+                                            key={sug.id}
+                                            className="flex-shrink-0 w-24 bg-white rounded-xl border border-indigo-100 overflow-hidden shadow-sm cursor-pointer active:scale-95 transition-all"
+                                            onClick={e => {
+                                              e.stopPropagation();
+                                              addToCart(sug);
+                                              setActiveSuggestionId(null);
+                                            }}
+                                          >
+                                            <div className="relative w-full bg-slate-100 overflow-hidden" style={{paddingBottom:'85%'}}>
+                                              <div className="absolute inset-0">
+                                                {sug.imageUrl
+                                                  ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                                  : <div className="w-full h-full flex items-center justify-center"><Package className="text-indigo-200" size={20} /></div>
+                                                }
+                                              </div>
+                                              {sugQty > 0 && (
+                                                <div className="absolute top-1 right-1 bg-indigo-600 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">
+                                                  {sugQty}
+                                                </div>
+                                              )}
                                             </div>
-                                          )}
-                                        </div>
-                                        <div className="p-1.5">
-                                          <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                          <p className="text-[10px] font-bold text-emerald-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
-                                          <p className="text-[9px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
-                                          <div className={`mt-1 w-full rounded-lg py-0.5 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-indigo-600 text-white' : 'border border-indigo-400 text-indigo-600'}`}>
-                                            {sugQty > 0 ? <><span>✓</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
+                                            <div className="p-1.5">
+                                              <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                              <p className="text-[10px] font-bold text-emerald-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
+                                              <p className="text-[9px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
+                                              <div className={`mt-1 w-full rounded-lg py-0.5 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-indigo-600 text-white' : 'border border-indigo-400 text-indigo-600'}`}>
+                                                {sugQty > 0 ? <><span>✓</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
+                                              </div>
+                                            </div>
                                           </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                {/* Row 2: Pack Sizes */}
+                                {suggestions.sizeVariants.length > 0 && (
+                                  <div className="px-3 pb-3">
+                                    <p className="text-[9px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">Pack Sizes</p>
+                                    <div
+                                      className="flex gap-2.5 overflow-x-auto pb-1"
+                                      style={{scrollbarWidth:'none'}}
+                                      onTouchStart={e => e.stopPropagation()}
+                                      onTouchMove={e => e.stopPropagation()}
+                                      onTouchEnd={e => e.stopPropagation()}
+                                    >
+                                      {suggestions.sizeVariants.map((sug: any) => {
+                                        const sugCartItem = cart.find(c => c.productId === sug.id && c.unit === sug.baseUnit);
+                                        const sugQty = sugCartItem ? sugCartItem.quantity : 0;
+                                        return (
+                                          <div
+                                            key={sug.id}
+                                            className="flex-shrink-0 w-24 bg-white rounded-xl border border-amber-100 overflow-hidden shadow-sm cursor-pointer active:scale-95 transition-all"
+                                            onClick={e => {
+                                              e.stopPropagation();
+                                              addToCart(sug);
+                                              setActiveSuggestionId(null);
+                                            }}
+                                          >
+                                            <div className="relative w-full bg-slate-100 overflow-hidden" style={{paddingBottom:'85%'}}>
+                                              <div className="absolute inset-0">
+                                                {sug.imageUrl
+                                                  ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                                  : <div className="w-full h-full flex items-center justify-center"><Package className="text-amber-200" size={20} /></div>
+                                                }
+                                              </div>
+                                              {sugQty > 0 && (
+                                                <div className="absolute top-1 right-1 bg-amber-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">
+                                                  {sugQty}
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div className="p-1.5">
+                                              <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                              <p className="text-[10px] font-black text-amber-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
+                                              <p className="text-[9px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
+                                              <div className={`mt-1 w-full rounded-lg py-0.5 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-amber-500 text-white' : 'border border-amber-400 text-amber-600'}`}>
+                                                {sugQty > 0 ? <><span>✓</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })()}
@@ -1546,31 +1627,60 @@ export default function CustomerPage() {
                             </span>
                           </div>
 
-                          {/* Suggestions */}
-                          {item.suggestions && item.suggestions.length > 0 && (
-                            <div className="mt-3 pt-2.5 border-t border-slate-100">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Similar products</p>
-                              <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
-                                {item.suggestions.map((sug: any, sIdx: number) => (
-                                  <button
-                                    key={sIdx}
-                                    onClick={() => {
-                                      const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl };
-                                      if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
-                                      const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides }; setReviewItems(newItems);
-                                    }}
-                                    className="flex-shrink-0 flex flex-col items-center bg-white border border-slate-200 hover:border-indigo-300 rounded-xl overflow-hidden w-16 transition-all"
-                                  >
-                                    <div className="w-full h-12 bg-slate-50 overflow-hidden flex items-center justify-center">
-                                      {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={16} />}
-                                    </div>
-                                    <div className="p-1 text-center">
-                                      <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                      <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
+                          {/* Suggestions — two rows: brands/variants + size/price packs */}
+                          {item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (
+                            <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2.5">
+                              {/* Row 1: Brand / Variant suggestions */}
+                              {item.suggestions.brandVariants?.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands</p>
+                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
+                                    {item.suggestions.brandVariants.map((sug: any, sIdx: number) => (
+                                      <button
+                                        key={sIdx}
+                                        onClick={() => {
+                                          const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl };
+                                          if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                          const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides }; setReviewItems(newItems);
+                                        }}
+                                        className="flex-shrink-0 flex flex-col items-center bg-white border border-slate-200 hover:border-indigo-300 rounded-xl overflow-hidden w-16 transition-all"
+                                      >
+                                        <div className="w-full h-12 bg-slate-50 overflow-hidden flex items-center justify-center">
+                                          {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={16} />}
+                                        </div>
+                                        <div className="p-1 text-center">
+                                          <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                          <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {/* Row 2: Size / Price pack suggestions */}
+                              {item.suggestions.sizeVariants?.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">Pack Sizes</p>
+                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
+                                    {item.suggestions.sizeVariants.map((sug: any, sIdx: number) => (
+                                      <button
+                                        key={sIdx}
+                                        onClick={() => {
+                                          const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl };
+                                          if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                          const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides }; setReviewItems(newItems);
+                                        }}
+                                        className="flex-shrink-0 flex flex-col items-center bg-white border border-amber-200 hover:border-amber-400 rounded-xl overflow-hidden transition-all px-2 py-1.5 min-w-[52px]"
+                                      >
+                                        <p className="text-[10px] font-black text-amber-600 leading-none">₹{(sug.price || 0).toFixed(0)}</p>
+                                        <p className="text-[9px] text-slate-500 mt-0.5 leading-tight text-center">
+                                          {sug.baseQuantity > 1 ? `${sug.baseQuantity}${sug.baseUnit}` : sug.baseUnit}
+                                        </p>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
