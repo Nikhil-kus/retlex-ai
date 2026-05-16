@@ -417,6 +417,7 @@ export default function CustomerPage() {
         confidence: 'high',
         hasExplicitQty: true,
         aiLabel: match.name,
+        spokenWord: item.name, // original spoken word — used for generic category detection
         isRepeated
       };
     });
@@ -427,30 +428,48 @@ export default function CustomerPage() {
   const getSuggestions = (item: any) => {
     if (!item.productId) return { brandVariants: [], sizeVariants: [] };
 
-    const searchWord = (item.name || '').split(' ')[0].toLowerCase();
     const itemNameLower = (item.name || '').toLowerCase();
     const itemLocal = (item.localName || '').toLowerCase();
     // First 2 words of the matched product — used to detect size variants
-    // e.g. "britannia marie" matches "Britannia Marie Biscuit (Bulk 4...)"
     const itemNamePrefix = itemNameLower.split(' ').slice(0, 2).join(' ');
 
-    // Collect all related products (same category / same keyword)
+    // Detect if the user spoke a generic category word (e.g. "namkeen", "biscuit")
+    // vs a specific product name (e.g. "parle-g", "britannia marie").
+    const spokenWord = (item.spokenWord || item.name || '').toLowerCase().trim();
+    const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length > 2);
+    let searchKeyword = (item.name || '').split(' ')[0].toLowerCase();
+
+    if (spokenWords.length > 0) {
+      const matchingProducts = catalog.filter(p => {
+        const pn = (p.name || '').toLowerCase();
+        const pl = (p.localName || '').toLowerCase();
+        return spokenWords.some((w: string) => pn.includes(w) || pl.includes(w));
+      });
+      const distinctPrefixes = new Set(
+        matchingProducts.map(p => (p.name || '').toLowerCase().split(' ').slice(0, 2).join(' '))
+      );
+      if (distinctPrefixes.size >= 3) {
+        searchKeyword = spokenWords[spokenWords.length - 1];
+      }
+    }
+
+    // Collect all related products using the resolved search keyword
     const related = catalog.filter(product => {
       if (product.id === item.productId) return false;
       const prodName = (product.name || '').toLowerCase();
       const prodLocal = (product.localName || '').toLowerCase();
-      return (itemLocal && prodLocal === itemLocal) || prodName.includes(searchWord);
+      return (itemLocal && prodLocal === itemLocal) ||
+             prodName.includes(searchKeyword) ||
+             prodLocal.includes(searchKeyword);
     });
 
     // A product is a "size variant" if its name STARTS WITH the same 2-word prefix
-    // as the matched item (same brand + product type, just different pack size/price)
     const isSizeVariant = (p: any) => {
       const pNameLower = (p.name || '').toLowerCase();
       return itemNamePrefix.length >= 4 && pNameLower.startsWith(itemNamePrefix);
     };
 
     // Row 2 — Size/Price row: same brand+product, different pack size or price
-    // Sorted by price ascending so ₹5 → ₹10 → ₹20 → ₹215 reads naturally
     const sizeVariants = related
       .filter(isSizeVariant)
       .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
@@ -459,16 +478,15 @@ export default function CustomerPage() {
     const sizeVariantIds = new Set(sizeVariants.map((p: any) => p.id));
 
     // Row 1 — Brand/Variant row: products NOT classified as size variants
-    // Deduplicate by name so we show one card per distinct product name
     const seenNames = new Set<string>();
     const brandVariants: any[] = [];
     for (const p of related) {
-      if (sizeVariantIds.has(p.id)) continue; // already in size row
+      if (sizeVariantIds.has(p.id)) continue;
       const pNameLower = (p.name || '').toLowerCase();
       if (!seenNames.has(pNameLower)) {
         seenNames.add(pNameLower);
         brandVariants.push(p);
-        if (brandVariants.length >= 8) break;
+        if (brandVariants.length >= 12) break;
       }
     }
 
