@@ -56,19 +56,20 @@ export default function BillingPage() {
     if (maxOverlap > 0) {
         return words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ");
     }
-    return s1.trim() + " " + s2.trim();
+    return s1.trim() + " | " + s2.trim();
   };
 
-  const parseVoiceItems = (text: string, fuse?: any) => {
+  const parseVoiceItems = (text: string) => {
     // PRE-PROCESSING: Normalization for robust parsing
     text = text.toLowerCase().trim()
       // Remove prices so they aren't parsed as quantities (e.g. "50 wala namak" -> "namak")
       .replace(/(\d+(?:\.\d+)?)\s*(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)/gi, ' ')
       .replace(/\b(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)\b/gi, ' ')
-      // Remove filler words that cause incorrect item grouping
-      .replace(/\b(and|plus)\b/gi, ' ')
-      .replace(/और|तथा|भी|या/g, ' ')
-      .replace(/\b(aur|tatha|bhi|ya)\b/gi, ' ')
+      // Use | as a separator for conjunctions and commas
+      .replace(/\b(and|plus)\b/gi, ' | ')
+      .replace(/और|तथा|भी|या/g, ' | ')
+      .replace(/\b(aur|tatha|bhi|ya)\b/gi, ' | ')
+      .replace(/,/g, ' | ')
       // Fix misheard numbers (phonetic matching)
       .replace(/\b(to|too|tu|two|तो|टो|do|दो)\b/gi, ' 2 ')
       .replace(/\b(for|four|फ़ॉर|फॉर|फोर)\b/gi, ' 4 ')
@@ -153,6 +154,21 @@ export default function BillingPage() {
     const hasNameAhead = (startIndex: number) => {
       for (let j = startIndex; j < words.length; j++) {
         const w = words[j];
+        if (w === '|') {
+            // Check if what follows the separator is a number
+            const nextW = words[j+1];
+            if (nextW) {
+                let nextIsNum = false;
+                if (!isNaN(Number(nextW))) nextIsNum = true;
+                else if (numMap[nextW] !== undefined) nextIsNum = true;
+                else {
+                    const match = nextW.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
+                    if (match) nextIsNum = true;
+                }
+                if (nextIsNum) continue; // skip the separator, it's followed by a number
+            }
+            return false; // Stop looking ahead, there's a hard boundary
+        }
         if (unitMap[w]) continue;
         let isNum = false;
         if (!isNaN(Number(w))) isNum = true;
@@ -170,6 +186,28 @@ export default function BillingPage() {
     while (i < words.length) {
       const word = words[i];
       const nextWord = words[i + 1] || "";
+
+      if (word === '|') {
+          let nextIsNum = false;
+          if (nextWord) {
+              if (!isNaN(Number(nextWord))) nextIsNum = true;
+              else if (numMap[nextWord] !== undefined) nextIsNum = true;
+              else {
+                  const match = nextWord.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
+                  if (match) nextIsNum = true;
+              }
+          }
+          if (nextIsNum) {
+              // The next word is a quantity! Ignore this separator so the quantity attaches to current item.
+              i++;
+              continue;
+          } else {
+              // The next word is a product name. Commit current item.
+              commitItem();
+              i++;
+              continue;
+          }
+      }
 
       let isNumber = false;
       let parsedNum = NaN;
@@ -231,38 +269,6 @@ export default function BillingPage() {
            pendingUnit = unitMap[word];
         } else {
            pendingName.push(word);
-
-           // Semantic Catalog-Aware Splitting
-           // If we have recognized a valid product, and the next word ruins the match 
-           // BUT the next word is a valid word (not a number/unit), then we've hit a boundary!
-           if (fuse && nextWord && !unitMap[nextWord]) {
-               let isNextNum = false;
-               if (!isNaN(Number(nextWord))) isNextNum = true;
-               else if (numMap[nextWord] !== undefined) isNextNum = true;
-               else {
-                 const match = nextWord.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
-                 if (match) isNextNum = true;
-               }
-
-               if (!isNextNum) {
-                   const currentPhrase = pendingName.join(" ");
-                   const currentResult = fuse.search(currentPhrase);
-                   const currentScore = currentResult.length > 0 ? (currentResult[0].score ?? 1) : 1;
-                   
-                   // Score threshold for a "recognized product" (0.45 is a strong match)
-                   if (currentScore <= 0.45) {
-                       const nextPhrase = currentPhrase + " " + nextWord;
-                       const nextResult = fuse.search(nextPhrase);
-                       const nextScore = nextResult.length > 0 ? (nextResult[0].score ?? 1) : 1;
-                       
-                       // If adding the next word makes the match significantly worse,
-                       // it means the next word belongs to a NEW product.
-                       if (nextScore > 0.45) {
-                           commitItem();
-                       }
-                   }
-               }
-           }
         }
       }
       i++;
@@ -274,17 +280,7 @@ export default function BillingPage() {
 
   const processVoiceTextToItems = (text: string) => {
     if (!text || text.trim().length === 0) return [];
-
-    // Create fuse instance early to help with semantic splitting in parseVoiceItems
-    const fuse = new Fuse(catalog, {
-      keys: ['name', 'localName'],
-      threshold: 0.6,
-      includeScore: true,
-      ignoreLocation: true,
-      minMatchCharLength: 2
-    });
-
-    const parsedItems = parseVoiceItems(text, fuse);
+    const parsedItems = parseVoiceItems(text);
     
     // PHASE 2: NORMALIZATION LAYER
     const normalizedItems = parsedItems.map(item => {
@@ -306,6 +302,14 @@ export default function BillingPage() {
     });
 
     // PHASE 3: CONNECT WITH EXISTING CATALOG (FORGIVING MODE)
+    const fuse = new Fuse(catalog, {
+      keys: ['name', 'localName'],
+      threshold: 0.6,
+      includeScore: true,
+      ignoreLocation: true,
+      minMatchCharLength: 2
+    });
+
     const seenItemsMap = new Set();
 
     const matchedItems = normalizedItems.map(item => {
@@ -598,6 +602,7 @@ export default function BillingPage() {
     globalTranscriptRef.current = "";
     currentBreathRef.current = "";
     setFinalTranscript("");
+    setSelectedBrandPerItem({});
     isListeningRef.current = true;
     setIsListening(true);
     setMode('OCR');
