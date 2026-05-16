@@ -434,53 +434,59 @@ export default function BillingPage() {
 
     const itemNameLower = (item.name || '').toLowerCase();
     const itemLocal = (item.localName || '').toLowerCase();
-    // First 2 words of the matched product — used to detect size variants
+    // Brand = first word of matched product name (e.g. "everest", "britannia", "krackjack")
+    const itemBrand = itemNameLower.split(' ')[0];
+    // First 2 words = brand + product type (e.g. "everest sambhar", "britannia marie")
     const itemNamePrefix = itemNameLower.split(' ').slice(0, 2).join(' ');
 
-    // Detect if the user spoke a generic category word (e.g. "namkeen", "biscuit")
-    // vs a specific product name (e.g. "parle-g", "britannia marie").
-    // A word is "generic" if it appears as a suffix/keyword in many catalog products
-    // (more than 2 distinct brand-prefixes contain it), meaning it's a category, not a brand.
+    // Detect generic category word (e.g. "masala", "biscuit", "namkeen")
+    // vs specific brand+product (e.g. "everest masala", "parle-g")
     const spokenWord = (item.spokenWord || item.name || '').toLowerCase().trim();
     const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length > 2);
-    let searchKeyword = (item.name || '').split(' ')[0].toLowerCase(); // default: first word of matched name
 
-    if (spokenWords.length > 0) {
-      // Count how many distinct brand-prefixes in the catalog contain the spoken word
-      const matchingProducts = catalog.filter(p => {
-        const pn = (p.name || '').toLowerCase();
-        const pl = (p.localName || '').toLowerCase();
-        return spokenWords.some((w: string) => pn.includes(w) || pl.includes(w));
-      });
-      const distinctPrefixes = new Set(
-        matchingProducts.map(p => (p.name || '').toLowerCase().split(' ').slice(0, 2).join(' '))
-      );
-      // If 3+ distinct brand-prefixes match, the spoken word is a generic category term
-      // → use the spoken word itself as the search keyword to get all brands
-      if (distinctPrefixes.size >= 3) {
-        searchKeyword = spokenWords[spokenWords.length - 1]; // use last word (most specific category word)
+    // Build the pool of all related products using the best search keyword
+    let related: any[] = [];
+
+    // Always include products that share the same brand (first word) as the matched item
+    // This ensures "Everest Chana Masala", "Everest Garam Masala" etc. always appear
+    const brandRelated = catalog.filter(p => {
+      if (p.id === item.productId) return false;
+      const pn = (p.name || '').toLowerCase();
+      return pn.startsWith(itemBrand + ' ') || pn === itemBrand;
+    });
+
+    // Also search by spoken words to catch other brands in the same category
+    const spokenRelated = spokenWords.length > 0 ? catalog.filter(p => {
+      if (p.id === item.productId) return false;
+      const pn = (p.name || '').toLowerCase();
+      const pl = (p.localName || '').toLowerCase();
+      return spokenWords.some((w: string) => pn.includes(w) || pl.includes(w));
+    }) : [];
+
+    // Merge both pools, deduplicate by id
+    const seenIds = new Set<string>();
+    for (const p of [...brandRelated, ...spokenRelated]) {
+      if (!seenIds.has(p.id)) { seenIds.add(p.id); related.push(p); }
+    }
+
+    // Also include localName matches
+    if (itemLocal) {
+      for (const p of catalog) {
+        if (p.id === item.productId || seenIds.has(p.id)) continue;
+        if ((p.localName || '').toLowerCase() === itemLocal) {
+          seenIds.add(p.id); related.push(p);
+        }
       }
     }
 
-    // Collect all related products using the resolved search keyword
-    const related = catalog.filter(product => {
-      if (product.id === item.productId) return false;
-      const prodName = (product.name || '').toLowerCase();
-      const prodLocal = (product.localName || '').toLowerCase();
-      return (itemLocal && prodLocal === itemLocal) ||
-             prodName.includes(searchKeyword) ||
-             prodLocal.includes(searchKeyword);
-    });
-
-    // A product is a "size variant" if its name STARTS WITH the same 2-word prefix
-    // as the matched item (same brand + product type, just different pack size/price)
+    // ── PACK SIZES: same brand (first word) + same product type (2-word prefix) ──
+    // e.g. matched = "Everest Sambhar Masala 100g"
+    //   → Pack Sizes = all products starting with "everest sambhar"
     const isSizeVariant = (p: any) => {
-      const pNameLower = (p.name || '').toLowerCase();
-      return itemNamePrefix.length >= 4 && pNameLower.startsWith(itemNamePrefix);
+      const pn = (p.name || '').toLowerCase();
+      return itemNamePrefix.length >= 4 && pn.startsWith(itemNamePrefix);
     };
 
-    // Row 2 — Size/Price row: same brand+product, different pack size or price
-    // Sorted by price ascending so ₹5 → ₹10 → ₹20 → ₹215 reads naturally
     const sizeVariants = related
       .filter(isSizeVariant)
       .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
@@ -488,25 +494,28 @@ export default function BillingPage() {
 
     const sizeVariantIds = new Set(sizeVariants.map((p: any) => p.id));
 
-    // Row 1 — Brand/Variant row: products NOT classified as size variants
-    // Deduplicate by name so we show one card per distinct product name
-    const seenNames = new Set<string>();
-    const brandVariants: any[] = [];
+    // ── OTHER BRANDS: different brand, deduplicated by BRAND (first word) ──
+    // Show only ONE card per brand — the cheapest variant of that brand.
+    // This prevents "Britannia Marie ₹10", "Britannia Marie ₹215" both appearing.
+    // When user taps a brand card, Pack Sizes row shows all variants of that brand.
+    const brandMap = new Map<string, any>(); // brand → cheapest product
     for (const p of related) {
-      if (sizeVariantIds.has(p.id)) continue; // already in size row
-      const pNameLower = (p.name || '').toLowerCase();
-      if (!seenNames.has(pNameLower)) {
-        seenNames.add(pNameLower);
-        brandVariants.push(p);
-        if (brandVariants.length >= 12) break; // show more brands for generic searches
+      if (sizeVariantIds.has(p.id)) continue; // already in Pack Sizes
+      const pBrand = (p.name || '').toLowerCase().split(' ')[0];
+      if (pBrand === itemBrand) continue; // same brand as matched item — skip
+      const existing = brandMap.get(pBrand);
+      // Keep the cheapest non-zero price, or first if all zero
+      if (!existing || (p.price > 0 && (existing.price === 0 || p.price < existing.price))) {
+        brandMap.set(pBrand, p);
       }
     }
+
+    const brandVariants = Array.from(brandMap.values()).slice(0, 12);
 
     return { brandVariants, sizeVariants };
   };
 
-  // Returns all size/bundle variants for a given brand product
-  // Used when user taps a brand card — Pack Sizes row updates to show that brand's packs
+  // Returns all size/bundle variants for a given brand product (used when tapping a brand card)
   const getSizeVariantsForBrand = (brandProduct: any) => {
     if (!brandProduct) return [];
     const brandNameLower = (brandProduct.name || '').toLowerCase();
