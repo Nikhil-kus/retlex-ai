@@ -19,6 +19,9 @@ export default function CustomerPage() {
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
   const itemOverridesRef = useRef<Record<string, any>>({});
+  // Tracks which brand card is "previewed" per review item index
+  // so the Pack Sizes row updates to show that brand's variants
+  const [selectedBrandPerItem, setSelectedBrandPerItem] = useState<Record<number, any>>({});
   const audioCtxRef = useRef<any>(null);
 
   const mergeOverlappingStrings = (s1: string, s2: string) => {
@@ -472,7 +475,21 @@ export default function CustomerPage() {
     return { brandVariants, sizeVariants };
   };
 
-  const startVoiceInput = () => {
+  // Returns all size/bundle variants for a given brand product
+  // Used when user taps a brand card — Pack Sizes row updates to show that brand's packs
+  const getSizeVariantsForBrand = (brandProduct: any) => {
+    if (!brandProduct) return [];
+    const brandNameLower = (brandProduct.name || '').toLowerCase();
+    const brandPrefix = brandNameLower.split(' ').slice(0, 2).join(' ');
+    return catalog
+      .filter(p => {
+        if (p.id === brandProduct.id) return false;
+        const pNameLower = (p.name || '').toLowerCase();
+        return brandPrefix.length >= 4 && pNameLower.startsWith(brandPrefix);
+      })
+      .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
+      .slice(0, 8);
+  };
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -1638,61 +1655,88 @@ export default function CustomerPage() {
                           </div>
 
                           {/* Suggestions — two rows: brands/variants + size/price packs */}
-                          {item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (
+                          {item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
+                            const selectedBrand = selectedBrandPerItem[idx] || null;
+                            const activeSizeVariants = selectedBrand
+                              ? getSizeVariantsForBrand(selectedBrand)
+                              : (item.suggestions.sizeVariants || []);
+                            return (
                             <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2.5">
                               {/* Row 1: Brand / Variant suggestions */}
                               {item.suggestions.brandVariants?.length > 0 && (
                                 <div>
                                   <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands</p>
                                   <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
-                                    {item.suggestions.brandVariants.map((sug: any, sIdx: number) => (
-                                      <button
-                                        key={sIdx}
-                                        onClick={() => {
-                                          const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl };
-                                          if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
-                                          const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides }; setReviewItems(newItems);
-                                        }}
-                                        className="flex-shrink-0 flex flex-col items-center bg-white border border-slate-200 hover:border-indigo-300 rounded-xl overflow-hidden w-16 transition-all"
-                                      >
-                                        <div className="w-full h-12 bg-slate-50 overflow-hidden flex items-center justify-center">
-                                          {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={16} />}
-                                        </div>
-                                        <div className="p-1 text-center">
-                                          <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                          <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
-                                        </div>
-                                      </button>
-                                    ))}
+                                    {item.suggestions.brandVariants.map((sug: any, sIdx: number) => {
+                                      const isSelected = selectedBrand?.id === sug.id;
+                                      const sugSizes = getSizeVariantsForBrand(sug);
+                                      return (
+                                        <button
+                                          key={sIdx}
+                                          onClick={() => {
+                                            if (sugSizes.length > 0) {
+                                              setSelectedBrandPerItem(prev => ({ ...prev, [idx]: isSelected ? null : sug }));
+                                            } else {
+                                              const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl };
+                                              if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                              const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
+                                              setReviewItems(newItems);
+                                              setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
+                                            }
+                                          }}
+                                          className={`flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border-2 ${
+                                            isSelected
+                                              ? 'border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-100'
+                                              : 'border-slate-200 bg-white hover:border-indigo-300'
+                                          }`}
+                                        >
+                                          <div className="w-full h-12 bg-slate-50 overflow-hidden flex items-center justify-center">
+                                            {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={16} />}
+                                          </div>
+                                          <div className="p-1 text-center">
+                                            <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                            <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
-                              {/* Row 2: Size / Price pack suggestions */}
-                              {item.suggestions.sizeVariants?.length > 0 && (
+                              {/* Row 2: Pack Sizes — updates when a brand is selected */}
+                              {activeSizeVariants.length > 0 && (
                                 <div>
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">Pack Sizes</p>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">
+                                    {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} — Pack Sizes` : 'Pack Sizes'}
+                                  </p>
                                   <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
-                                    {item.suggestions.sizeVariants.map((sug: any, sIdx: number) => (
+                                    {activeSizeVariants.map((sug: any, sIdx: number) => (
                                       <button
                                         key={sIdx}
                                         onClick={() => {
                                           const overrides = { productId: sug.id, name: sug.name, localName: sug.localName, price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity, packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl };
                                           if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
-                                          const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides }; setReviewItems(newItems);
+                                          const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
+                                          setReviewItems(newItems);
+                                          setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
                                         }}
-                                        className="flex-shrink-0 flex flex-col items-center bg-white border border-amber-200 hover:border-amber-400 rounded-xl overflow-hidden transition-all px-2 py-1.5 min-w-[52px]"
+                                        className="flex-shrink-0 flex flex-col items-center bg-white border border-amber-200 hover:border-amber-400 rounded-xl overflow-hidden w-16 transition-all"
                                       >
-                                        <p className="text-[10px] font-black text-amber-600 leading-none">₹{(sug.price || 0).toFixed(0)}</p>
-                                        <p className="text-[9px] text-slate-500 mt-0.5 leading-tight text-center">
-                                          {sug.baseQuantity > 1 ? `${sug.baseQuantity}${sug.baseUnit}` : sug.baseUnit}
-                                        </p>
+                                        <div className="w-full h-12 bg-amber-50 overflow-hidden flex items-center justify-center">
+                                          {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-amber-300" size={16} />}
+                                        </div>
+                                        <div className="p-1 text-center">
+                                          <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                          <p className="text-[9px] font-black text-amber-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                        </div>
                                       </button>
                                     ))}
                                   </div>
                                 </div>
                               )}
                             </div>
-                          )}
+                            );
+                          })()}
                         </div>
                       </div>
                     ))}
