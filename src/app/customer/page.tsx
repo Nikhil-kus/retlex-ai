@@ -1771,13 +1771,20 @@ export default function CustomerPage() {
                                         <button
                                           key={sIdx}
                                           onClick={() => {
+                                            // Always swap the main item immediately
+                                            const overrides = buildOverrides(sug);
+                                            if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                            const newItems = [...reviewItems];
+                                            newItems[idx] = {
+                                              ...newItems[idx],
+                                              ...overrides,
+                                              suggestions: getSuggestions({ ...newItems[idx], ...overrides })
+                                            };
+                                            setReviewItems(newItems);
+                                            // If brand has pack sizes, highlight it so Pack Sizes row updates
                                             if (sugSizes.length > 0) {
                                               setSelectedBrandPerItem(prev => ({ ...prev, [idx]: isSelected ? null : sug }));
                                             } else {
-                                              const overrides = buildOverrides(sug);
-                                              if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
-                                              const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
-                                              setReviewItems(newItems);
                                               setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
                                             }
                                           }}
