@@ -427,6 +427,9 @@ export default function BillingPage() {
     const searchWord = (item.name || '').split(' ')[0].toLowerCase();
     const itemNameLower = (item.name || '').toLowerCase();
     const itemLocal = (item.localName || '').toLowerCase();
+    // First 2 words of the matched product — used to detect size variants
+    // e.g. "britannia marie" matches "Britannia Marie Biscuit (Bulk 4...)"
+    const itemNamePrefix = itemNameLower.split(' ').slice(0, 2).join(' ');
 
     // Collect all related products (same category / same keyword)
     const related = catalog.filter(product => {
@@ -436,28 +439,35 @@ export default function BillingPage() {
       return (itemLocal && prodLocal === itemLocal) || prodName.includes(searchWord);
     });
 
-    // Row 1 — Brand/Variant row: products with a DIFFERENT name (different brand or type)
+    // A product is a "size variant" if its name STARTS WITH the same 2-word prefix
+    // as the matched item (same brand + product type, just different pack size/price)
+    const isSizeVariant = (p: any) => {
+      const pNameLower = (p.name || '').toLowerCase();
+      return itemNamePrefix.length >= 4 && pNameLower.startsWith(itemNamePrefix);
+    };
+
+    // Row 2 — Size/Price row: same brand+product, different pack size or price
+    // Sorted by price ascending so ₹5 → ₹10 → ₹20 → ₹215 reads naturally
+    const sizeVariants = related
+      .filter(isSizeVariant)
+      .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
+      .slice(0, 8);
+
+    const sizeVariantIds = new Set(sizeVariants.map((p: any) => p.id));
+
+    // Row 1 — Brand/Variant row: products NOT classified as size variants
     // Deduplicate by name so we show one card per distinct product name
     const seenNames = new Set<string>();
     const brandVariants: any[] = [];
     for (const p of related) {
+      if (sizeVariantIds.has(p.id)) continue; // already in size row
       const pNameLower = (p.name || '').toLowerCase();
-      if (pNameLower !== itemNameLower && !seenNames.has(pNameLower)) {
+      if (!seenNames.has(pNameLower)) {
         seenNames.add(pNameLower);
         brandVariants.push(p);
         if (brandVariants.length >= 8) break;
       }
     }
-
-    // Row 2 — Size/Price row: products with the SAME name but different price or baseQuantity
-    // These are pack-size variants of the exact same product
-    const sizeVariants = related.filter(p => {
-      const pNameLower = (p.name || '').toLowerCase();
-      return (
-        pNameLower === itemNameLower &&
-        (p.price !== item.price || p.baseQuantity !== item.baseQuantity)
-      );
-    }).slice(0, 8);
 
     return { brandVariants, sizeVariants };
   };
