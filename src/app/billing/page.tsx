@@ -368,7 +368,11 @@ export default function BillingPage() {
       let bestMatch: any = null;
 
       // Forgiving direct hit check to allow typos
-      if (result.length && (result[0].score ?? 1) <= 0.6) {
+      // Single-word searches need a tighter threshold to avoid false positives
+      // (e.g. "aata" should NOT match "Catch Rayta Masala" at score 0.5)
+      const searchWordCount = searchName.trim().split(/\s+/).filter(Boolean).length;
+      const directHitThreshold = searchWordCount === 1 ? 0.35 : 0.6;
+      if (result.length && (result[0].score ?? 1) <= directHitThreshold) {
         bestMatch = result[0].item;
       }
 
