@@ -283,18 +283,36 @@ export default function CustomerPage() {
         bestMatch = result[0].item;
       }
 
-      // Smart Fallback: If full phrase fails due to stuttering (e.g. "टॉफी ट्रॉफी"), try matching individual words
+      // Enhanced multi-word fallback:
+      // When the full phrase fails (e.g. "detol sabun" vs "Dettol Original Sabun"),
+      // score each catalog product by how many spoken words match it, then pick
+      // the product with the most word-hits. This handles cases where an extra word
+      // in the product name ("Original") breaks the full-phrase fuzzy score.
       if (!bestMatch) {
-          const words = searchName.split(/\s+/);
+        const words = searchName.split(/\s+/).filter((w: string) => w.length > 2);
+        if (words.length > 0) {
+          const productHits = new Map<string, { item: any; hitCount: number; bestScore: number }>();
           for (const w of words) {
-              if (w.length > 2) {
-                  const subResult = fuse.search(w);
-                  if (subResult.length && (subResult[0].score ?? 1) <= 0.4) {
-                      bestMatch = subResult[0].item;
-                      break;
-                  }
+            const subResult = fuse.search(w);
+            for (const r of subResult) {
+              if ((r.score ?? 1) > 0.45) break;
+              const id = r.item.id;
+              const existing = productHits.get(id);
+              if (!existing) {
+                productHits.set(id, { item: r.item, hitCount: 1, bestScore: r.score ?? 1 });
+              } else {
+                existing.hitCount += 1;
+                existing.bestScore = Math.min(existing.bestScore, r.score ?? 1);
               }
+            }
           }
+          if (productHits.size > 0) {
+            const best = Array.from(productHits.values()).sort((a, b) =>
+              b.hitCount !== a.hitCount ? b.hitCount - a.hitCount : a.bestScore - b.bestScore
+            )[0];
+            bestMatch = best.item;
+          }
+        }
       }
 
       const key = (bestMatch?.id || item.name).toLowerCase();
