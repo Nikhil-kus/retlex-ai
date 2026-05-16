@@ -28,10 +28,16 @@ export default function BillingPage() {
   // Toast: id of the product just pinned as default (auto-clears after 1.5s)
   const [pinnedProductId, setPinnedProductId] = useState<string | null>(null);
 
-  const mergeOverlappingStrings = (s1: string, s2: string) => {
-    if (!s1) return s2 || "";
-    if (!s2) return s1 || "";
+  const mergeOverlappingStrings = (s1Arg: string, s2Arg: string) => {
+    let s1 = s1Arg || "";
+    let s2 = s2Arg || "";
+    if (!s1) return s2;
+    if (!s2) return s1;
     
+    // Strip Android auto-punctuation to fix overlap matching
+    s1 = s1.replace(/[.,!?।]/g, '');
+    s2 = s2.replace(/[.,!?।]/g, '');
+
     const s1Lower = s1.trim().toLowerCase();
     const s2Lower = s2.trim().toLowerCase();
     
@@ -143,6 +149,7 @@ export default function BillingPage() {
           name: pendingName.join(" "),
           quantity: overrideQty !== undefined ? overrideQty : pendingQty,
           unit: overrideUnit !== undefined ? overrideUnit : pendingUnit,
+          hasExplicitQty: overrideQty !== undefined || pendingQty !== 1 || pendingUnit !== "pc" || hasLeadingNumber
         });
       }
       pendingName = [];
@@ -375,6 +382,7 @@ export default function BillingPage() {
           productId: null,
           confidence: 'low',
           aiLabel: item.name,
+          hasExplicitQty: item.hasExplicitQty || false,
           isRepeated
         };
       }
@@ -477,14 +485,39 @@ export default function BillingPage() {
         price: match.price,
         costPrice: match.costPrice,
         confidence: 'high',
-        hasExplicitQty: true,
+        hasExplicitQty: item.hasExplicitQty || false,
         aiLabel: match.name,
         spokenWord: item.name, // original spoken word — used for generic category detection
         isRepeated
       };
     });
 
-    return matchedItems;
+    // Deduplicate within the same voice phrase
+    const deduplicatedItems: any[] = [];
+    const dedupeMap = new Map();
+
+    for (const item of matchedItems) {
+      const key = item.productId || item.name;
+      if (dedupeMap.has(key)) {
+        const existing = dedupeMap.get(key);
+        if (!existing.hasExplicitQty && item.hasExplicitQty) {
+          // Replace default quantity with explicit quantity
+          existing.quantity = item.quantity;
+          existing.unit = item.unit;
+          existing.hasExplicitQty = true;
+        } else if (existing.hasExplicitQty && item.hasExplicitQty) {
+          // Add quantities if both are explicit
+          if (existing.unit === item.unit) {
+            existing.quantity += item.quantity;
+          }
+        }
+      } else {
+        dedupeMap.set(key, item);
+        deduplicatedItems.push(item);
+      }
+    }
+
+    return deduplicatedItems;
   };
 
   const getSuggestions = (item: any) => {
