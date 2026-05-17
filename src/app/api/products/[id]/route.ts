@@ -57,6 +57,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const updateData: Record<string, any> = {};
     if (data.price !== undefined) updateData.price = parseFloat(data.price);
     if (data.costPrice !== undefined) updateData.costPrice = parseFloat(data.costPrice);
+    if (data.location !== undefined) updateData.location = data.location || null;
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
     }

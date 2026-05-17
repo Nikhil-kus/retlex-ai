@@ -12,11 +12,14 @@
  *   - Tap item to mark as packed / unpacked
  *   - "Complete Order" unlocks only when all items are packed
  *   - Shows price per unit + packet weight for easy product identification
+ *   - Editable location field per product (saves to Firestore automatically)
+ *   - Items sorted by optimized walking order (section letter → aisle number)
+ *   - "Location not assigned" warning for products without a location
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle, Clock, X, Check, Package, Download } from 'lucide-react';
+import { CheckCircle, Clock, X, Check, Package, Download, MapPin, AlertTriangle } from 'lucide-react';
 import { getBillLabel } from '@/lib/bill-utils';
 import { useHindi } from '@/lib/hindi-context';
 import { catalogCache } from '@/lib/session-cache';
@@ -27,14 +30,58 @@ interface Props {
   shopId: string;
 }
 
+/**
+ * Parse a location string like "A-1", "B-12", "C-9" into sortable parts.
+ * Returns { section: "A", num: 1 } or null if the format doesn't match.
+ */
+function parseLocation(loc: string | null | undefined): { section: string; num: number } | null {
+  if (!loc) return null;
+  const match = loc.trim().toUpperCase().match(/^([A-Z]+)-(\d+)$/);
+  if (!match) return null;
+  return { section: match[1], num: parseInt(match[2], 10) };
+}
+
+/**
+ * Sort bill items by optimised walking order:
+ *   1. Items with a valid location come first, sorted by section letter then aisle number.
+ *   2. Items without a location are appended at the end in their original order.
+ */
+function sortItemsByWalkingOrder(items: any[]): { item: any; originalIndex: number }[] {
+  const indexed = items.map((item, originalIndex) => ({ item, originalIndex }));
+
+  return indexed.sort((a, b) => {
+    const locA = parseLocation(a.item._location);
+    const locB = parseLocation(b.item._location);
+
+    // Both have no location — preserve original order
+    if (!locA && !locB) return a.originalIndex - b.originalIndex;
+    // No location goes to the end
+    if (!locA) return 1;
+    if (!locB) return -1;
+
+    // Sort by section letter first
+    if (locA.section !== locB.section) return locA.section.localeCompare(locB.section);
+    // Then by aisle number
+    return locA.num - locB.num;
+  });
+}
+
 export default function WorkerPageContent({ shop, shopId }: Props) {
   const { pName } = useHindi();
   const [bills, setBills] = useState<any[]>([]);
-  const [catalog, setCatalog] = useState<Record<string, string>>({});
+  // Full product map: productId -> product object (includes location)
+  const [productMap, setProductMap] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [selectedBill, setSelectedBill] = useState<any>(null);
   const [billPackedItems, setBillPackedItems] = useState<Map<string, Set<number>>>(new Map());
+
+  // Location editing state: productId -> current input value
+  const [locationEdits, setLocationEdits] = useState<Record<string, string>>({});
+  // Saving state per productId
+  const [savingLocation, setSavingLocation] = useState<Record<string, boolean>>({});
+  // Debounce timers per productId
+  const locationTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // PWA install prompt
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -57,22 +104,24 @@ export default function WorkerPageContent({ shop, shopId }: Props) {
     if (outcome === 'accepted') setShowInstallBanner(false);
   };
 
-  // Load catalog for product images
+  // Load full product catalog (we need location + imageUrl)
   useEffect(() => {
+    const buildMap = (products: any[]) => {
+      const map: Record<string, any> = {};
+      products.forEach(p => { if (p.id) map[p.id] = p; });
+      setProductMap(map);
+    };
+
     const cached = catalogCache.get(shopId);
     if (cached) {
-      const map: Record<string, string> = {};
-      cached.forEach((p: any) => { if (p.id && p.imageUrl) map[p.id] = p.imageUrl; });
-      setCatalog(map);
+      buildMap(cached);
     } else {
       fetch(`/api/products?shopId=${shopId}`)
         .then(r => r.json())
         .then((products: any[]) => {
           if (!Array.isArray(products)) return;
           catalogCache.set(shopId, products);
-          const map: Record<string, string> = {};
-          products.forEach(p => { if (p.id && p.imageUrl) map[p.id] = p.imageUrl; });
-          setCatalog(map);
+          buildMap(products);
         })
         .catch(() => {});
     }
@@ -118,16 +167,50 @@ export default function WorkerPageContent({ shop, shopId }: Props) {
     }
   };
 
-  const toggleItemPacked = (itemIndex: number) => {
+  const toggleItemPacked = (originalIndex: number) => {
     if (!selectedBill) return;
     const billId = selectedBill.id;
     setBillPackedItems(prev => {
       const n = new Map(prev);
       const s = new Set(n.get(billId) || []);
-      if (s.has(itemIndex)) s.delete(itemIndex); else s.add(itemIndex);
+      if (s.has(originalIndex)) s.delete(originalIndex); else s.add(originalIndex);
       if (s.size === 0) n.delete(billId); else n.set(billId, s);
       return n;
     });
+  };
+
+  /**
+   * Save location to Firestore via PATCH /api/products/[id].
+   * Debounced — fires 800 ms after the user stops typing.
+   */
+  const handleLocationChange = (productId: string, value: string) => {
+    setLocationEdits(prev => ({ ...prev, [productId]: value }));
+
+    // Clear existing debounce timer
+    if (locationTimers.current[productId]) {
+      clearTimeout(locationTimers.current[productId]);
+    }
+
+    locationTimers.current[productId] = setTimeout(async () => {
+      setSavingLocation(prev => ({ ...prev, [productId]: true }));
+      try {
+        const res = await fetch(`/api/products/${productId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ shopId, location: value.trim() }),
+        });
+        if (res.ok) {
+          // Update local product map so sorting reflects the new location immediately
+          setProductMap(prev => ({
+            ...prev,
+            [productId]: { ...prev[productId], location: value.trim() || null },
+          }));
+          // Invalidate catalog cache so next load picks up the new location
+          catalogCache.clear();
+        }
+      } catch {}
+      setSavingLocation(prev => ({ ...prev, [productId]: false }));
+    }, 800);
   };
 
   const currentPacked = selectedBill
@@ -137,6 +220,19 @@ export default function WorkerPageContent({ shop, shopId }: Props) {
   const allPacked = selectedBill &&
     selectedBill.items?.length > 0 &&
     selectedBill.items.every((_: any, i: number) => currentPacked.has(i));
+
+  /**
+   * Enrich bill items with location from productMap, then sort by walking order.
+   * We keep originalIndex so packed-state tracking (which uses original indices) still works.
+   */
+  const getSortedItems = (bill: any): { item: any; originalIndex: number }[] => {
+    if (!bill?.items) return [];
+    const enriched = bill.items.map((item: any) => ({
+      ...item,
+      _location: productMap[item.productId]?.location ?? item.location ?? null,
+    }));
+    return sortItemsByWalkingOrder(enriched);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col">
@@ -281,62 +377,105 @@ export default function WorkerPageContent({ shop, shopId }: Props) {
               </div>
             </div>
 
-            {/* Items */}
+            {/* Items — sorted by walking order */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {selectedBill.items?.map((item: any, idx: number) => {
-                const isPacked = currentPacked.has(idx);
-                const imgSrc = item.imageUrl || catalog[item.productId];
+              {getSortedItems(selectedBill).map(({ item, originalIndex }) => {
+                const isPacked = currentPacked.has(originalIndex);
+                const imgSrc = item.imageUrl || productMap[item.productId]?.imageUrl;
+                const location: string | null = productMap[item.productId]?.location ?? item._location ?? null;
+                const editValue = locationEdits[item.productId] ?? location ?? '';
+                const isSaving = savingLocation[item.productId] ?? false;
+
                 return (
-                  <button
-                    key={idx}
-                    onClick={() => toggleItemPacked(idx)}
-                    className={`w-full p-4 rounded-xl border-2 transition text-left ${
+                  <div
+                    key={originalIndex}
+                    className={`rounded-xl border-2 transition ${
                       isPacked
                         ? 'bg-emerald-500/15 border-emerald-500'
-                        : 'bg-slate-700/40 border-slate-700 hover:border-slate-500 active:scale-[0.99]'
+                        : 'bg-slate-700/40 border-slate-700'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      {/* Checkbox */}
-                      <div className={`flex-shrink-0 w-7 h-7 rounded-lg border-2 flex items-center justify-center transition ${
-                        isPacked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'
-                      }`}>
-                        {isPacked && <Check size={15} className="text-white" />}
-                      </div>
+                    {/* Tappable area for pack/unpack */}
+                    <button
+                      onClick={() => toggleItemPacked(originalIndex)}
+                      className="w-full p-4 text-left active:scale-[0.99] transition"
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Checkbox */}
+                        <div className={`flex-shrink-0 w-7 h-7 rounded-lg border-2 flex items-center justify-center transition ${
+                          isPacked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'
+                        }`}>
+                          {isPacked && <Check size={15} className="text-white" />}
+                        </div>
 
-                      {/* Image */}
-                      <div className="flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-slate-700 border border-slate-600 flex items-center justify-center">
-                        {imgSrc ? (
-                          <img
-                            src={imgSrc}
-                            alt={item.name}
-                            className="w-full h-full object-cover"
-                            onError={e => { e.currentTarget.style.display = 'none'; }}
-                          />
-                        ) : (
-                          <Package size={22} className="text-slate-500" />
+                        {/* Image */}
+                        <div className="flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-slate-700 border border-slate-600 flex items-center justify-center">
+                          {imgSrc ? (
+                            <img
+                              src={imgSrc}
+                              alt={item.name}
+                              className="w-full h-full object-cover"
+                              onError={e => { e.currentTarget.style.display = 'none'; }}
+                            />
+                          ) : (
+                            <Package size={22} className="text-slate-500" />
+                          )}
+                        </div>
+
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-base leading-tight ${
+                            isPacked ? 'text-emerald-300 line-through' : 'text-white'
+                          }`}>
+                            {pName(item.name, item.localName)}
+                          </p>
+
+                          {/* Location display */}
+                          {location ? (
+                            <p className="flex items-center gap-1 text-sky-400 text-xs font-medium mt-0.5">
+                              <MapPin size={11} />
+                              {location}
+                            </p>
+                          ) : (
+                            <p className="flex items-center gap-1 text-amber-500 text-xs font-medium mt-0.5">
+                              <AlertTriangle size={11} />
+                              Location not assigned
+                            </p>
+                          )}
+
+                          <p className="text-slate-400 text-sm mt-0.5">
+                            {item.quantity} {item.unit || 'pc'}
+                            {item.packetWeight
+                              ? <span className="text-slate-500"> · {item.packetWeight}{item.packetUnit || 'g'}/pc</span>
+                              : null}
+                          </p>
+                          <p className="text-amber-300 text-sm font-semibold mt-0.5">
+                            ₹{(item.sellingPrice ?? item.price)?.toFixed(2) || '0.00'} per {item.unit || 'pc'}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* Editable location input — only shown when product has an id */}
+                    {item.productId && (
+                      <div
+                        className="px-4 pb-3 flex items-center gap-2"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <MapPin size={13} className="text-slate-500 flex-shrink-0" />
+                        <input
+                          type="text"
+                          value={editValue}
+                          onChange={e => handleLocationChange(item.productId, e.target.value)}
+                          placeholder="e.g. A-1, B-12"
+                          className="flex-1 bg-slate-900/60 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
+                        />
+                        {isSaving && (
+                          <span className="text-slate-500 text-xs flex-shrink-0">saving…</span>
                         )}
                       </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className={`font-semibold text-base leading-tight ${
-                          isPacked ? 'text-emerald-300 line-through' : 'text-white'
-                        }`}>
-                          {pName(item.name, item.localName)}
-                        </p>
-                        <p className="text-slate-400 text-sm mt-0.5">
-                          {item.quantity} {item.unit || 'pc'}
-                          {item.packetWeight
-                            ? <span className="text-slate-500"> · {item.packetWeight}{item.packetUnit || 'g'}/pc</span>
-                            : null}
-                        </p>
-                        <p className="text-amber-300 text-sm font-semibold mt-0.5">
-                          ₹{(item.sellingPrice ?? item.price)?.toFixed(2) || '0.00'} per {item.unit || 'pc'}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
