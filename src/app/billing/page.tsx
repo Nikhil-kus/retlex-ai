@@ -28,6 +28,51 @@ export default function BillingPage() {
   // Toast: id of the product just pinned as default (auto-clears after 1.5s)
   const [pinnedProductId, setPinnedProductId] = useState<string | null>(null);
 
+  const getLevenshteinDistance = (a: string, b: string): number => {
+    const matrix: number[][] = [];
+    for (let i = 0; i <= b.length; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= a.length; j++) {
+      matrix[0][j] = j;
+    }
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1, // substitution
+            matrix[i][j - 1] + 1,     // insertion
+            matrix[i - 1][j] + 1      // deletion
+          );
+        }
+      }
+    }
+    return matrix[b.length][a.length];
+  };
+
+  const areWordsSimilar = (w1: string, w2: string): boolean => {
+    const val1 = w1.trim().toLowerCase();
+    const val2 = w2.trim().toLowerCase();
+    if (val1 === val2) return true;
+    
+    // Short words must match exactly to prevent false overlaps (numbers/units like do, to, 1, 2, kg, pc)
+    if (val1.length <= 3 || val2.length <= 3) return false;
+    
+    const dist = getLevenshteinDistance(val1, val2);
+    const maxAllowedDist = val1.length >= 6 ? 2 : 1;
+    return dist <= maxAllowedDist;
+  };
+
+  const arePhrasesSimilar = (wordsA: string[], wordsB: string[]): boolean => {
+    if (wordsA.length !== wordsB.length) return false;
+    for (let k = 0; k < wordsA.length; k++) {
+      if (!areWordsSimilar(wordsA[k], wordsB[k])) return false;
+    }
+    return true;
+  };
+
   const mergeOverlappingStrings = (s1Arg: string, s2Arg: string) => {
     let s1 = s1Arg || "";
     let s2 = s2Arg || "";
@@ -42,9 +87,7 @@ export default function BillingPage() {
     const s2Lower = s2.trim().toLowerCase();
     
     if (s1Lower === s2Lower) return s1.trim();
-    if (s2Lower.startsWith(s1Lower)) return s2.trim();
-    if (s1Lower.endsWith(s2Lower)) return s1.trim();
-
+    
     const words1 = s1.trim().split(/\s+/);
     const words2 = s2.trim().split(/\s+/);
 
@@ -52,9 +95,9 @@ export default function BillingPage() {
     const minLen = Math.min(words1.length, words2.length);
     
     for (let i = 1; i <= minLen; i++) {
-        const endOfS1 = words1.slice(-i).join(" ").toLowerCase();
-        const startOfS2 = words2.slice(0, i).join(" ").toLowerCase();
-        if (endOfS1 === startOfS2) {
+        const slice1 = words1.slice(-i);
+        const slice2 = words2.slice(0, i);
+        if (arePhrasesSimilar(slice1, slice2)) {
             maxOverlap = i;
         }
     }
