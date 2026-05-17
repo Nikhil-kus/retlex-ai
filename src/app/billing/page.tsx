@@ -364,57 +364,69 @@ export default function BillingPage() {
     // PHASE 3: CONNECT WITH EXISTING CATALOG (FORGIVING MODE)
     const fuse = new Fuse(catalog, {
       keys: ['name', 'localName'],
-      threshold: 0.6,
+      threshold: 0.7, // Increased slightly to be more forgiving, since Word-Coverage now verifies matches
       includeScore: true,
       ignoreLocation: true,
       minMatchCharLength: 2
     });
 
+    const GENERIC_KEYWORDS = new Set([
+      'biscuit', 'biscuits', 'soap', 'soaps', 'namkeen', 'namkeens', 
+      'ghee', 'oil', 'oils', 'masala', 'masalas', 'tea', 'coffee', 
+      'sugar', 'aata', 'atta', 'dal', 'dhal', 'chawal', 'rice', 'detergent',
+      'बिस्कुट', 'बिस्किट', 'साबुन', 'नमकीन', 'घी', 'तेल', 'मसाला', 
+      'चाय', 'कॉफी', 'चीनी', 'शक्कर', 'आटा', 'दाल', 'चावल', 'सर्फ'
+    ]);
+
+    const fillerWords = new Set([
+      'packet', 'pack', 'pkt', 'pc', 'pcs', 'piece', 'pieces', 'kg', 'kilo', 'kilos', 
+      'g', 'gm', 'gram', 'grams', 'l', 'ltr', 'litre', 'litres', 'ml', 'mili', 
+      'पैकेट', 'पीस', 'किलो', 'ग्राम', 'लीटर', 'मिली', 'का', 'की', 'के', 
+      'wala', 'wale', 'wali', 'वाला', 'वाले', 'वाली', 'rs', 'rupees', 'rupya', 'rupaye', 'रुपये', 'रुपया', 'रुपए'
+    ]);
+
     const seenItemsMap = new Set();
 
     const matchedItems = deduplicatedSpokenItems.map(item => {
       const searchName = item.name.replace(/\d+/g, '').replace(/\b(kg|g|ml|l|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m)\b/gi, '').trim();
-      const result = fuse.search(searchName);
       let bestMatch: any = null;
 
-      // Forgiving direct hit check to allow typos
-      // Single-word searches need a tighter threshold to avoid false positives
-      // (e.g. "aata" should NOT match "Catch Rayta Masala" at score 0.5)
-      const searchWordCount = searchName.trim().split(/\s+/).filter(Boolean).length;
-      const directHitThreshold = searchWordCount === 1 ? 0.35 : 0.6;
-      if (result.length && (result[0].score ?? 1) <= directHitThreshold) {
-        bestMatch = result[0].item;
-      }
+      const searchPart = searchName.toLowerCase().trim();
 
-      // Enhanced multi-word fallback:
-      // When the full phrase fails (e.g. "detol sabun" vs "Dettol Original Sabun"),
-      // score each catalog product by how many spoken words match it, then pick
-      // the product with the most word-hits. This handles cases where an extra word
-      // in the product name ("Original") breaks the full-phrase fuzzy score.
-      if (!bestMatch) {
-        const words = searchName.split(/\s+/).filter((w: string) => w.length > 2);
-        if (words.length > 0) {
-          // For each word, find catalog products it matches well (score ≤ 0.45)
-          const productHits = new Map<string, { item: any; hitCount: number; bestScore: number }>();
-          for (const w of words) {
-            const subResult = fuse.search(w);
-            for (const r of subResult) {
-              if ((r.score ?? 1) > 0.45) break; // results are sorted by score
-              const id = r.item.id;
-              const existing = productHits.get(id);
-              if (!existing) {
-                productHits.set(id, { item: r.item, hitCount: 1, bestScore: r.score ?? 1 });
-              } else {
-                existing.hitCount += 1;
-                existing.bestScore = Math.min(existing.bestScore, r.score ?? 1);
+      // Skip Fuse.js auto-matching if the query is a generic category term
+      if (!GENERIC_KEYWORDS.has(searchPart)) {
+        const result = fuse.search(searchName);
+        if (result.length > 0) {
+          const spokenWords = searchPart.split(/\s+/).filter((w: string) => w.length >= 2 && !fillerWords.has(w));
+          
+          // Grade each candidate by how many spoken words they contain
+          const candidates = result.map((r: any) => {
+            let hits = 0;
+            const nameLower = (r.item.name || '').toLowerCase();
+            const localLower = (r.item.localName || '').toLowerCase();
+            
+            for (const w of spokenWords) {
+              if (nameLower.includes(w) || localLower.includes(w)) {
+                hits++;
               }
             }
-          }
-          if (productHits.size > 0) {
-            // Pick product with most word-hits; break ties by best (lowest) score
-            const best = Array.from(productHits.values()).sort((a, b) =>
-              b.hitCount !== a.hitCount ? b.hitCount - a.hitCount : a.bestScore - b.bestScore
-            )[0];
+            return { item: r.item, score: r.score ?? 1, wordHits: hits };
+          });
+
+          // Sort primarily by wordHits (descending), secondarily by Fuse.js score (ascending)
+          candidates.sort((a: any, b: any) => {
+            if (b.wordHits !== a.wordHits) {
+              return b.wordHits - a.wordHits;
+            }
+            return a.score - b.score;
+          });
+
+          const best = candidates[0];
+          const searchWordCount = spokenWords.length;
+          const directHitThreshold = searchWordCount === 1 ? 0.35 : 0.7;
+
+          // If it matches spoken words, or if it meets our forgiving threshold
+          if (best.wordHits > 0 || best.score <= directHitThreshold) {
             bestMatch = best.item;
           }
         }
@@ -578,11 +590,18 @@ export default function BillingPage() {
   };
 
   const getSuggestions = (item: any) => {
+    const fillerWords = new Set([
+      'packet', 'pack', 'pkt', 'pc', 'pcs', 'piece', 'pieces', 'kg', 'kilo', 'kilos', 
+      'g', 'gm', 'gram', 'grams', 'l', 'ltr', 'litre', 'litres', 'ml', 'mili', 
+      'पैकेट', 'पीस', 'किलो', 'ग्राम', 'लीटर', 'मिली', 'का', 'की', 'के', 
+      'wala', 'wale', 'wali', 'वाला', 'वाले', 'वाली', 'rs', 'rupees', 'rupya', 'rupaye', 'रुपये', 'रुपया', 'रुपए'
+    ]);
+
     // ── CASE: No catalog match (e.g. user said "ghee" but it didn't fuzzy-match anything) ──
     // Still search by the spoken word to surface all products in that category.
     if (!item.productId) {
       const spokenWord = (item.spokenWord || item.name || '').toLowerCase().trim();
-      const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length >= 2);
+      const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length >= 2 && !fillerWords.has(w));
       if (spokenWords.length === 0) return { brandVariants: [], sizeVariants: [] };
 
       // Find all catalog products whose name or localName contains any spoken word
@@ -616,7 +635,7 @@ export default function BillingPage() {
     // Detect generic category word (e.g. "masala", "biscuit", "namkeen")
     // vs specific brand+product (e.g. "everest masala", "parle-g")
     const spokenWord = (item.spokenWord || item.name || '').toLowerCase().trim();
-    const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length >= 2);
+    const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length >= 2 && !fillerWords.has(w));
 
     // Build the pool of all related products using the best search keyword
     let related: any[] = [];
@@ -781,7 +800,37 @@ export default function BillingPage() {
                     };
                 });
 
-                const allItems = [...baseReviewItemsRef.current, ...enrichedItems];
+                // ── CROSS-LIST MERGE & DEDUPLICATION LAYER ──
+                // Checks if a newly detected spoken item already exists in the base review list.
+                // If it exists, and the new item has an explicit quantity, we overwrite the quantity
+                // and unit of the existing item instead of appending a duplicate card.
+                const mergedBaseItems = [...baseReviewItemsRef.current];
+                const newOnlyItems: any[] = [];
+
+                for (const item of enrichedItems) {
+                    const itemKey = item.productId || item.name;
+                    const existingIdx = mergedBaseItems.findIndex(baseItem => {
+                        const baseKey = baseItem.productId || baseItem.name;
+                        return baseKey === itemKey;
+                    });
+
+                    if (existingIdx !== -1) {
+                        const existing = mergedBaseItems[existingIdx];
+                        if (item.hasExplicitQty) {
+                            mergedBaseItems[existingIdx] = {
+                                ...existing,
+                                quantity: item.quantity,
+                                unit: item.unit,
+                                hasExplicitQty: true,
+                                suggestions: item.suggestions || [] // Preserve suggestions
+                            };
+                        }
+                    } else {
+                        newOnlyItems.push(item);
+                    }
+                }
+
+                const allItems = [...mergedBaseItems, ...newOnlyItems];
 
                 // Only keep suggestions for the most recently spoken item
                 const finalItems = allItems.map((item, idx) => {
