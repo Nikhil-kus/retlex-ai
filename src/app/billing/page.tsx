@@ -308,49 +308,6 @@ export default function BillingPage() {
       };
     });
 
-    // PHASE 2.5: DEDUPLICATE SPOKEN ITEMS (pre-catalog)
-    // If the same spoken word appears twice (once as a stutter without qty, once with qty),
-    // collapse them into one. This handles "aata | aata 2 kilo" → just "aata 2 kilo".
-    const deduplicatedSpokenItems = (() => {
-      // Pass 1: exact name dedup
-      const exactMap = new Map<string, any>();
-      for (const item of normalizedItems) {
-        const nameKey = item.name.trim().toLowerCase();
-        if (!exactMap.has(nameKey)) {
-          exactMap.set(nameKey, item);
-        } else {
-          const existing = exactMap.get(nameKey);
-          if (item.hasExplicitQty && !existing.hasExplicitQty) {
-            exactMap.set(nameKey, item);
-          } else if (item.hasExplicitQty && existing.hasExplicitQty && existing.unit === item.unit) {
-            existing.quantity += item.quantity;
-          }
-        }
-      }
-      let items = Array.from(exactMap.values());
-
-      // Pass 2: stutter-echo dedup
-      // If item A has no explicit qty and item B's name STARTS WITH or EQUALS item A's name
-      // AND item B has explicit qty, then item A is a stutter echo → drop it.
-      const toRemove = new Set<number>();
-      for (let a = 0; a < items.length; a++) {
-        if (toRemove.has(a)) continue;
-        if (items[a].hasExplicitQty) continue; // only look for qty-less echoes
-        const nameA = items[a].name.toLowerCase();
-        for (let b = 0; b < items.length; b++) {
-          if (a === b || toRemove.has(b)) continue;
-          if (!items[b].hasExplicitQty) continue; // only pair with qty-bearing items
-          const nameB = items[b].name.toLowerCase();
-          // A is a stutter of B if B starts with A (A is a shorter prefix of B)
-          if (nameB.startsWith(nameA) || nameA.startsWith(nameB)) {
-            toRemove.add(a);
-            break;
-          }
-        }
-      }
-      return items.filter((_, idx) => !toRemove.has(idx));
-    })();
-
     // PHASE 3: CONNECT WITH EXISTING CATALOG (FORGIVING MODE)
     const fuse = new Fuse(catalog, {
       keys: ['name', 'localName'],
@@ -362,17 +319,13 @@ export default function BillingPage() {
 
     const seenItemsMap = new Set();
 
-    const matchedItems = deduplicatedSpokenItems.map(item => {
+    const matchedItems = normalizedItems.map(item => {
       const searchName = item.name.replace(/\d+/g, '').replace(/\b(kg|g|ml|l|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m)\b/gi, '').trim();
       const result = fuse.search(searchName);
       let bestMatch: any = null;
 
       // Forgiving direct hit check to allow typos
-      // Single-word searches need a tighter threshold to avoid false positives
-      // (e.g. "aata" should NOT match "Catch Rayta Masala" at score 0.5)
-      const searchWordCount = searchName.trim().split(/\s+/).filter(Boolean).length;
-      const directHitThreshold = searchWordCount === 1 ? 0.35 : 0.6;
-      if (result.length && (result[0].score ?? 1) <= directHitThreshold) {
+      if (result.length && (result[0].score ?? 1) <= 0.6) {
         bestMatch = result[0].item;
       }
 
@@ -568,56 +521,7 @@ export default function BillingPage() {
   };
 
   const getSuggestions = (item: any) => {
-    if (!item.productId) {
-      const spokenWord = (item.spokenWord || item.name || '').toLowerCase().trim();
-      if (!spokenWord) return { brandVariants: [], sizeVariants: [] };
-
-      // Helper to check spelling/phonetic similarity between two Hindi words
-      const isHindiPhoneticSimilar = (s1: string, s2: string) => {
-        const norm = (s: string) => s
-          .replace(/[गघ]/g, 'ग')
-          .replace(/[तट]/g, 'त')
-          .replace(/[शषस]/g, 'स')
-          .replace(/[बव]/g, 'ब')
-          .replace(/[कख]/g, 'क')
-          .replace(/[जझ]/g, 'ज')
-          .replace(/[डढद]/g, 'द')
-          .replace(/[िीूुोौेै]/g, ''); // strip vowel matras for robust comparison
-        return norm(s1) === norm(s2) && norm(s1).length > 0;
-      };
-
-      const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length >= 1);
-      
-      const related = catalog.filter(p => {
-        const pn = (p.name || '').toLowerCase();
-        const pl = (p.localName || '').toLowerCase();
-        
-        // 1. Direct substring match
-        const hasSubstringMatch = spokenWords.some((w: string) => pn.includes(w) || pl.includes(w));
-        if (hasSubstringMatch) return true;
-
-        // 2. Phonetic/spelling forgiving match on Hindi words
-        const plWords = pl.split(/\s+/).filter(Boolean);
-        const hasPhoneticMatch = spokenWords.some((sw: string) => 
-          plWords.some((cw: string) => isHindiPhoneticSimilar(sw, cw) || cw.includes(sw) || sw.includes(cw))
-        );
-        if (hasPhoneticMatch) return true;
-
-        return false;
-      });
-
-      // Show top matching variants as brandVariants
-      const brandMap = new Map<string, any>();
-      for (const p of related) {
-        const pBrand = (p.name || '').toLowerCase().split(' ')[0];
-        const existing = brandMap.get(pBrand);
-        if (!existing || (p.price > 0 && (existing.price === 0 || p.price < existing.price))) {
-          brandMap.set(pBrand, p);
-        }
-      }
-      const brandVariants = Array.from(brandMap.values()).slice(0, 12);
-      return { brandVariants, sizeVariants: [] };
-    }
+    if (!item.productId) return { brandVariants: [], sizeVariants: [] };
 
     const itemNameLower = (item.name || '').toLowerCase();
     const itemLocal = (item.localName || '').toLowerCase();
