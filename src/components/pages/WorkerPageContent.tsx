@@ -78,10 +78,14 @@ export default function WorkerPageContent({ shop, shopId }: Props) {
 
   // Location editing state: productId -> current input value
   const [locationEdits, setLocationEdits] = useState<Record<string, string>>({});
+  // Which productIds are currently open for location editing (long-press activated)
+  const [editingLocation, setEditingLocation] = useState<Set<string>>(new Set());
   // Saving state per productId
   const [savingLocation, setSavingLocation] = useState<Record<string, boolean>>({});
   // Debounce timers per productId
   const locationTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Long-press timer refs per productId
+  const longPressTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // PWA install prompt
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -177,6 +181,31 @@ export default function WorkerPageContent({ shop, shopId }: Props) {
       if (s.size === 0) n.delete(billId); else n.set(billId, s);
       return n;
     });
+  };
+
+  /** Open location edit mode for a product (triggered by long-press). */
+  const openLocationEdit = (productId: string, currentLocation: string | null) => {
+    setLocationEdits(prev => ({ ...prev, [productId]: currentLocation ?? '' }));
+    setEditingLocation(prev => new Set(prev).add(productId));
+  };
+
+  /** Close location edit mode without discarding the saved value. */
+  const closeLocationEdit = (productId: string) => {
+    setEditingLocation(prev => { const n = new Set(prev); n.delete(productId); return n; });
+  };
+
+  /** Start a 500 ms long-press timer on the location badge. */
+  const startLongPress = (productId: string, currentLocation: string | null) => {
+    longPressTimers.current[productId] = setTimeout(() => {
+      openLocationEdit(productId, currentLocation);
+    }, 500);
+  };
+
+  /** Cancel the long-press timer (finger lifted or moved). */
+  const cancelLongPress = (productId: string) => {
+    if (longPressTimers.current[productId]) {
+      clearTimeout(longPressTimers.current[productId]);
+    }
   };
 
   /**
@@ -385,6 +414,7 @@ export default function WorkerPageContent({ shop, shopId }: Props) {
                 const location: string | null = productMap[item.productId]?.location ?? item._location ?? null;
                 const editValue = locationEdits[item.productId] ?? location ?? '';
                 const isSaving = savingLocation[item.productId] ?? false;
+                const isEditing = item.productId ? editingLocation.has(item.productId) : false;
 
                 return (
                   <div
@@ -430,17 +460,43 @@ export default function WorkerPageContent({ shop, shopId }: Props) {
                             {pName(item.name, item.localName)}
                           </p>
 
-                          {/* Location display */}
-                          {location ? (
-                            <p className="flex items-center gap-1 text-sky-400 text-xs font-medium mt-0.5">
-                              <MapPin size={11} />
-                              {location}
-                            </p>
-                          ) : (
-                            <p className="flex items-center gap-1 text-amber-500 text-xs font-medium mt-0.5">
-                              <AlertTriangle size={11} />
-                              Location not assigned
-                            </p>
+                          {/* Location display — long-press to edit */}
+                          {item.productId && (
+                            <span
+                              onMouseDown={() => startLongPress(item.productId, location)}
+                              onMouseUp={() => cancelLongPress(item.productId)}
+                              onMouseLeave={() => cancelLongPress(item.productId)}
+                              onTouchStart={() => startLongPress(item.productId, location)}
+                              onTouchEnd={() => cancelLongPress(item.productId)}
+                              onTouchCancel={() => cancelLongPress(item.productId)}
+                              className="inline-flex items-center gap-1 mt-0.5 cursor-pointer select-none"
+                              title="Hold to edit location"
+                            >
+                              {location ? (
+                                <span className="flex items-center gap-1 text-sky-400 text-xs font-medium">
+                                  <MapPin size={11} />
+                                  {location}
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-amber-500 text-xs font-medium">
+                                  <AlertTriangle size={11} />
+                                  Location not assigned
+                                </span>
+                              )}
+                            </span>
+                          )}
+                          {!item.productId && (
+                            location ? (
+                              <p className="flex items-center gap-1 text-sky-400 text-xs font-medium mt-0.5">
+                                <MapPin size={11} />
+                                {location}
+                              </p>
+                            ) : (
+                              <p className="flex items-center gap-1 text-amber-500 text-xs font-medium mt-0.5">
+                                <AlertTriangle size={11} />
+                                Location not assigned
+                              </p>
+                            )
                           )}
 
                           <p className="text-slate-400 text-sm mt-0.5">
@@ -456,22 +512,31 @@ export default function WorkerPageContent({ shop, shopId }: Props) {
                       </div>
                     </button>
 
-                    {/* Editable location input — only shown when product has an id */}
-                    {item.productId && (
+                    {/* Location edit panel — only visible after long-press */}
+                    {item.productId && isEditing && (
                       <div
                         className="px-4 pb-3 flex items-center gap-2"
                         onClick={e => e.stopPropagation()}
                       >
                         <MapPin size={13} className="text-slate-500 flex-shrink-0" />
                         <input
+                          autoFocus
                           type="text"
                           value={editValue}
                           onChange={e => handleLocationChange(item.productId, e.target.value)}
                           placeholder="e.g. A-1, B-12"
                           className="flex-1 bg-slate-900/60 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
                         />
-                        {isSaving && (
+                        {isSaving ? (
                           <span className="text-slate-500 text-xs flex-shrink-0">saving…</span>
+                        ) : (
+                          <button
+                            onClick={() => closeLocationEdit(item.productId)}
+                            className="text-slate-400 hover:text-white flex-shrink-0 p-0.5"
+                            title="Done"
+                          >
+                            <X size={14} />
+                          </button>
                         )}
                       </div>
                     )}
