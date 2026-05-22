@@ -1428,60 +1428,9 @@ export default function BillingPage() {
                                     <X size={10} />
                                   </button>
                                 </div>
-                                {/* Row 1: Other Brands */}
-                                {suggestions.brandVariants.length > 0 && (
-                                  <div className="px-3 pb-2">
-                                    <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands</p>
-                                    <div
-                                      className="flex gap-2.5 overflow-x-auto pb-1"
-                                      style={{scrollbarWidth:'none'}}
-                                      onTouchStart={e => e.stopPropagation()}
-                                      onTouchMove={e => e.stopPropagation()}
-                                      onTouchEnd={e => e.stopPropagation()}
-                                    >
-                                      {suggestions.brandVariants.map((sug: any) => {
-                                        const sugCartItem = cart.find(c => c.productId === sug.id && c.unit === sug.baseUnit);
-                                        const sugQty = sugCartItem ? sugCartItem.quantity : 0;
-                                        return (
-                                          <div
-                                            key={sug.id}
-                                            className="flex-shrink-0 w-24 bg-white rounded-xl border border-indigo-100 overflow-hidden shadow-sm cursor-pointer active:scale-95 transition-all"
-                                            onClick={e => {
-                                              e.stopPropagation();
-                                              addToCart(sug);
-                                              setActiveSuggestionId(null);
-                                            }}
-                                          >
-                                            <div className="relative w-full bg-slate-100 overflow-hidden" style={{paddingBottom:'85%'}}>
-                                              <div className="absolute inset-0">
-                                                {sug.imageUrl
-                                                  ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
-                                                  : <div className="w-full h-full flex items-center justify-center"><Package className="text-indigo-200" size={20} /></div>
-                                                }
-                                              </div>
-                                              {sugQty > 0 && (
-                                                <div className="absolute top-1 right-1 bg-indigo-600 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">
-                                                  {sugQty}
-                                                </div>
-                                              )}
-                                            </div>
-                                            <div className="p-1.5">
-                                              <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                              <p className="text-[10px] font-bold text-emerald-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
-                                              <p className="text-[9px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
-                                              <div className={`mt-1 w-full rounded-lg py-0.5 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-indigo-600 text-white' : 'border border-indigo-400 text-indigo-600'}`}>
-                                                {sugQty > 0 ? <><span>✓</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
-                                              </div>
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-                                {/* Row 2: Pack Sizes */}
+                                {/* Row 1: Pack Sizes */}
                                 {suggestions.sizeVariants.length > 0 && (
-                                  <div className="px-3 pb-3">
+                                  <div className="px-3 pb-2">
                                     <p className="text-[9px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">Pack Sizes</p>
                                     <div
                                       className="flex gap-2.5 overflow-x-auto pb-1"
@@ -1521,6 +1470,57 @@ export default function BillingPage() {
                                               <p className="text-[10px] font-black text-amber-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
                                               <p className="text-[9px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
                                               <div className={`mt-1 w-full rounded-lg py-0.5 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-amber-500 text-white' : 'border border-amber-400 text-amber-600'}`}>
+                                                {sugQty > 0 ? <><span>✓</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                {/* Row 2: Other Brands */}
+                                {suggestions.brandVariants.length > 0 && (
+                                  <div className="px-3 pb-3">
+                                    <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands</p>
+                                    <div
+                                      className="flex gap-2.5 overflow-x-auto pb-1"
+                                      style={{scrollbarWidth:'none'}}
+                                      onTouchStart={e => e.stopPropagation()}
+                                      onTouchMove={e => e.stopPropagation()}
+                                      onTouchEnd={e => e.stopPropagation()}
+                                    >
+                                      {suggestions.brandVariants.map((sug: any) => {
+                                        const sugCartItem = cart.find(c => c.productId === sug.id && c.unit === sug.baseUnit);
+                                        const sugQty = sugCartItem ? sugCartItem.quantity : 0;
+                                        return (
+                                          <div
+                                            key={sug.id}
+                                            className="flex-shrink-0 w-24 bg-white rounded-xl border border-indigo-100 overflow-hidden shadow-sm cursor-pointer active:scale-95 transition-all"
+                                            onClick={e => {
+                                              e.stopPropagation();
+                                              addToCart(sug);
+                                              setActiveSuggestionId(null);
+                                            }}
+                                          >
+                                            <div className="relative w-full bg-slate-100 overflow-hidden" style={{paddingBottom:'85%'}}>
+                                              <div className="absolute inset-0">
+                                                {sug.imageUrl
+                                                  ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                                  : <div className="w-full h-full flex items-center justify-center"><Package className="text-indigo-200" size={20} /></div>
+                                                }
+                                              </div>
+                                              {sugQty > 0 && (
+                                                <div className="absolute top-1 right-1 bg-indigo-600 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">
+                                                  {sugQty}
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div className="p-1.5">
+                                              <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                              <p className="text-[10px] font-bold text-emerald-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
+                                              <p className="text-[9px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
+                                              <div className={`mt-1 w-full rounded-lg py-0.5 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-indigo-600 text-white' : 'border border-indigo-400 text-indigo-600'}`}>
                                                 {sugQty > 0 ? <><span>✓</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
                                               </div>
                                             </div>
@@ -1878,7 +1878,53 @@ export default function BillingPage() {
 
                             return (
                             <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2.5">
-                              {/* Row 1: Brand / Variant suggestions */}
+                              {/* Row 1: Pack Sizes — updates when a brand is selected */}
+                              {activeSizeVariants.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">
+                                    {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} — Pack Sizes` : 'Pack Sizes'}
+                                    <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span>
+                                  </p>
+                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
+                                    onTouchStart={e => e.stopPropagation()}
+                                    onTouchMove={e => e.stopPropagation()}
+                                    onTouchEnd={e => e.stopPropagation()}
+                                  >
+                                    {activeSizeVariants.map((sug: any, sIdx: number) => {
+                                      const isPinned = pinnedProductId === sug.id;
+                                      return (
+                                        <button
+                                          key={sIdx}
+                                          onClick={() => {
+                                            const overrides = buildOverrides(sug);
+                                            if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                            const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
+                                            setReviewItems(newItems);
+                                            setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
+                                          }}
+                                          {...longPressHandlers(sug)}
+                                          className={`relative flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border ${
+                                            isPinned ? 'border-emerald-500 bg-emerald-50 scale-105'
+                                            : 'border-amber-200 bg-white hover:border-amber-400'
+                                          }`}
+                                        >
+                                          {isPinned && (
+                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
+                                          )}
+                                          <div className="w-full h-12 bg-amber-50 overflow-hidden flex items-center justify-center">
+                                            {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-amber-300" size={16} />}
+                                          </div>
+                                          <div className="p-1 text-center">
+                                            <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                            <p className="text-[9px] font-black text-amber-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              {/* Row 2: Brand / Variant suggestions */}
                               {item.suggestions.brandVariants?.length > 0 && (
                                 <div>
                                   <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span></p>
@@ -1928,52 +1974,6 @@ export default function BillingPage() {
                                           <div className="p-1 text-center">
                                             <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
                                             <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
-                                          </div>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                              {/* Row 2: Pack Sizes — updates when a brand is selected */}
-                              {activeSizeVariants.length > 0 && (
-                                <div>
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">
-                                    {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} — Pack Sizes` : 'Pack Sizes'}
-                                    <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span>
-                                  </p>
-                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
-                                    onTouchStart={e => e.stopPropagation()}
-                                    onTouchMove={e => e.stopPropagation()}
-                                    onTouchEnd={e => e.stopPropagation()}
-                                  >
-                                    {activeSizeVariants.map((sug: any, sIdx: number) => {
-                                      const isPinned = pinnedProductId === sug.id;
-                                      return (
-                                        <button
-                                          key={sIdx}
-                                          onClick={() => {
-                                            const overrides = buildOverrides(sug);
-                                            if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
-                                            const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
-                                            setReviewItems(newItems);
-                                            setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
-                                          }}
-                                          {...longPressHandlers(sug)}
-                                          className={`relative flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border ${
-                                            isPinned ? 'border-emerald-500 bg-emerald-50 scale-105'
-                                            : 'border-amber-200 bg-white hover:border-amber-400'
-                                          }`}
-                                        >
-                                          {isPinned && (
-                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
-                                          )}
-                                          <div className="w-full h-12 bg-amber-50 overflow-hidden flex items-center justify-center">
-                                            {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-amber-300" size={16} />}
-                                          </div>
-                                          <div className="p-1 text-center">
-                                            <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                            <p className="text-[9px] font-black text-amber-600">₹{(sug.price || 0).toFixed(0)}</p>
                                           </div>
                                         </button>
                                       );
