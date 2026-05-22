@@ -190,9 +190,10 @@ export default function ProductsPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageBase64: compressed })
-        }).then(r => {
-          if (!r.ok) throw new Error('AI analysis failed');
-          return r.json();
+        }).then(async r => {
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.error || 'AI analysis failed');
+          return data;
         }),
 
         // Background removal
@@ -200,9 +201,10 @@ export default function ProductsPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageBase64: compressed })
-        }).then(r => {
-          if (!r.ok) throw new Error('Background removal failed');
-          return r.json();
+        }).then(async r => {
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.error || 'Background removal failed');
+          return data;
         }),
       ]);
 
@@ -239,7 +241,7 @@ export default function ProductsPage() {
         setAnalyzeError(aiRes.value.error);
       } else if (aiRes.status === 'rejected') {
         console.warn('AI analysis rejected:', aiRes.reason);
-        setAnalyzeError('AI analysis failed.');
+        setAnalyzeError(aiRes.reason?.message || 'AI analysis failed.');
       }
     } catch (err: any) {
       setAnalyzeError('Could not connect to AI. Fill manually.');
