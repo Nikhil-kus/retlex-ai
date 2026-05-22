@@ -7,6 +7,20 @@ import { useHindi } from '@/lib/hindi-context';
 
 import { shopCache } from '@/lib/session-cache';
 
+const standardCategories = [
+  'Grains & Cereals',
+  'Pulses & Dals',
+  'Spices & Seasonings',
+  'Oils & Ghee',
+  'Dairy & Milk Products',
+  'Beverages',
+  'Snacks & Confectionery',
+  'Instant Foods & Noodles',
+  'Personal Care & Hygiene',
+  'Household Cleaning',
+  'Miscellaneous'
+];
+
 export default function ProductsPage() {
   const { pName } = useHindi();
   const [products, setProducts] = useState<any[]>([]);
@@ -28,6 +42,9 @@ export default function ProductsPage() {
     packetWeight: '', packetUnit: 'g'
   });
 
+  // Category select dropdown state
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+
   // AI autofill states
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -37,6 +54,9 @@ export default function ProductsPage() {
 
   // Quick price edit state
   const [quickPriceEdit, setQuickPriceEdit] = useState<{ id: string; price: string } | null>(null);
+
+  const uniqueCatalogCategories = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
+  const mergedCategories = Array.from(new Set([...standardCategories, ...uniqueCatalogCategories])).sort() as string[];
 
   useEffect(() => {
     // Use shopCache first (set by ProductsPageContent with the correct URL shopId).
@@ -87,6 +107,7 @@ export default function ProductsPage() {
     setImagePreview(null);
     setAiFields(new Set());
     setAnalyzeError(null);
+    setIsCustomCategory(false);
   };
 
   // Step 1: Compress image to base64 JPEG (max 800px)
@@ -142,6 +163,10 @@ export default function ProductsPage() {
         ctx.drawImage(img, x, y, drawW, drawH);
         resolve(canvas.toDataURL('image/jpeg', 0.92));
       };
+      img.onerror = () => {
+        // Fallback to original image if composition fails
+        resolve(base64);
+      };
       img.src = base64;
     });
   };
@@ -165,38 +190,56 @@ export default function ProductsPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageBase64: compressed })
-        }).then(r => r.json()),
+        }).then(r => {
+          if (!r.ok) throw new Error('AI analysis failed');
+          return r.json();
+        }),
 
         // Background removal
         fetch('/api/products/process-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageBase64: compressed })
-        }).then(r => r.json()),
+        }).then(r => {
+          if (!r.ok) throw new Error('Background removal failed');
+          return r.json();
+        }),
       ]);
 
-      // Apply background removal result
-      if (bgRes.status === 'fulfilled' && bgRes.value?.imageBase64) {
-        const cleanImage = await composeProductImage(bgRes.value.imageBase64);
-        setImagePreview(cleanImage);
-        setFormData(prev => ({ ...prev, imageUrl: cleanImage }));
+      // Apply background removal result safely
+      if (bgRes.status === 'fulfilled' && bgRes.value && !bgRes.value.error && bgRes.value.imageBase64) {
+        try {
+          const cleanImage = await composeProductImage(bgRes.value.imageBase64);
+          setImagePreview(cleanImage);
+          setFormData(prev => ({ ...prev, imageUrl: cleanImage }));
+        } catch (err) {
+          console.error("Failed to compose background-removed image, keeping raw:", err);
+        }
       }
 
-      // Apply AI autofill
-      if (aiRes.status === 'fulfilled' && !aiRes.value?.error) {
+      // Apply AI autofill safely
+      if (aiRes.status === 'fulfilled' && aiRes.value && !aiRes.value.error) {
         const data = aiRes.value;
         const filled = new Set<string>();
         setFormData(prev => {
           const next = { ...prev };
           if (data.name)      { next.name = data.name;           filled.add('name'); }
           if (data.localName) { next.localName = data.localName; filled.add('localName'); }
-          if (data.category)  { next.category = data.category;   filled.add('category'); }
+          if (data.category)  {
+            next.category = data.category;
+            filled.add('category');
+            const isCustom = data.category && !mergedCategories.includes(data.category);
+            setIsCustomCategory(!!isCustom);
+          }
           if (data.unit)      { next.unit = data.unit;           filled.add('unit'); }
           return next;
         });
         setAiFields(filled);
       } else if (aiRes.status === 'fulfilled' && aiRes.value?.error) {
         setAnalyzeError(aiRes.value.error);
+      } else if (aiRes.status === 'rejected') {
+        console.warn('AI analysis rejected:', aiRes.reason);
+        setAnalyzeError('AI analysis failed.');
       }
     } catch (err: any) {
       setAnalyzeError('Could not connect to AI. Fill manually.');
@@ -206,6 +249,8 @@ export default function ProductsPage() {
   };
 
   const handleOpenEdit = (p: any) => {
+    const isCustom = p.category && !mergedCategories.includes(p.category);
+    setIsCustomCategory(!!isCustom);
     setFormData({
       name: p.name, localName: p.localName || '', barcode: p.barcode || '',
       sellingPrice: p.price ? p.price.toString() : (p.sellingPrice?.toString() || ''), costPrice: p.costPrice ? p.costPrice.toString() : '',
@@ -669,9 +714,37 @@ export default function ProductsPage() {
                     Category
                     {aiFields.has('category') && <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5"><Sparkles size={9} />AI</span>}
                   </label>
-                  <input value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}
+                  <select
+                    value={isCustomCategory ? '__custom__' : formData.category}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val === '__custom__') {
+                        setIsCustomCategory(true);
+                        setFormData(prev => ({ ...prev, category: '' }));
+                      } else {
+                        setIsCustomCategory(false);
+                        setFormData(prev => ({ ...prev, category: val }));
+                      }
+                    }}
                     className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${aiFields.has('category') ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300'}`}
-                    placeholder="e.g. Grocery" />
+                  >
+                    <option value="">Select Category</option>
+                    {mergedCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                    <option value="__custom__">➕ Other / Add Custom Category...</option>
+                  </select>
+                  {isCustomCategory && (
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        value={formData.category}
+                        onChange={e => setFormData({ ...formData, category: e.target.value })}
+                        placeholder="Type custom category name..."
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Barcode</label>

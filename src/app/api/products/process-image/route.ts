@@ -9,8 +9,10 @@ import { NextResponse } from 'next/server';
  * Falls back to original image if remove.bg fails.
  */
 export async function POST(request: Request) {
+  let imageBase64 = '';
   try {
-    const { imageBase64 } = await request.json();
+    const body = await request.json();
+    imageBase64 = body.imageBase64 || '';
     if (!imageBase64) return NextResponse.json({ error: 'No image provided' }, { status: 400 });
 
     const apiKey = process.env.REMOVE_BG_API_KEY;
@@ -48,7 +50,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ imageBase64: pngBase64, removed: true });
   } catch (error: any) {
     console.error('process-image error:', error.message);
-    // Always fallback gracefully
-    return NextResponse.json({ imageBase64: request.body, removed: false });
+    // Always fallback gracefully with the original base64 string
+    return NextResponse.json({ imageBase64: imageBase64 || null, removed: false });
   }
 }

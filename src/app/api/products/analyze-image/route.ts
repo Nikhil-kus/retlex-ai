@@ -14,35 +14,42 @@ export async function POST(request: Request) {
     const prompt = `You are a product recognition AI for an Indian kirana (grocery) store.
 Analyze this product image and extract structured data.
 
-Return ONLY valid JSON in this exact format (no markdown, no explanation):
-{
-  "name": "product name in English",
-  "localName": "Hindi name if visible on packaging, else empty string",
-  "category": "one of: Grains & Cereals, Dairy & Milk Products, Beverages, Snacks, Spices & Masala, Personal Care, Household Cleaning, Instant Foods, Oils & Ghee, Confectionery, Tobacco, Miscellaneous",
-  "unit": "one of: pc, kg, g, l, pkt"
-}
-
 Rules:
-- Extract the actual product name from the packaging text
-- If Hindi text is visible, include it in localName
-- Choose the most appropriate category
-- unit should reflect how this product is typically sold (pkt for packets, kg for loose grains, l for liquids, pc for single items)
+- Extract the actual product name from the packaging text (e.g. "Tata Salt", "Maggi Masala Noodles")
+- If Hindi text is visible, include it in localName (e.g. "टाटा नमक", "मैगी")
+- Choose the most appropriate category from: Grains & Cereals, Pulses & Dals, Spices & Seasonings, Oils & Ghee, Dairy & Milk Products, Beverages, Snacks & Confectionery, Instant Foods & Noodles, Personal Care & Hygiene, Household Cleaning, Miscellaneous
+- Choose the most appropriate unit from: pc, kg, g, l, pkt
 - If image is unclear, make your best guess based on what you can see
 - NEVER return null values, always return strings`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
+            role: 'user',
             parts: [
               { text: prompt },
-              { inline_data: { mime_type: 'image/jpeg', data: base64Data } }
+              { inlineData: { mimeType: 'image/jpeg', data: base64Data } }
             ]
           }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 256 }
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 256,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'OBJECT',
+              properties: {
+                name: { type: 'STRING' },
+                localName: { type: 'STRING' },
+                category: { type: 'STRING' },
+                unit: { type: 'STRING' }
+              },
+              required: ['name', 'unit', 'category']
+            }
+          }
         })
       }
     );
@@ -55,11 +62,11 @@ Rules:
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    // Parse JSON — handle markdown code blocks like ```json { } ```
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/);
-    if (!jsonMatch) return NextResponse.json({ error: 'Could not parse AI response' }, { status: 500 });
+    if (!text) return NextResponse.json({ error: 'Could not parse AI response' }, { status: 500 });
 
-    const jsonStr = jsonMatch[1] || jsonMatch[0];
+    // Parse JSON — handle markdown code blocks if returned, else parse direct
+    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/);
+    const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : text;
     const parsed = JSON.parse(jsonStr.trim());
 
     return NextResponse.json({
