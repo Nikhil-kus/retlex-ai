@@ -185,6 +185,7 @@ export default function BillingPage() {
     let pendingQty = 1;
     let pendingUnit = "pc";
     let hasLeadingNumber = false;
+    let itemWords: string[] = [];
 
     const commitItem = (overrideQty?: number, overrideUnit?: string) => {
       if (pendingName.length > 0) {
@@ -192,13 +193,15 @@ export default function BillingPage() {
           name: pendingName.join(" "),
           quantity: overrideQty !== undefined ? overrideQty : pendingQty,
           unit: overrideUnit !== undefined ? overrideUnit : pendingUnit,
-          hasExplicitQty: overrideQty !== undefined || pendingQty !== 1 || pendingUnit !== "pc" || hasLeadingNumber
+          hasExplicitQty: overrideQty !== undefined || pendingQty !== 1 || pendingUnit !== "pc" || hasLeadingNumber,
+          rawText: itemWords.join(" ")
         });
       }
       pendingName = [];
       pendingQty = 1;
       pendingUnit = "pc";
       hasLeadingNumber = false;
+      itemWords = [];
     };
 
     const hasNameAhead = (startIndex: number) => {
@@ -259,6 +262,8 @@ export default function BillingPage() {
           }
       }
 
+      itemWords.push(word);
+
       let isNumber = false;
       let parsedNum = NaN;
       let isCombined = false;
@@ -312,6 +317,7 @@ export default function BillingPage() {
         }
 
         if (parsedUnitStr && !isCombined) {
+           itemWords.push(words[i + 1]);
            i++; 
         }
       } else {
@@ -326,6 +332,31 @@ export default function BillingPage() {
 
     commitItem();
     return items;
+  };
+
+  const recalculateQtyAndUnit = (parsedQty: number, parsedUnit: string, sug: any) => {
+    const normalizedUnit = (parsedUnit || '').toLowerCase();
+    const isWeightUnit = ['kg', 'g', 'l', 'ml'].includes(normalizedUnit);
+
+    if (isWeightUnit) {
+      let requestedAmt = parsedQty;
+      if (normalizedUnit === 'kg' || normalizedUnit === 'l') {
+        requestedAmt = parsedQty * 1000;
+      }
+
+      const sugBaseUnit = sug.baseUnit || 'pc';
+      if (['pc', 'pkt'].includes(sugBaseUnit)) {
+        const packWeight = sug.packetWeight || sug.baseQuantity || 1;
+        const qty = Math.max(1, Math.round(requestedAmt / packWeight));
+        return { quantity: qty, unit: sugBaseUnit };
+      } else if (['kg', 'l'].includes(sugBaseUnit)) {
+        return { quantity: requestedAmt / 1000, unit: sugBaseUnit };
+      } else if (['g', 'ml'].includes(sugBaseUnit)) {
+        return { quantity: requestedAmt, unit: sugBaseUnit };
+      }
+    }
+
+    return { quantity: parsedQty, unit: sug.baseUnit || 'pc' };
   };
 
   const processVoiceTextToItems = (text: string) => {
@@ -367,16 +398,66 @@ export default function BillingPage() {
       const result = fuse.search(searchName);
       let bestMatch: any = null;
 
-      // Forgiving direct hit check to allow typos
-      if (result.length && (result[0].score ?? 1) <= 0.6) {
-        bestMatch = result[0].item;
+      const rawTextLower = (item.rawText || '').toLowerCase();
+      const isPacketRequested = /\b(packet|pack|pkt|packt|पैकेट|पीस|pc|pcs|piece|pieces|box|bottles?|can)\b/i.test(rawTextLower);
+      const isKhulaRequested = /\b(khula|loose|khulla|खुला)\b/i.test(rawTextLower);
+      
+      let requestedWeightGrams: number | null = null;
+      if (item.unit === 'kg' || item.unit === 'l') {
+        requestedWeightGrams = item.quantity * 1000;
+      } else if (item.unit === 'g' || item.unit === 'ml') {
+        requestedWeightGrams = item.quantity;
+      }
+
+      // Score and sort candidates
+      let scoredResults = result.map((r: any) => {
+        let score = r.score ?? 1;
+        const cand = r.item;
+        
+        const nameLower = (cand.name || '').toLowerCase();
+        const localLower = (cand.localName || '').toLowerCase();
+        const isCandLoose = (
+          nameLower.includes('khula') || nameLower.includes('loose') || nameLower.includes('खुला') || nameLower.includes('खुली') ||
+          localLower.includes('khula') || localLower.includes('loose') || localLower.includes('खुला') || localLower.includes('खुली') ||
+          ['kg', 'g', 'l', 'ml'].includes(cand.baseUnit)
+        );
+
+        if (isPacketRequested) {
+          if (isCandLoose) {
+            score += 2.0;
+          } else if (requestedWeightGrams !== null) {
+            const candWeight = cand.packetWeight || cand.baseQuantity || 0;
+            if (candWeight === requestedWeightGrams) {
+              score -= 0.45;
+            }
+          }
+        } else if (isKhulaRequested) {
+          if (!isCandLoose) {
+            score += 2.0;
+          }
+        } else {
+          // No explicit preference spoken
+          if (requestedWeightGrams !== null) {
+            if (!isCandLoose) {
+              const candWeight = cand.packetWeight || cand.baseQuantity || 0;
+              if (candWeight === requestedWeightGrams) {
+                score -= 0.45;
+              } else {
+                score += 0.25; // wrong weight packet gets penalized
+              }
+            }
+          }
+        }
+        return { item: cand, score };
+      });
+
+      scoredResults.sort((a: any, b: any) => a.score - b.score);
+
+      if (scoredResults.length && scoredResults[0].score <= 0.6) {
+        bestMatch = scoredResults[0].item;
       }
 
       // Enhanced multi-word fallback:
-      // When the full phrase fails (e.g. "detol sabun" vs "Dettol Original Sabun"),
-      // score each catalog product by how many spoken words match it, then pick
-      // the product with the most word-hits. This handles cases where an extra word
-      // in the product name ("Original") breaks the full-phrase fuzzy score.
       if (!bestMatch) {
         const words = searchName.split(/\s+/).filter((w: string) => w.length > 2);
         if (words.length > 0) {
@@ -397,11 +478,56 @@ export default function BillingPage() {
             }
           }
           if (productHits.size > 0) {
-            // Pick product with most word-hits; break ties by best (lowest) score
-            const best = Array.from(productHits.values()).sort((a, b) =>
-              b.hitCount !== a.hitCount ? b.hitCount - a.hitCount : a.bestScore - b.bestScore
-            )[0];
-            bestMatch = best.item;
+            // Apply scoring adjustments to these hits as well
+            const hitCandidates = Array.from(productHits.values()).map(h => {
+              let score = h.bestScore;
+              const cand = h.item;
+              
+              const nameLower = (cand.name || '').toLowerCase();
+              const localLower = (cand.localName || '').toLowerCase();
+              const isCandLoose = (
+                nameLower.includes('khula') || nameLower.includes('loose') || nameLower.includes('खुला') || nameLower.includes('खुली') ||
+                localLower.includes('khula') || localLower.includes('loose') || localLower.includes('खुला') || localLower.includes('खुली') ||
+                ['kg', 'g', 'l', 'ml'].includes(cand.baseUnit)
+              );
+
+              if (isPacketRequested) {
+                if (isCandLoose) {
+                  score += 2.0;
+                } else if (requestedWeightGrams !== null) {
+                  const candWeight = cand.packetWeight || cand.baseQuantity || 0;
+                  if (candWeight === requestedWeightGrams) {
+                    score -= 0.45;
+                  }
+                }
+              } else if (isKhulaRequested) {
+                if (!isCandLoose) {
+                  score += 2.0;
+                }
+              } else {
+                if (requestedWeightGrams !== null) {
+                  if (!isCandLoose) {
+                    const candWeight = cand.packetWeight || cand.baseQuantity || 0;
+                    if (candWeight === requestedWeightGrams) {
+                      score -= 0.45;
+                    } else {
+                      score += 0.25;
+                    }
+                  }
+                }
+              }
+              return { item: cand, hitCount: h.hitCount, score };
+            });
+
+            // Sort product hits: most hitCounts first; break ties by best score
+            hitCandidates.sort((a: any, b: any) =>
+              b.hitCount !== a.hitCount ? b.hitCount - a.hitCount : a.score - b.score
+            );
+
+            // Verify if the best hit has an acceptable score after adjustments
+            if (hitCandidates.length && hitCandidates[0].score <= 0.6) {
+              bestMatch = hitCandidates[0].item;
+            }
           }
         }
       }
@@ -426,7 +552,9 @@ export default function BillingPage() {
           confidence: 'low',
           aiLabel: item.name,
           hasExplicitQty: item.hasExplicitQty || false,
-          isRepeated
+          isRepeated,
+          parsedQty: item.quantity,
+          parsedUnit: item.unit
         };
       }
 
@@ -531,7 +659,9 @@ export default function BillingPage() {
         hasExplicitQty: item.hasExplicitQty || false,
         aiLabel: match.name,
         spokenWord: item.name, // original spoken word — used for generic category detection
-        isRepeated
+        isRepeated,
+        parsedQty: item.quantity,
+        parsedUnit: item.unit
       };
     });
 
@@ -548,10 +678,13 @@ export default function BillingPage() {
           existing.quantity = item.quantity;
           existing.unit = item.unit;
           existing.hasExplicitQty = true;
+          existing.parsedQty = item.parsedQty;
+          existing.parsedUnit = item.parsedUnit;
         } else if (existing.hasExplicitQty && item.hasExplicitQty) {
           // Add quantities if both are explicit
           if (existing.unit === item.unit) {
             existing.quantity += item.quantity;
+            existing.parsedQty = (existing.parsedQty || 0) + (item.parsedQty || 0);
           }
         }
       } else {
@@ -1838,7 +1971,7 @@ export default function BillingPage() {
                               <input type="number" className="flex-1 bg-transparent focus:outline-none text-xs font-bold text-slate-800 min-w-0" value={item.price || item.sellingPrice || 0} onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }} />
                             </div>
                             <span className="text-xs font-bold text-indigo-600 shrink-0">
-                              ₹{((item.price || 0) * item.quantity).toFixed(0)}
+                              ₹{calculateItemTotal(item).toFixed(0)}
                             </span>
                           </div>
 
@@ -1851,11 +1984,18 @@ export default function BillingPage() {
                             const spokenKey = item.spokenWord || item.aiLabel || item.name;
 
                             // Helper: build overrides object from a suggestion product
-                            const buildOverrides = (sug: any) => ({
-                              productId: sug.id, name: sug.name, localName: sug.localName,
-                              price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity,
-                              packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl
-                            });
+                            const buildOverrides = (sug: any) => {
+                              const pQty = item.parsedQty !== undefined ? item.parsedQty : item.quantity;
+                              const pUnit = item.parsedUnit !== undefined ? item.parsedUnit : (item.unit || item.baseUnit || 'pc');
+                              const recalculated = recalculateQtyAndUnit(pQty, pUnit, sug);
+                              return {
+                                productId: sug.id, name: sug.name, localName: sug.localName,
+                                price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity,
+                                packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl,
+                                quantity: recalculated.quantity, unit: recalculated.unit,
+                                parsedQty: pQty, parsedUnit: pUnit
+                              };
+                            };
 
                             // Helper: pin a product as default for this spoken word
                             const pinAsDefault = (sug: any) => {
@@ -1878,53 +2018,7 @@ export default function BillingPage() {
 
                             return (
                             <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2.5">
-                              {/* Row 1: Pack Sizes — updates when a brand is selected */}
-                              {activeSizeVariants.length > 0 && (
-                                <div>
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">
-                                    {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} — Pack Sizes` : 'Pack Sizes'}
-                                    <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span>
-                                  </p>
-                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
-                                    onTouchStart={e => e.stopPropagation()}
-                                    onTouchMove={e => e.stopPropagation()}
-                                    onTouchEnd={e => e.stopPropagation()}
-                                  >
-                                    {activeSizeVariants.map((sug: any, sIdx: number) => {
-                                      const isPinned = pinnedProductId === sug.id;
-                                      return (
-                                        <button
-                                          key={sIdx}
-                                          onClick={() => {
-                                            const overrides = buildOverrides(sug);
-                                            if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
-                                            const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
-                                            setReviewItems(newItems);
-                                            setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
-                                          }}
-                                          {...longPressHandlers(sug)}
-                                          className={`relative flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border ${
-                                            isPinned ? 'border-emerald-500 bg-emerald-50 scale-105'
-                                            : 'border-amber-200 bg-white hover:border-amber-400'
-                                          }`}
-                                        >
-                                          {isPinned && (
-                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
-                                          )}
-                                          <div className="w-full h-12 bg-amber-50 overflow-hidden flex items-center justify-center">
-                                            {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-amber-300" size={16} />}
-                                          </div>
-                                          <div className="p-1 text-center">
-                                            <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                            <p className="text-[9px] font-black text-amber-600">₹{(sug.price || 0).toFixed(0)}</p>
-                                          </div>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                              {/* Row 2: Brand / Variant suggestions */}
+                              {/* Row 1: Brand / Variant suggestions */}
                               {item.suggestions.brandVariants?.length > 0 && (
                                 <div>
                                   <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span></p>
@@ -1974,6 +2068,53 @@ export default function BillingPage() {
                                           <div className="p-1 text-center">
                                             <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
                                             <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Row 2: Pack Sizes — updates when a brand is selected */}
+                              {activeSizeVariants.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">
+                                    {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} — Pack Sizes` : 'Pack Sizes'}
+                                    <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span>
+                                  </p>
+                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
+                                    onTouchStart={e => e.stopPropagation()}
+                                    onTouchMove={e => e.stopPropagation()}
+                                    onTouchEnd={e => e.stopPropagation()}
+                                  >
+                                    {activeSizeVariants.map((sug: any, sIdx: number) => {
+                                      const isPinned = pinnedProductId === sug.id;
+                                      return (
+                                        <button
+                                          key={sIdx}
+                                          onClick={() => {
+                                            const overrides = buildOverrides(sug);
+                                            if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                            const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
+                                            setReviewItems(newItems);
+                                            setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
+                                          }}
+                                          {...longPressHandlers(sug)}
+                                          className={`relative flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border ${
+                                            isPinned ? 'border-emerald-500 bg-emerald-50 scale-105'
+                                            : 'border-amber-200 bg-white hover:border-amber-400'
+                                          }`}
+                                        >
+                                          {isPinned && (
+                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
+                                          )}
+                                          <div className="w-full h-12 bg-amber-50 overflow-hidden flex items-center justify-center">
+                                            {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-amber-300" size={16} />}
+                                          </div>
+                                          <div className="p-1 text-center">
+                                            <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                            <p className="text-[9px] font-black text-amber-600">₹{(sug.price || 0).toFixed(0)}</p>
                                           </div>
                                         </button>
                                       );
