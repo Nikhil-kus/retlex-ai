@@ -54,7 +54,7 @@ export async function POST(request: Request) {
         finalPrice = item.quantity * price;
         totalCost = item.quantity * unitCost;
       } else {
-        if (baseUnit === 'pc' || scannedUnit === 'pc') {
+        if (['pc', 'pkt'].includes(baseUnit) || ['pc', 'pkt'].includes(scannedUnit)) {
           finalPrice = item.quantity * price;
           totalCost = item.quantity * unitCost;
         } else {

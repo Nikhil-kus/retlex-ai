@@ -18,7 +18,7 @@ Rules:
 - Extract the actual product name from the packaging text (e.g. "Tata Salt", "Maggi Masala Noodles")
 - If Hindi text is visible, include it in localName (e.g. "टाटा नमक", "मैगी")
 - Choose the most appropriate category from: Grains & Cereals, Pulses & Dals, Spices & Seasonings, Oils & Ghee, Dairy & Milk Products, Beverages, Snacks & Confectionery, Instant Foods & Noodles, Personal Care & Hygiene, Household Cleaning, Miscellaneous
-- Choose the most appropriate unit from: pc, kg, g, l, pkt
+- Choose the most appropriate unit from: pc, kg, g, l, pkt. If the product packaging displays weight (e.g., 100g, 250g, 1kg) or volume (e.g., 500ml, 1l), choose the unit 'pkt'. Choose 'pc' only for individual items sold as a piece without weight/volume declarations on the label (like toothbrushes, soap bars, pens, etc.).
 - If image is unclear, make your best guess based on what you can see
 - NEVER return null values, always return strings`;
 

@@ -535,11 +535,11 @@ export default function CustomerPage() {
           if (baseUnit === 'kg') {
               finalQty = finalQty / 1000;
               finalUnit = 'kg';
-          } else if (baseUnit === 'pc') {
-              // User said 'g', but DB is 'pc' (packet). Calculate packets!
+          } else if (['pc', 'pkt'].includes(baseUnit)) {
+              // User said 'g', but DB is packet/piece. Calculate packets!
               if (baseQty > 1) { // Assuming baseQty is packet weight in grams
                   finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                  finalUnit = 'pc';
+                  finalUnit = baseUnit;
               } else {
                   finalUnit = 'g';
               }
@@ -555,10 +555,10 @@ export default function CustomerPage() {
           if (baseUnit === 'l') {
               finalQty = finalQty / 1000;
               finalUnit = 'l';
-          } else if (baseUnit === 'pc') {
+          } else if (['pc', 'pkt'].includes(baseUnit)) {
               if (baseQty > 1) {
                   finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                  finalUnit = 'pc';
+                  finalUnit = baseUnit;
               } else {
                   finalUnit = 'ml';
               }
@@ -571,10 +571,10 @@ export default function CustomerPage() {
               }
           }
       } else if (item.unit === 'kg') {
-          if (baseUnit === 'pc') {
+          if (['pc', 'pkt'].includes(baseUnit)) {
               if (baseQty > 1) { // baseQty is in grams
                   finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
-                  finalUnit = 'pc';
+                  finalUnit = baseUnit;
               } else {
                   finalUnit = 'kg';
               }
@@ -587,10 +587,10 @@ export default function CustomerPage() {
               }
           }
       } else if (item.unit === 'l') {
-          if (baseUnit === 'pc') {
+          if (['pc', 'pkt'].includes(baseUnit)) {
               if (baseQty > 1) { // baseQty is in ml
                   finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
-                  finalUnit = 'pc';
+                  finalUnit = baseUnit;
               } else {
                   finalUnit = 'l';
               }
@@ -604,8 +604,12 @@ export default function CustomerPage() {
           }
       } else {
         // Mismatch between spoken unit and base unit without a conversion rule
-        // Keep the spoken unit so UI accurately reflects what was heard!
-        finalUnit = item.unit;
+        // If both are packet/piece types, align to baseUnit
+        if (['pc', 'pkt'].includes(item.unit) && ['pc', 'pkt'].includes(baseUnit)) {
+          finalUnit = baseUnit;
+        } else {
+          finalUnit = item.unit;
+        }
       }
 
       return {
@@ -803,18 +807,57 @@ export default function CustomerPage() {
                             if (pref) {
                                 const prefProduct = catalog.find((p: any) => p.id === pref.productId);
                                 if (prefProduct) {
+                                    // Find family variants by stripping weight/volume suffix from the product name
+                                    const baseBrandName = prefProduct.name.replace(/\s*\d+(?:\.\d+)?\s*(g|gm|gram|grams|kg|kilo|kilos|l|ml|liter|litre|litres|ltr|pcs?|pieces?|pkts?|pack|packet|box|bottles?|can)\b/i, '').trim();
+                                    const candidates = catalog.filter((p: any) => {
+                                        const pBaseName = p.name.replace(/\s*\d+(?:\.\d+)?\s*(g|gm|gram|grams|kg|kilo|kilos|l|ml|liter|litre|litres|ltr|pcs?|pieces?|pkts?|pack|packet|box|bottles?|can)\b/i, '').trim();
+                                        return pBaseName.toLowerCase() === baseBrandName.toLowerCase();
+                                    });
+
+                                    let matchedProduct = prefProduct;
+
+                                    let requestedWeightGrams: number | null = null;
+                                    if (item.unit === 'kg' || item.unit === 'l') {
+                                        requestedWeightGrams = item.quantity * 1000;
+                                    } else if (item.unit === 'g' || item.unit === 'ml') {
+                                        requestedWeightGrams = item.quantity;
+                                    }
+
+                                    if (requestedWeightGrams !== null && candidates.length > 0) {
+                                        let bestCand = candidates[0];
+                                        let minDiff = Infinity;
+                                        for (const cand of candidates) {
+                                            const candWeight = cand.packetWeight || cand.baseQuantity || 0;
+                                            const diff = Math.abs(candWeight - requestedWeightGrams);
+                                            if (diff < minDiff) {
+                                                minDiff = diff;
+                                                bestCand = cand;
+                                            }
+                                        }
+                                        matchedProduct = bestCand;
+                                    }
+
+                                    // Recalculate quantity and unit for the matched variant
+                                    const pQty = item.parsedQty !== undefined ? item.parsedQty : item.quantity;
+                                    const pUnit = item.parsedUnit !== undefined ? item.parsedUnit : (item.unit || item.baseUnit || 'pc');
+                                    const recalculated = recalculateQtyAndUnit(pQty, pUnit, matchedProduct);
+
                                     finalItem = {
                                         ...finalItem,
-                                        productId: prefProduct.id,
-                                        name: prefProduct.name,
-                                        localName: prefProduct.localName,
-                                        price: prefProduct.price,
-                                        costPrice: prefProduct.costPrice,
-                                        baseUnit: prefProduct.baseUnit,
-                                        baseQuantity: prefProduct.baseQuantity,
-                                        packetWeight: prefProduct.packetWeight,
-                                        packetUnit: prefProduct.packetUnit,
-                                        imageUrl: prefProduct.imageUrl,
+                                        productId: matchedProduct.id,
+                                        name: matchedProduct.name,
+                                        localName: matchedProduct.localName,
+                                        price: matchedProduct.price,
+                                        costPrice: matchedProduct.costPrice,
+                                        baseUnit: matchedProduct.baseUnit,
+                                        baseQuantity: matchedProduct.baseQuantity,
+                                        packetWeight: matchedProduct.packetWeight,
+                                        packetUnit: matchedProduct.packetUnit,
+                                        imageUrl: matchedProduct.imageUrl,
+                                        quantity: recalculated.quantity,
+                                        unit: recalculated.unit,
+                                        parsedQty: pQty,
+                                        parsedUnit: pUnit
                                     };
                                 }
                             }
@@ -1980,7 +2023,54 @@ export default function CustomerPage() {
 
                             return (
                             <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2.5">
-                              {/* Row 1: Brand / Variant suggestions */}
+                              {/* Row 1: Pack Sizes — updates when a brand is selected */}
+                              {activeSizeVariants.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">
+                                    {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} — Pack Sizes` : 'Pack Sizes'}
+                                    <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span>
+                                  </p>
+                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
+                                    onTouchStart={e => e.stopPropagation()}
+                                    onTouchMove={e => e.stopPropagation()}
+                                    onTouchEnd={e => e.stopPropagation()}
+                                  >
+                                    {activeSizeVariants.map((sug: any, sIdx: number) => {
+                                      const isPinned = pinnedProductId === sug.id;
+                                      return (
+                                        <button
+                                          key={sIdx}
+                                          onClick={() => {
+                                            const overrides = buildOverrides(sug);
+                                            if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                            const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
+                                            setReviewItems(newItems);
+                                            setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
+                                          }}
+                                          {...longPressHandlers(sug)}
+                                          className={`relative flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border ${
+                                            isPinned ? 'border-emerald-500 bg-emerald-50 scale-105'
+                                            : 'border-amber-200 bg-white hover:border-amber-400'
+                                          }`}
+                                        >
+                                          {isPinned && (
+                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
+                                          )}
+                                          <div className="w-full h-12 bg-amber-50 overflow-hidden flex items-center justify-center">
+                                            {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-amber-300" size={16} />}
+                                          </div>
+                                          <div className="p-1 text-center">
+                                            <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                            <p className="text-[9px] font-black text-amber-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Row 2: Brand / Variant suggestions */}
                               {item.suggestions.brandVariants?.length > 0 && (
                                 <div>
                                   <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span></p>
@@ -2030,53 +2120,6 @@ export default function CustomerPage() {
                                           <div className="p-1 text-center">
                                             <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
                                             <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
-                                          </div>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Row 2: Pack Sizes — updates when a brand is selected */}
-                              {activeSizeVariants.length > 0 && (
-                                <div>
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">
-                                    {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} — Pack Sizes` : 'Pack Sizes'}
-                                    <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span>
-                                  </p>
-                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
-                                    onTouchStart={e => e.stopPropagation()}
-                                    onTouchMove={e => e.stopPropagation()}
-                                    onTouchEnd={e => e.stopPropagation()}
-                                  >
-                                    {activeSizeVariants.map((sug: any, sIdx: number) => {
-                                      const isPinned = pinnedProductId === sug.id;
-                                      return (
-                                        <button
-                                          key={sIdx}
-                                          onClick={() => {
-                                            const overrides = buildOverrides(sug);
-                                            if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
-                                            const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
-                                            setReviewItems(newItems);
-                                            setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
-                                          }}
-                                          {...longPressHandlers(sug)}
-                                          className={`relative flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border ${
-                                            isPinned ? 'border-emerald-500 bg-emerald-50 scale-105'
-                                            : 'border-amber-200 bg-white hover:border-amber-400'
-                                          }`}
-                                        >
-                                          {isPinned && (
-                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
-                                          )}
-                                          <div className="w-full h-12 bg-amber-50 overflow-hidden flex items-center justify-center">
-                                            {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-amber-300" size={16} />}
-                                          </div>
-                                          <div className="p-1 text-center">
-                                            <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                            <p className="text-[9px] font-black text-amber-600">₹{(sug.price || 0).toFixed(0)}</p>
                                           </div>
                                         </button>
                                       );
