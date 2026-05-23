@@ -48,9 +48,12 @@ export async function GET(_req: Request, { params }: Params) {
 
     const shop: Shop = { id: shopDoc.id, ...data };
     return NextResponse.json(shop);
-  } catch (error) {
+  } catch (error: any) {
     console.error('GET /api/shops/[shopId] error:', error);
-    return NextResponse.json({ error: 'Failed to fetch shop' }, { status: 500 });
+    const msg = error?.code === 'permission-denied'
+      ? 'Firestore Permission Denied. Check your Firebase security rules.'
+      : 'Failed to fetch shop';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
@@ -87,8 +90,11 @@ export async function PUT(request: Request, { params }: Params) {
     await updateDoc(doc(db, 'shops', shopId), updateData);
     const updated: Shop = { id: shopId, ...existing, ...updateData };
     return NextResponse.json(updated);
-  } catch (error) {
+  } catch (error: any) {
     console.error('PUT /api/shops/[shopId] error:', error);
-    return NextResponse.json({ error: 'Failed to update shop' }, { status: 500 });
+    const msg = error?.code === 'permission-denied'
+      ? 'Firestore Permission Denied. Check your Firebase security rules.'
+      : 'Failed to update shop';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

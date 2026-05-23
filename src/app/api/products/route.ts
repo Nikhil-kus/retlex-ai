@@ -26,8 +26,12 @@ export async function GET(request: Request) {
     products.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
 
     return NextResponse.json(products);
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch products' }, { status: 500 });
+  } catch (error: any) {
+    console.error("GET /api/products error:", error);
+    const msg = error?.code === 'permission-denied'
+      ? 'Firestore Permission Denied. Check your Firebase security rules.'
+      : 'Failed to fetch products';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
@@ -57,7 +61,11 @@ export async function POST(request: Request) {
     const product = { id: docRef.id, ...newProduct };
 
     return NextResponse.json(product);
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to create product' }, { status: 500 });
+  } catch (error: any) {
+    console.error("POST /api/products error:", error);
+    const msg = error?.code === 'permission-denied'
+      ? 'Firestore Permission Denied. Check your Firebase security rules.'
+      : 'Failed to create product';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
