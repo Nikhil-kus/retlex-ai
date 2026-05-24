@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
-import { useHindi, CATEGORY_HINDI } from '@/lib/hindi-context';
+import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 
 const cleanProductName = (name: string) => {
@@ -1828,7 +1828,7 @@ export default function CustomerPage() {
                           const catData = cats.map(cat => {
                             const products = catalog.filter(p => (p.category || 'Uncategorized') === cat);
                             const imgProduct = products.find(p => p.imageUrl);
-                            return { cat, count: products.length, img: imgProduct?.imageUrl || null };
+                            return { cat, count: products.length, img: CATEGORY_IMAGES[cat] || imgProduct?.imageUrl || null };
                           });
                           return (
                             <div className="grid grid-cols-3 gap-3">
