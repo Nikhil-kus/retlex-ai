@@ -5,10 +5,26 @@ import Fuse from 'fuse.js';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
-import { useHindi, CATEGORY_HINDI } from '@/lib/hindi-context';
+import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
+
+const cleanProductName = (name: string) => {
+  return name
+    .toLowerCase()
+    .replace(/\b\d+(?:\s*(?:g|kg|ml|l|ltr|pkt|pc|pcs|tin|sachet|g\b|kg\b|ml\b|l\b|ltr\b|pkt\b|pc\b|pcs\b|tin\b|sachet\b))\b/gi, '')
+    .replace(/\b\d+\b/g, '')
+    .replace(/\b(khula|khule|packet|pkt|tin|bulk|sachet|pcs|pc|pack|bottle|jar)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const unitKeywords = new Set([
+  'kg', 'g', 'gram', 'grams', 'kilo', 'kilos', 'ml', 'l', 'ltr', 'liter', 'liters',
+  'pkt', 'packet', 'packets', 'pc', 'pcs', 'piece', 'pieces', 'box', 'sachet', 'sachets',
+  'half', 'आधा', 'किलो', 'ग्राम', 'लीटर', 'पैकेट', 'पीस', 'बोतल', 'डिब्बा', 'खुला', 'khula', 'khule'
+]);
 
 export default function BillingPage() {
   const { pName, hindiMode, catName } = useHindi();
@@ -705,57 +721,61 @@ export default function BillingPage() {
 
     const itemNameLower = (item.name || '').toLowerCase();
     const itemLocal = (item.localName || '').toLowerCase();
-    // Brand = first word of matched product name (e.g. "everest", "britannia", "krackjack")
     const itemBrand = itemNameLower.split(' ')[0];
-    // First 2 words = brand + product type (e.g. "everest sambhar", "britannia marie")
-    const itemNamePrefix = itemNameLower.split(' ').slice(0, 2).join(' ');
+    const itemCategory = item.category || catalog.find(p => p.id === item.productId)?.category;
 
-    // Detect generic category word (e.g. "masala", "biscuit", "namkeen")
-    // vs specific brand+product (e.g. "everest masala", "parle-g")
     const spokenWord = (item.spokenWord || item.name || '').toLowerCase().trim();
-    const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length > 2);
+    const spokenWords = spokenWord.split(/\s+/)
+      .map(w => w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, ""))
+      .filter((w: string) => {
+        if (w.length <= 1) return false;
+        if (/^\d+[a-zA-Z]*$/.test(w)) return false;
+        if (unitKeywords.has(w)) return false;
+        return true;
+      });
 
-    // Build the pool of all related products using the best search keyword
-    let related: any[] = [];
+    // Build pool: always include same-brand products + spoken-word matches
+    const related: any[] = [];
+    const seenIds = new Set<string>();
 
-    // Always include products that share the same brand (first word) as the matched item
-    // This ensures "Everest Chana Masala", "Everest Garam Masala" etc. always appear
     const brandRelated = catalog.filter(p => {
       if (p.id === item.productId) return false;
+      if (itemCategory && p.category !== itemCategory) return false;
       const pn = (p.name || '').toLowerCase();
       return pn.startsWith(itemBrand + ' ') || pn === itemBrand;
     });
 
-    // Also search by spoken words to catch other brands in the same category
     const spokenRelated = spokenWords.length > 0 ? catalog.filter(p => {
       if (p.id === item.productId) return false;
+      if (itemCategory && p.category !== itemCategory) return false;
       const pn = (p.name || '').toLowerCase();
       const pl = (p.localName || '').toLowerCase();
       return spokenWords.some((w: string) => pn.includes(w) || pl.includes(w));
     }) : [];
 
-    // Merge both pools, deduplicate by id
-    const seenIds = new Set<string>();
     for (const p of [...brandRelated, ...spokenRelated]) {
       if (!seenIds.has(p.id)) { seenIds.add(p.id); related.push(p); }
     }
 
-    // Also include localName matches
     if (itemLocal) {
       for (const p of catalog) {
         if (p.id === item.productId || seenIds.has(p.id)) continue;
+        if (itemCategory && p.category !== itemCategory) continue;
         if ((p.localName || '').toLowerCase() === itemLocal) {
           seenIds.add(p.id); related.push(p);
         }
       }
     }
 
-    // ── PACK SIZES: same brand (first word) + same product type (2-word prefix) ──
-    // e.g. matched = "Everest Sambhar Masala 100g"
-    //   → Pack Sizes = all products starting with "everest sambhar"
+    // Pack Sizes: clean product name matching
+    const baseClean = cleanProductName(item.name || '');
     const isSizeVariant = (p: any) => {
-      const pn = (p.name || '').toLowerCase();
-      return itemNamePrefix.length >= 4 && pn.startsWith(itemNamePrefix);
+      if (p.id === item.productId) return false;
+      const candidateClean = cleanProductName(p.name || '');
+      return (
+        baseClean.length >= 3 &&
+        (candidateClean.startsWith(baseClean) || baseClean.startsWith(candidateClean) || candidateClean === baseClean)
+      );
     };
 
     const sizeVariants = related
@@ -765,17 +785,13 @@ export default function BillingPage() {
 
     const sizeVariantIds = new Set(sizeVariants.map((p: any) => p.id));
 
-    // ── OTHER BRANDS: different brand, deduplicated by BRAND (first word) ──
-    // Show only ONE card per brand — the cheapest variant of that brand.
-    // This prevents "Britannia Marie ₹10", "Britannia Marie ₹215" both appearing.
-    // When user taps a brand card, Pack Sizes row shows all variants of that brand.
-    const brandMap = new Map<string, any>(); // brand → cheapest product
+    // Other Brands: different brand, cheapest variant per brand
+    const brandMap = new Map<string, any>();
     for (const p of related) {
-      if (sizeVariantIds.has(p.id)) continue; // already in Pack Sizes
+      if (sizeVariantIds.has(p.id)) continue;
       const pBrand = (p.name || '').toLowerCase().split(' ')[0];
-      if (pBrand === itemBrand) continue; // same brand as matched item — skip
+      if (pBrand === itemBrand) continue;
       const existing = brandMap.get(pBrand);
-      // Keep the cheapest non-zero price, or first if all zero
       if (!existing || (p.price > 0 && (existing.price === 0 || p.price < existing.price))) {
         brandMap.set(pBrand, p);
       }
@@ -786,16 +802,17 @@ export default function BillingPage() {
     return { brandVariants, sizeVariants };
   };
 
-  // Returns all size/bundle variants for a given brand product (used when tapping a brand card)
   const getSizeVariantsForBrand = (brandProduct: any) => {
     if (!brandProduct) return [];
-    const brandNameLower = (brandProduct.name || '').toLowerCase();
-    const brandPrefix = brandNameLower.split(' ').slice(0, 2).join(' ');
+    const brandCleanName = cleanProductName(brandProduct.name || '');
     return catalog
       .filter(p => {
         if (p.id === brandProduct.id) return false;
-        const pNameLower = (p.name || '').toLowerCase();
-        return brandPrefix.length >= 4 && pNameLower.startsWith(brandPrefix);
+        const candidateClean = cleanProductName(p.name || '');
+        return (
+          brandCleanName.length >= 3 &&
+          (candidateClean.startsWith(brandCleanName) || brandCleanName.startsWith(candidateClean) || candidateClean === brandCleanName)
+        );
       })
       .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
       .slice(0, 8);
@@ -1724,7 +1741,7 @@ export default function BillingPage() {
                           const catData = cats.map(cat => {
                             const products = catalog.filter(p => (p.category || 'Uncategorized') === cat);
                             const imgProduct = products.find(p => p.imageUrl);
-                            return { cat, count: products.length, img: imgProduct?.imageUrl || null };
+                            return { cat, count: products.length, img: CATEGORY_IMAGES[cat] || imgProduct?.imageUrl || null };
                           });
                           return (
                             <div className="grid grid-cols-3 gap-3">

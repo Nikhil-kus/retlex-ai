@@ -9,6 +9,22 @@ import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils
 import { useHindi, CATEGORY_HINDI } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 
+const cleanProductName = (name: string) => {
+  return name
+    .toLowerCase()
+    .replace(/\b\d+(?:\s*(?:g|kg|ml|l|ltr|pkt|pc|pcs|tin|sachet|g\b|kg\b|ml\b|l\b|ltr\b|pkt\b|pc\b|pcs\b|tin\b|sachet\b))\b/gi, '')
+    .replace(/\b\d+\b/g, '')
+    .replace(/\b(khula|khule|packet|pkt|tin|bulk|sachet|pcs|pc|pack|bottle|jar)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const unitKeywords = new Set([
+  'kg', 'g', 'gram', 'grams', 'kilo', 'kilos', 'ml', 'l', 'ltr', 'liter', 'liters',
+  'pkt', 'packet', 'packets', 'pc', 'pcs', 'piece', 'pieces', 'box', 'sachet', 'sachets',
+  'half', 'आधा', 'किलो', 'ग्राम', 'लीटर', 'पैकेट', 'पीस', 'बोतल', 'डिब्बा', 'खुला', 'khula', 'khule'
+]);
+
 export default function CustomerPage() {
   const { pName, hindiMode, catName } = useHindi();
   const [isListening, setIsListening] = useState(false);
@@ -672,10 +688,17 @@ export default function CustomerPage() {
     const itemNameLower = (item.name || '').toLowerCase();
     const itemLocal = (item.localName || '').toLowerCase();
     const itemBrand = itemNameLower.split(' ')[0];
-    const itemNamePrefix = itemNameLower.split(' ').slice(0, 2).join(' ');
+    const itemCategory = item.category || catalog.find(p => p.id === item.productId)?.category;
 
     const spokenWord = (item.spokenWord || item.name || '').toLowerCase().trim();
-    const spokenWords = spokenWord.split(/\s+/).filter((w: string) => w.length > 2);
+    const spokenWords = spokenWord.split(/\s+/)
+      .map(w => w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, ""))
+      .filter((w: string) => {
+        if (w.length <= 1) return false;
+        if (/^\d+[a-zA-Z]*$/.test(w)) return false;
+        if (unitKeywords.has(w)) return false;
+        return true;
+      });
 
     // Build pool: always include same-brand products + spoken-word matches
     const related: any[] = [];
@@ -683,12 +706,14 @@ export default function CustomerPage() {
 
     const brandRelated = catalog.filter(p => {
       if (p.id === item.productId) return false;
+      if (itemCategory && p.category !== itemCategory) return false;
       const pn = (p.name || '').toLowerCase();
       return pn.startsWith(itemBrand + ' ') || pn === itemBrand;
     });
 
     const spokenRelated = spokenWords.length > 0 ? catalog.filter(p => {
       if (p.id === item.productId) return false;
+      if (itemCategory && p.category !== itemCategory) return false;
       const pn = (p.name || '').toLowerCase();
       const pl = (p.localName || '').toLowerCase();
       return spokenWords.some((w: string) => pn.includes(w) || pl.includes(w));
@@ -701,16 +726,22 @@ export default function CustomerPage() {
     if (itemLocal) {
       for (const p of catalog) {
         if (p.id === item.productId || seenIds.has(p.id)) continue;
+        if (itemCategory && p.category !== itemCategory) continue;
         if ((p.localName || '').toLowerCase() === itemLocal) {
           seenIds.add(p.id); related.push(p);
         }
       }
     }
 
-    // Pack Sizes: same brand + same product type (2-word prefix match)
+    // Pack Sizes: clean product name matching
+    const baseClean = cleanProductName(item.name || '');
     const isSizeVariant = (p: any) => {
-      const pn = (p.name || '').toLowerCase();
-      return itemNamePrefix.length >= 4 && pn.startsWith(itemNamePrefix);
+      if (p.id === item.productId) return false;
+      const candidateClean = cleanProductName(p.name || '');
+      return (
+        baseClean.length >= 3 &&
+        (candidateClean.startsWith(baseClean) || baseClean.startsWith(candidateClean) || candidateClean === baseClean)
+      );
     };
 
     const sizeVariants = related
@@ -720,7 +751,7 @@ export default function CustomerPage() {
 
     const sizeVariantIds = new Set(sizeVariants.map((p: any) => p.id));
 
-    // Other Brands: different brand, ONE card per brand (cheapest non-zero variant)
+    // Other Brands: different brand, cheapest variant per brand
     const brandMap = new Map<string, any>();
     for (const p of related) {
       if (sizeVariantIds.has(p.id)) continue;
@@ -737,16 +768,17 @@ export default function CustomerPage() {
     return { brandVariants, sizeVariants };
   };
 
-  // Returns all size/bundle variants for a given brand product (used when tapping a brand card)
   const getSizeVariantsForBrand = (brandProduct: any) => {
     if (!brandProduct) return [];
-    const brandNameLower = (brandProduct.name || '').toLowerCase();
-    const brandPrefix = brandNameLower.split(' ').slice(0, 2).join(' ');
+    const brandCleanName = cleanProductName(brandProduct.name || '');
     return catalog
       .filter(p => {
         if (p.id === brandProduct.id) return false;
-        const pNameLower = (p.name || '').toLowerCase();
-        return brandPrefix.length >= 4 && pNameLower.startsWith(brandPrefix);
+        const candidateClean = cleanProductName(p.name || '');
+        return (
+          brandCleanName.length >= 3 &&
+          (candidateClean.startsWith(brandCleanName) || brandCleanName.startsWith(candidateClean) || candidateClean === brandCleanName)
+        );
       })
       .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
       .slice(0, 8);
