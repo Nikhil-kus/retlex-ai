@@ -124,7 +124,7 @@ Return JSON:
 
     // Fuse.js setup
     const fuse = new Fuse(catalog, {
-      keys: ['name', 'localName'],
+      keys: ['name', 'localName', 'localAliases'],
       threshold: 0.45,
       includeScore: true,
       ignoreLocation: true,

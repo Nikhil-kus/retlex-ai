@@ -15,6 +15,7 @@ import {
   doc, setDoc, getDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { generateLocalAliases } from '@/lib/alias-utils';
 
 interface ConfirmedProduct {
   name: string;
@@ -66,9 +67,13 @@ export async function POST(request: Request) {
         const baseUnit = product.baseUnit || 'pc';
         const isWeight = ['g', 'ml'].includes(baseUnit);
 
+        // Generate aliases using Gemini
+        const aliases = await generateLocalAliases(name, product.localName || null);
+
         const productDoc = {
           name,
           localName: product.localName || null,
+          localAliases: aliases.length > 0 ? aliases : null,
           brand: product.brand || null,
           variant: product.variant || null,
           category: product.category || 'Other',

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { doc, updateDoc, deleteDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { generateLocalAliases } from "@/lib/alias-utils";
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -18,9 +19,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       }
     }
 
+    // Generate local aliases via Gemini
+    const aliases = await generateLocalAliases(data.name, data.localName || null);
+
     const updateData = {
       name: data.name,
       localName: data.localName || null,
+      localAliases: aliases.length > 0 ? aliases : null,
       barcode: data.barcode || null,
       price: parseFloat(data.sellingPrice || 0),
       costPrice: parseFloat(data.costPrice || 0),

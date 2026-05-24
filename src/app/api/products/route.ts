@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { collection, addDoc, getDocs, query, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { generateLocalAliases } from "@/lib/alias-utils";
 
 export async function GET(request: Request) {
   try {
@@ -19,7 +20,8 @@ export async function GET(request: Request) {
       products = products.filter((p: any) => 
         (p.name && p.name.toLowerCase().includes(s)) ||
         (p.localName && p.localName.toLowerCase().includes(s)) ||
-        (p.barcode && p.barcode.toLowerCase().includes(s))
+        (p.barcode && p.barcode.toLowerCase().includes(s)) ||
+        (p.localAliases && p.localAliases.some((alias: string) => alias.toLowerCase().includes(s)))
       );
     }
 
@@ -42,9 +44,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    // Generate local aliases via Gemini
+    const aliases = await generateLocalAliases(data.name, data.localName || null);
+
     const newProduct = {
       name: data.name,
       localName: data.localName || null,
+      localAliases: aliases.length > 0 ? aliases : null,
       barcode: data.barcode || null,
       price: parseFloat(data.sellingPrice || 0),
       costPrice: parseFloat(data.costPrice || 0),

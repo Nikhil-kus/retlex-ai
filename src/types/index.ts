@@ -35,6 +35,7 @@ export interface Product {
   shopId: string;
   name: string;
   localName: string | null;
+  localAliases?: string[] | null;
   barcode: string | null;
   /** Selling price per baseUnit */
   price: number;

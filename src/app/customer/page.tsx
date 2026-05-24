@@ -369,7 +369,7 @@ export default function CustomerPage() {
 
     // PHASE 3: CONNECT WITH EXISTING CATALOG (FORGIVING MODE)
     const fuse = new Fuse(catalog, {
-      keys: ['name', 'localName'],
+      keys: ['name', 'localName', 'localAliases'],
       threshold: 0.6,
       includeScore: true,
       ignoreLocation: true,

@@ -46,6 +46,7 @@ export async function POST(req: Request) {
         shopId,
         name: product.name,
         localName: product.localName || null,
+        localAliases: product.aliases || null,
         barcode: null,
         price: product.price || 0,
         costPrice: 0,                          // owner sets cost price later
