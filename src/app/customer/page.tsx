@@ -19,6 +19,95 @@ const cleanProductName = (name: string) => {
     .trim();
 };
 
+const getLevenshteinDistance = (a: string, b: string): number => {
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+};
+
+const countSyllables = (text: string): number => {
+  const clean = text.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").trim();
+  if (!clean) return 0;
+
+  if (/[\u0900-\u097F]/.test(clean)) {
+    try {
+      const segmenter = new Intl.Segmenter('hi', { granularity: 'grapheme' });
+      const segments = [...segmenter.segment(clean)];
+      return segments.filter(s => s.segment.trim().length > 0).length;
+    } catch (e) {
+      const devanagariSyllables = clean.match(/[\u0905-\u0914]|[\u0915-\u0939\u0958-\u095f](?!\u094d)/g);
+      return devanagariSyllables ? devanagariSyllables.length : clean.length;
+    }
+  } else {
+    return clean.replace(/\s+/g, '').length;
+  }
+};
+
+const getClosestWordSyllableCount = (query: string, cand: any, isHindi: boolean): number => {
+  const options: string[] = [];
+  if (isHindi) {
+    if (cand.localName) options.push(cand.localName);
+    if (Array.isArray(cand.localAliases)) {
+      cand.localAliases.forEach((alias: any) => {
+        if (typeof alias === 'string' && /[\u0900-\u097F]/.test(alias)) {
+          options.push(alias);
+        }
+      });
+    }
+  } else {
+    if (cand.name) options.push(cand.name);
+    if (Array.isArray(cand.localAliases)) {
+      cand.localAliases.forEach((alias: any) => {
+        if (typeof alias === 'string' && !/[\u0900-\u097F]/.test(alias)) {
+          options.push(alias);
+        }
+      });
+    }
+  }
+
+  let bestSyllables = 0;
+  let minDistance = Infinity;
+
+  const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+
+  for (const option of options) {
+    const candWords = option.toLowerCase()
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ")
+      .split(/\s+/)
+      .filter(w => w.length > 0);
+    
+    const windowSize = queryWords.length;
+    for (let start = 0; start <= candWords.length - windowSize; start++) {
+      const subSeq = candWords.slice(start, start + windowSize).join(" ");
+      const dist = getLevenshteinDistance(query.toLowerCase(), subSeq);
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestSyllables = countSyllables(subSeq);
+      }
+    }
+  }
+
+  return bestSyllables;
+};
+
 const unitKeywords = new Set([
   'kg', 'g', 'gram', 'grams', 'kilo', 'kilos', 'ml', 'l', 'ltr', 'liter', 'liters',
   'pkt', 'packet', 'packets', 'pc', 'pcs', 'piece', 'pieces', 'box', 'sachet', 'sachets',
@@ -42,30 +131,6 @@ export default function CustomerPage() {
   // Toast: id of the product just pinned as default (auto-clears after 1.8s)
   const [pinnedProductId, setPinnedProductId] = useState<string | null>(null);
   const audioCtxRef = useRef<any>(null);
-
-  const getLevenshteinDistance = (a: string, b: string): number => {
-    const matrix: number[][] = [];
-    for (let i = 0; i <= b.length; i++) {
-      matrix[i] = [i];
-    }
-    for (let j = 0; j <= a.length; j++) {
-      matrix[0][j] = j;
-    }
-    for (let i = 1; i <= b.length; i++) {
-      for (let j = 1; j <= a.length; j++) {
-        if (b.charAt(i - 1) === a.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1, // substitution
-            matrix[i][j - 1] + 1,     // insertion
-            matrix[i - 1][j] + 1      // deletion
-          );
-        }
-      }
-    }
-    return matrix[b.length][a.length];
-  };
 
   const areWordsSimilar = (w1: string, w2: string): boolean => {
     const val1 = w1.trim().toLowerCase();
@@ -344,6 +409,31 @@ export default function CustomerPage() {
     return items;
   };
 
+  const recalculateQtyAndUnit = (parsedQty: number, parsedUnit: string, sug: any) => {
+    const normalizedUnit = (parsedUnit || '').toLowerCase();
+    const isWeightUnit = ['kg', 'g', 'l', 'ml'].includes(normalizedUnit);
+
+    if (isWeightUnit) {
+      let requestedAmt = parsedQty;
+      if (normalizedUnit === 'kg' || normalizedUnit === 'l') {
+        requestedAmt = parsedQty * 1000;
+      }
+
+      const sugBaseUnit = sug.baseUnit || 'pc';
+      if (['pc', 'pkt'].includes(sugBaseUnit)) {
+        const packWeight = sug.packetWeight || sug.baseQuantity || 1;
+        const qty = Math.max(1, Math.round(requestedAmt / packWeight));
+        return { quantity: qty, unit: sugBaseUnit };
+      } else if (['kg', 'l'].includes(sugBaseUnit)) {
+        return { quantity: requestedAmt / 1000, unit: sugBaseUnit };
+      } else if (['g', 'ml'].includes(sugBaseUnit)) {
+        return { quantity: requestedAmt, unit: sugBaseUnit };
+      }
+    }
+
+    return { quantity: parsedQty, unit: sug.baseUnit || 'pc' };
+  };
+
   const processVoiceTextToItems = (text: string) => {
     if (!text || text.trim().length === 0) return [];
     const parsedItems = parseVoiceItems(text);
@@ -381,6 +471,7 @@ export default function CustomerPage() {
     const matchedItems = normalizedItems.map(item => {
       const searchName = item.name.replace(/\d+/g, '').replace(/\b(kg|g|ml|l|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m)\b/gi, '').trim();
       const result = fuse.search(searchName);
+      let bestMatch: any = null;
       const rawTextLower = (item.rawText || '').toLowerCase();
       const isPacketRequested = /\b(packet|pack|pkt|packt|पैकेट|पीस|pc|pcs|piece|pieces|box|bottles?|can)\b/i.test(rawTextLower);
       const isKhulaRequested = /\b(khula|loose|khulla|खुला)\b/i.test(rawTextLower);
@@ -396,6 +487,14 @@ export default function CustomerPage() {
       let scoredResults = result.map((r: any) => {
         let score = r.score ?? 1;
         const cand = r.item;
+        
+        const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
+        const querySyllables = countSyllables(searchName);
+        const matchSyllables = getClosestWordSyllableCount(searchName, cand, isQueryHindi);
+        if (querySyllables > 0 && matchSyllables > 0) {
+          const syllablePenalty = Math.abs(querySyllables - matchSyllables) / Math.max(querySyllables, matchSyllables);
+          score += syllablePenalty * 0.8;
+        }
         
         const nameLower = (cand.name || '').toLowerCase();
         const localLower = (cand.localName || '').toLowerCase();
@@ -464,6 +563,14 @@ export default function CustomerPage() {
             const hitCandidates = Array.from(productHits.values()).map(h => {
               let score = h.bestScore;
               const cand = h.item;
+              
+              const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
+              const querySyllables = countSyllables(searchName);
+              const matchSyllables = getClosestWordSyllableCount(searchName, cand, isQueryHindi);
+              if (querySyllables > 0 && matchSyllables > 0) {
+                const syllablePenalty = Math.abs(querySyllables - matchSyllables) / Math.max(querySyllables, matchSyllables);
+                score += syllablePenalty * 0.8;
+              }
               
               const nameLower = (cand.name || '').toLowerCase();
               const localLower = (cand.localName || '').toLowerCase();
@@ -692,7 +799,7 @@ export default function CustomerPage() {
 
     const spokenWord = (item.spokenWord || item.name || '').toLowerCase().trim();
     const spokenWords = spokenWord.split(/\s+/)
-      .map(w => w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, ""))
+      .map((w: string) => w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, ""))
       .filter((w: string) => {
         if (w.length <= 1) return false;
         if (/^\d+[a-zA-Z]*$/.test(w)) return false;
