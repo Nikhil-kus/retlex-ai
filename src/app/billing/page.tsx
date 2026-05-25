@@ -9,6 +9,7 @@ import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
+import { transliterateHinglishToHindi } from '@/lib/transliterate';
 
 const cleanProductName = (name: string) => {
   return name
@@ -63,31 +64,34 @@ const countSyllables = (text: string): number => {
 };
 
 const getClosestWordSyllableCount = (query: string, cand: any, isHindi: boolean): number => {
+  const isQueryHindi = /[\u0900-\u097F]/.test(query);
+  const compareQuery = isQueryHindi ? query : transliterateHinglishToHindi(query);
+
   const options: string[] = [];
-  if (isHindi) {
-    if (cand.localName) options.push(cand.localName);
-    if (Array.isArray(cand.localAliases)) {
-      cand.localAliases.forEach((alias: any) => {
-        if (typeof alias === 'string' && /[\u0900-\u097F]/.test(alias)) {
-          options.push(alias);
+  
+  if (cand.localName) options.push(cand.localName);
+  if (cand.name) {
+    options.push(cand.name);
+    const transName = transliterateHinglishToHindi(cand.name);
+    if (transName !== cand.name.toLowerCase()) options.push(transName);
+  }
+  
+  if (Array.isArray(cand.localAliases)) {
+    cand.localAliases.forEach((alias: any) => {
+      if (typeof alias === 'string') {
+        options.push(alias);
+        if (!/[\u0900-\u097F]/.test(alias)) {
+          const transAlias = transliterateHinglishToHindi(alias);
+          if (transAlias !== alias.toLowerCase()) options.push(transAlias);
         }
-      });
-    }
-  } else {
-    if (cand.name) options.push(cand.name);
-    if (Array.isArray(cand.localAliases)) {
-      cand.localAliases.forEach((alias: any) => {
-        if (typeof alias === 'string' && !/[\u0900-\u097F]/.test(alias)) {
-          options.push(alias);
-        }
-      });
-    }
+      }
+    });
   }
 
   let bestSyllables = 0;
   let minDistance = Infinity;
 
-  const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+  const queryWords = compareQuery.toLowerCase().split(/\s+/).filter(w => w.length > 0);
 
   for (const option of options) {
     const candWords = option.toLowerCase()
@@ -98,7 +102,7 @@ const getClosestWordSyllableCount = (query: string, cand: any, isHindi: boolean)
     const windowSize = queryWords.length;
     for (let start = 0; start <= candWords.length - windowSize; start++) {
       const subSeq = candWords.slice(start, start + windowSize).join(" ");
-      const dist = getLevenshteinDistance(query.toLowerCase(), subSeq);
+      const dist = getLevenshteinDistance(compareQuery.toLowerCase(), subSeq);
       if (dist < minDistance) {
         minDistance = dist;
         bestSyllables = countSyllables(subSeq);
@@ -476,7 +480,27 @@ export default function BillingPage() {
 
     const matchedItems = normalizedItems.map(item => {
       const searchName = item.name.replace(/\d+/g, '').replace(/\b(kg|g|ml|l|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m)\b/gi, '').trim();
-      const result = fuse.search(searchName);
+      const origRes = fuse.search(searchName);
+      const transliterated = transliterateHinglishToHindi(searchName);
+      
+      let combined = [...origRes];
+      if (transliterated !== searchName.toLowerCase()) {
+        const transRes = fuse.search(transliterated);
+        const seen = new Map<string, any>(origRes.map(r => [r.item.id || r.item.name, r]));
+        for (const r of transRes) {
+          const key = r.item.id || r.item.name;
+          const existing = seen.get(key);
+          if (!existing) {
+            combined.push(r);
+            seen.set(key, r);
+          } else {
+            if ((r.score ?? 1) < (existing.score ?? 1)) {
+              existing.score = r.score;
+            }
+          }
+        }
+      }
+
       let bestMatch: any = null;
 
       const rawTextLower = (item.rawText || '').toLowerCase();
@@ -491,12 +515,12 @@ export default function BillingPage() {
       }
 
       // Score and sort candidates
-      let scoredResults = result.map((r: any) => {
+      let scoredResults = combined.map((r: any) => {
         let score = r.score ?? 1;
         const cand = r.item;
         
         const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
-        const querySyllables = countSyllables(searchName);
+        const querySyllables = countSyllables(isQueryHindi ? searchName : transliterated);
         const matchSyllables = getClosestWordSyllableCount(searchName, cand, isQueryHindi);
         if (querySyllables > 0 && matchSyllables > 0) {
           const syllablePenalty = Math.abs(querySyllables - matchSyllables) / Math.max(querySyllables, matchSyllables);
@@ -554,8 +578,26 @@ export default function BillingPage() {
           const productHits = new Map<string, { item: any; hitCount: number; bestScore: number }>();
           for (const w of words) {
             const subResult = fuse.search(w);
-            for (const r of subResult) {
-              if ((r.score ?? 1) > 0.45) break; // results are sorted by score
+            const transW = transliterateHinglishToHindi(w);
+            let combinedSub = [...subResult];
+            if (transW !== w) {
+              const transSubResult = fuse.search(transW);
+              const subSeen = new Map<string, any>(subResult.map(r => [r.item.id || r.item.name, r]));
+              for (const r of transSubResult) {
+                const key = r.item.id || r.item.name;
+                const existing = subSeen.get(key);
+                if (!existing) {
+                  combinedSub.push(r);
+                  subSeen.set(key, r);
+                } else {
+                  if ((r.score ?? 1) < (existing.score ?? 1)) {
+                    existing.score = r.score;
+                  }
+                }
+              }
+            }
+            for (const r of combinedSub) {
+              if ((r.score ?? 1) > 0.45) continue;
               const id = r.item.id;
               const existing = productHits.get(id);
               if (!existing) {
@@ -573,7 +615,7 @@ export default function BillingPage() {
               const cand = h.item;
               
               const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
-              const querySyllables = countSyllables(searchName);
+              const querySyllables = countSyllables(isQueryHindi ? searchName : transliterated);
               const matchSyllables = getClosestWordSyllableCount(searchName, cand, isQueryHindi);
               if (querySyllables > 0 && matchSyllables > 0) {
                 const syllablePenalty = Math.abs(querySyllables - matchSyllables) / Math.max(querySyllables, matchSyllables);

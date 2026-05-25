@@ -1,4 +1,4 @@
-/**
+ /**
  * ONE-TIME SCRIPT: Assign product images — saves external URLs to Firestore
  * Works on Vercel/mobile without any local files.
  *
