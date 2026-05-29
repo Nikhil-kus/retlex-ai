@@ -44,13 +44,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Generate local aliases via Gemini
-    const aliases = await generateLocalAliases(data.name, data.localName || null);
+    // Use manually provided aliases if available; otherwise, auto-generate via Gemini
+    let aliases = data.localAliases;
+    if (aliases === undefined) {
+      aliases = await generateLocalAliases(data.name, data.localName || null);
+    }
 
     const newProduct = {
       name: data.name,
       localName: data.localName || null,
-      localAliases: aliases.length > 0 ? aliases : null,
+      localAliases: (Array.isArray(aliases) && aliases.length > 0) ? aliases : null,
       barcode: data.barcode || null,
       price: parseFloat(data.sellingPrice || 0),
       costPrice: parseFloat(data.costPrice || 0),

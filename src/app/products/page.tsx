@@ -39,7 +39,7 @@ export default function ProductsPage() {
   const [formData, setFormData] = useState({
     name: '', localName: '', barcode: '',
     sellingPrice: '', costPrice: '', unit: 'pc', category: '', imageUrl: '',
-    packetWeight: '', packetUnit: 'g'
+    packetWeight: '', packetUnit: 'g', localAliases: ''
   });
 
   // Category select dropdown state
@@ -102,7 +102,7 @@ export default function ProductsPage() {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', localName: '', barcode: '', sellingPrice: '', costPrice: '', unit: 'pc', category: '', imageUrl: '', packetWeight: '', packetUnit: 'g' });
+    setFormData({ name: '', localName: '', barcode: '', sellingPrice: '', costPrice: '', unit: 'pc', category: '', imageUrl: '', packetWeight: '', packetUnit: 'g', localAliases: '' });
     setEditingId(null);
     setImagePreview(null);
     setAiFields(new Set());
@@ -257,7 +257,8 @@ export default function ProductsPage() {
       name: p.name, localName: p.localName || '', barcode: p.barcode || '',
       sellingPrice: p.price ? p.price.toString() : (p.sellingPrice?.toString() || ''), costPrice: p.costPrice ? p.costPrice.toString() : '',
       unit: p.baseUnit || p.unit, category: p.category || '', imageUrl: p.imageUrl || '',
-      packetWeight: p.packetWeight ? p.packetWeight.toString() : '', packetUnit: p.packetUnit || 'g'
+      packetWeight: p.packetWeight ? p.packetWeight.toString() : '', packetUnit: p.packetUnit || 'g',
+      localAliases: Array.isArray(p.localAliases) ? p.localAliases.join(', ') : ''
     });
     setEditingId(p.id);
     setIsModalOpen(true);
@@ -336,7 +337,15 @@ export default function ProductsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...formData, shopId: shop.id };
+    const aliasesArray = formData.localAliases
+      ? formData.localAliases.split(',').map(s => s.trim()).filter(s => s.length > 0)
+      : [];
+
+    const payload = {
+      ...formData,
+      localAliases: aliasesArray.length > 0 ? aliasesArray : undefined,
+      shopId: shop.id
+    };
     const url = editingId ? `/api/products/${editingId}` : '/api/products';
     const method = editingId ? 'PUT' : 'POST';
 
@@ -760,6 +769,18 @@ export default function ProductsPage() {
                     onChange={e => setFormData({ ...formData, imageUrl: e.target.value })}
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="https://... (or use camera above)" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Hindi Local Name Aliases (Comma-separated)
+                  </label>
+                  <input value={formData.localAliases}
+                    onChange={e => setFormData({ ...formData, localAliases: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="e.g. लक्स साबुन, लक्स सोप, लक्स ब्यूटी सोप (Separated by commas)" />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    These are short names and variations used by customers to find products via voice search. Leave blank to auto-generate if name/local name is updated.
+                  </p>
                 </div>
               </div>
 

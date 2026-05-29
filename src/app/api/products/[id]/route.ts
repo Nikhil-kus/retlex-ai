@@ -19,13 +19,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       }
     }
 
-    // Generate local aliases via Gemini
-    const aliases = await generateLocalAliases(data.name, data.localName || null);
+    // Use manually provided aliases if available; otherwise, auto-generate via Gemini
+    let aliases = data.localAliases;
+    if (aliases === undefined) {
+      aliases = await generateLocalAliases(data.name, data.localName || null);
+    }
 
     const updateData = {
       name: data.name,
       localName: data.localName || null,
-      localAliases: aliases.length > 0 ? aliases : null,
+      localAliases: (Array.isArray(aliases) && aliases.length > 0) ? aliases : null,
       barcode: data.barcode || null,
       price: parseFloat(data.sellingPrice || 0),
       costPrice: parseFloat(data.costPrice || 0),
