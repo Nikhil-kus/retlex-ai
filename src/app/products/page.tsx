@@ -419,7 +419,7 @@ export default function ProductsPage() {
                 placeholder="Search products..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
+                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm placeholder-slate-500"
               />
             </div>
             <button
@@ -684,7 +684,7 @@ export default function ProductsPage() {
                     {aiFields.has('name') && <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5"><Sparkles size={9} />AI</span>}
                   </label>
                   <input required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${aiFields.has('name') ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300'}`}
+                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-slate-500 ${aiFields.has('name') ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300'}`}
                     placeholder="e.g. Tata Salt 1kg" />
                 </div>
                 <div>
@@ -693,7 +693,7 @@ export default function ProductsPage() {
                     {aiFields.has('localName') && <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5"><Sparkles size={9} />AI</span>}
                   </label>
                   <input value={formData.localName} onChange={e => setFormData({ ...formData, localName: e.target.value })}
-                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${aiFields.has('localName') ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300'}`}
+                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-slate-500 ${aiFields.has('localName') ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300'}`}
                     placeholder="e.g. टाटा नमक" />
                 </div>
                 <div>
@@ -752,7 +752,7 @@ export default function ProductsPage() {
                         value={formData.category}
                         onChange={e => setFormData({ ...formData, category: e.target.value })}
                         placeholder="Type custom category name..."
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-slate-500"
                       />
                     </div>
                   )}
@@ -760,14 +760,14 @@ export default function ProductsPage() {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Barcode</label>
                   <input value={formData.barcode} onChange={e => setFormData({ ...formData, barcode: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-slate-500"
                     placeholder="Scan or type barcode" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Image URL</label>
                   <input value={formData.imageUrl.startsWith('data:') ? '' : formData.imageUrl}
                     onChange={e => setFormData({ ...formData, imageUrl: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-slate-500"
                     placeholder="https://... (or use camera above)" />
                 </div>
                 <div className="md:col-span-2">
@@ -776,7 +776,7 @@ export default function ProductsPage() {
                   </label>
                   <input value={formData.localAliases}
                     onChange={e => setFormData({ ...formData, localAliases: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-slate-500"
                     placeholder="e.g. लक्स साबुन, लक्स सोप, लक्स ब्यूटी सोप (Separated by commas)" />
                   <p className="text-[11px] text-slate-400 mt-1">
                     These are short names and variations used by customers to find products via voice search. Leave blank to auto-generate if name/local name is updated.
@@ -790,7 +790,7 @@ export default function ProductsPage() {
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Packet Weight/Volume *</label>
                     <input type="number" step="0.01" value={formData.packetWeight} onChange={e => setFormData({ ...formData, packetWeight: e.target.value })}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. 84" required />
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm placeholder-slate-500" placeholder="e.g. 84" required />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Packet Unit *</label>
