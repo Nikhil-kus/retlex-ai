@@ -1167,6 +1167,7 @@ export default function BillingPage() {
   const [isReviewing, setIsReviewing] = useState(false);
   const [showCartSheet, setShowCartSheet] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const reviewEndRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
 
@@ -1328,6 +1329,16 @@ export default function BillingPage() {
       setSearchSuggestions([]);
     }
   }, [search, catalog]);
+
+  // Toggle body class to hide the fixed Hindi toggle button during search
+  useEffect(() => {
+    if (search.length > 0) {
+      document.body.classList.add('searching-active');
+    } else {
+      document.body.classList.remove('searching-active');
+    }
+    return () => { document.body.classList.remove('searching-active'); };
+  }, [search]);
 
   const addToCart = (product: any, qty?: number) => {
     const baseUnit = product.baseUnit || 'pc';
@@ -1594,7 +1605,7 @@ export default function BillingPage() {
   );
 
   return (
-    <div className="flex flex-col max-w-7xl mx-auto h-full bg-white">
+    <div className="flex flex-col max-w-7xl mx-auto h-full bg-white" data-searching={search.length > 0 ? 'true' : undefined}>
 
       {/* Main Panel — fills full height, voice button floats over the bottom */}
       <div className="flex-1 flex flex-col min-h-0">
@@ -1647,7 +1658,10 @@ export default function BillingPage() {
             }}
           >
             {/* Slide 0 - Manual Search */}
-            <div ref={slide0Ref} className="w-full shrink-0 overflow-y-auto flex flex-col">
+            <div ref={slide0Ref} className="w-full shrink-0 overflow-y-auto flex flex-col"
+              onTouchStart={() => { if (search.length > 0) searchInputRef.current?.blur(); }}
+              onScroll={() => { if (search.length > 0) searchInputRef.current?.blur(); }}
+            >
 
               {/* ── Category full-page view ── */}
               {selectedCategory ? (
@@ -1690,14 +1704,21 @@ export default function BillingPage() {
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input
-                        type="text"
+                        ref={searchInputRef}
+                        type="search"
+                        inputMode="search"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        enterKeyHint="search"
                         placeholder="Search products…"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 bg-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-100 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition font-medium"
                       />
                       {search && (
-                        <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <button onClick={() => { setSearch(''); searchInputRef.current?.blur(); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                           <X size={16} />
                         </button>
                       )}

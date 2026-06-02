@@ -46,7 +46,7 @@ export default function Sidebar() {
       {/* Hindi toggle — fixed top-left, visible on mobile when sidebar is closed */}
       <button
         onClick={toggleHindi}
-        className={`md:hidden fixed top-4 left-4 z-50 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold shadow-md transition-all ${
+        className={`hindi-toggle-btn md:hidden fixed top-4 left-4 z-50 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold shadow-md transition-all ${
           hindiMode
             ? 'bg-orange-500 text-white'
             : 'bg-white text-slate-600 border border-slate-200'
