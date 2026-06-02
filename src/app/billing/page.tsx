@@ -152,10 +152,31 @@ export default function BillingPage() {
 
   const arePhrasesSimilar = (wordsA: string[], wordsB: string[]): boolean => {
     if (wordsA.length !== wordsB.length) return false;
-    for (let k = 0; k < wordsA.length; k++) {
-      if (!areWordsSimilar(wordsA[k], wordsB[k])) return false;
+    
+    // For single-word comparison, follow word-specific rules
+    if (wordsA.length === 1) {
+      const w1 = wordsA[0].toLowerCase();
+      const w2 = wordsB[0].toLowerCase();
+      if (w1 === w2) return true;
+      if (w1.length <= 3 || w2.length <= 3) return false;
+      const dist = getLevenshteinDistance(w1, w2);
+      // For longer words in Hindi, speech recognition variations can be larger.
+      // E.g. "पारले-जी" (8) and "परले-ग" (6) has distance 3.
+      const maxAllowed = Math.max(w1.length, w2.length) >= 6 ? 3 : 1;
+      return dist <= maxAllowed;
     }
-    return true;
+    
+    // For multi-word phrases, compare the joined string edit distance.
+    // This allows one word to have a slightly larger edit distance if other words match perfectly (anchoring).
+    const s1 = wordsA.join(" ").toLowerCase();
+    const s2 = wordsB.join(" ").toLowerCase();
+    if (s1 === s2) return true;
+    
+    const dist = getLevenshteinDistance(s1, s2);
+    const maxLen = Math.max(s1.length, s2.length);
+    // Allow up to 35% character difference for the entire phrase
+    const maxAllowed = Math.floor(maxLen * 0.35);
+    return dist <= Math.max(2, maxAllowed);
   };
 
   const mergeOverlappingStrings = (s1Arg: string, s2Arg: string) => {
@@ -198,21 +219,21 @@ export default function BillingPage() {
     text = text.toLowerCase().trim()
       // Remove prices so they aren't parsed as quantities (e.g. "50 wala namak" -> "namak")
       .replace(/(\d+(?:\.\d+)?)\s*(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)/gi, ' ')
-      .replace(/\b(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)\b/gi, ' ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' ')
       // Use | as a separator for conjunctions and commas
-      .replace(/\b(and|plus)\b/gi, ' | ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(and|plus)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' | ')
       .replace(/और|तथा|भी|या/g, ' | ')
-      .replace(/\b(aur|tatha|bhi|ya)\b/gi, ' | ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(aur|tatha|bhi|ya)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' | ')
       .replace(/,/g, ' | ')
       // Fix misheard numbers (phonetic matching)
-      .replace(/\b(to|too|tu|two|तो|टो|do|दो)\b/gi, ' 2 ')
-      .replace(/\b(for|four|फ़ॉर|फॉर|फोर)\b/gi, ' 4 ')
-      .replace(/\b(won|one|वन|on|un|an)\b/gi, ' 1 ')
-      .replace(/\b(at|eight|एट|it)\b/gi, ' 8 ')
-      .replace(/\b(teen|three|थ्री|तीन|tin)\b/gi, ' 3 ')
-      .replace(/\b(five|फाइव|पाइप|पांच|panch)\b/gi, ' 5 ')
-      .replace(/\b(six|सिक्स|छह|che|chhe)\b/gi, ' 6 ')
-      .replace(/\b(ten|टेन|दस|das)\b/gi, ' 10 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(to|too|tu|two|तो|टो|do|दो)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 2 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(for|four|फ़ॉर|फॉर|फोर)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 4 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(won|one|वन|on|un|an)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 1 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(at|eight|एट|it)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 8 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(teen|three|थ्री|तीन|tin)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 3 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(five|फाइव|पाइप|पांच|panch)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 5 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(six|सिक्स|छह|che|chhe)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 6 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(ten|टेन|दस|das)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 10 ')
       // Convert compound weights (2 kg 500 g -> 2.5 kg)
       .replace(/(\d+(?:\.\d+)?)\s*(kg|kilo|kilos|किलो)\s+(\d+(?:\.\d+)?)\s*(g|gram|grams|ग्राम)/gi, (match, kg, kgUnit, g, gUnit) => {
         return (parseFloat(kg) + parseFloat(g) / 1000).toString() + " kg";
@@ -504,8 +525,8 @@ export default function BillingPage() {
       let bestMatch: any = null;
 
       const rawTextLower = (item.rawText || '').toLowerCase();
-      const isPacketRequested = /\b(packet|pack|pkt|packt|पैकेट|पीस|pc|pcs|piece|pieces|box|bottles?|can)\b/i.test(rawTextLower);
-      const isKhulaRequested = /\b(khula|loose|khulla|खुला)\b/i.test(rawTextLower);
+      const isPacketRequested = /(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(packet|pack|pkt|packt|पैकेट|पीस|pc|pcs|piece|pieces|box|bottles?|can)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/i.test(rawTextLower);
+      const isKhulaRequested = /(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(khula|loose|khulla|खुला)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/i.test(rawTextLower);
       
       let requestedWeightGrams: number | null = null;
       if (item.unit === 'kg' || item.unit === 'l') {
