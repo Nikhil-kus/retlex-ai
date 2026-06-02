@@ -1,0 +1,16 @@
+{
+  "productDetails": {
+    "errors": [
+      {
+        "code": 4005,
+        "code_str": "PD4005",
+        "msg": "SKU API Fail for given pd ids [264500]",
+        "display_msg": "No Product found ",
+        "trace": ""
+      }
+    ],
+    "data": {
+      "product": null
+    }
+  }
+}

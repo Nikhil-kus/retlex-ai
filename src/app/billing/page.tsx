@@ -1142,6 +1142,7 @@ export default function BillingPage() {
   // Manual Mode state
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchSuggestions, setSearchSuggestions] = useState<{name: string; imageUrl: string | null; matchField: string}[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
 
@@ -1289,13 +1290,42 @@ export default function BillingPage() {
 
   useEffect(() => {
     if (search.length > 1) {
-      setSearchResults(catalog.filter(p =>
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        (p.localName && p.localName.toLowerCase().includes(search.toLowerCase())) ||
-        (p.barcode && p.barcode.includes(search))
-      ));
+      const q = search.toLowerCase();
+      const qHindi = transliterateHinglishToHindi(q);
+      const matched = catalog.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        (p.localName && p.localName.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.includes(search)) ||
+        (qHindi !== q && (
+          (p.localName && p.localName.toLowerCase().includes(qHindi)) ||
+          p.name.toLowerCase().includes(qHindi)
+        ))
+      );
+      setSearchResults(matched);
+
+      // Build Blinkit-style autocomplete suggestions (unique product names, max 3)
+      const seen = new Set<string>();
+      const suggestions: {name: string; imageUrl: string | null; matchField: string}[] = [];
+      for (const p of matched) {
+        // Determine which field matched for display
+        const localLower = (p.localName || '').toLowerCase();
+        let displayName = p.name;
+        let matchField = 'name';
+        if (localLower.includes(q) || (qHindi !== q && localLower.includes(qHindi))) {
+          displayName = p.localName || p.name;
+          matchField = 'localName';
+        }
+        // Deduplicate by cleaned base name (strip weight/size)
+        const baseKey = cleanProductName(displayName);
+        if (seen.has(baseKey)) continue;
+        seen.add(baseKey);
+        suggestions.push({ name: displayName, imageUrl: p.imageUrl || null, matchField });
+        if (suggestions.length >= 3) break;
+      }
+      setSearchSuggestions(suggestions);
     } else {
       setSearchResults([]);
+      setSearchSuggestions([]);
     }
   }, [search, catalog]);
 
@@ -1653,7 +1683,7 @@ export default function BillingPage() {
                 <div className="flex flex-col gap-0">
 
                   {/* Search bar */}
-                  <div className="px-4 pt-4 pb-3 sticky top-0 bg-white z-10 border-b border-slate-100">
+                  <div className="px-4 pt-4 pb-3 sticky top-0 bg-white z-20 border-b border-slate-100">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input
@@ -1669,7 +1699,58 @@ export default function BillingPage() {
                         </button>
                       )}
                     </div>
-                  </div>
+
+                     {/* ── Blinkit-style autocomplete suggestions ── */}
+                     {search.length > 1 && searchSuggestions.length > 0 && (
+                       <div className="mt-2 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden">
+                         {searchSuggestions.map((sug, idx) => {
+                           // Highlight matching portion
+                           const q = search.toLowerCase();
+                           const qHindi = transliterateHinglishToHindi(q);
+                           const sugLower = sug.name.toLowerCase();
+                           let matchStart = sugLower.indexOf(q);
+                           let matchLen = q.length;
+                           if (matchStart === -1 && qHindi !== q) {
+                             matchStart = sugLower.indexOf(qHindi);
+                             matchLen = qHindi.length;
+                           }
+                           const before = matchStart >= 0 ? sug.name.slice(0, matchStart) : sug.name;
+                           const match = matchStart >= 0 ? sug.name.slice(matchStart, matchStart + matchLen) : '';
+                           const after = matchStart >= 0 ? sug.name.slice(matchStart + matchLen) : '';
+
+                           return (
+                             <button
+                               key={idx}
+                               className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors ${
+                                 idx < searchSuggestions.length - 1 ? 'border-b border-slate-100' : ''
+                               }`}
+                               onClick={() => setSearch(sug.name)}
+                             >
+                               {/* Thumbnail */}
+                               <div className="w-8 h-8 rounded-lg bg-slate-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                 {sug.imageUrl
+                                   ? <img src={sug.imageUrl} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                   : <Package size={14} className="text-slate-300" />
+                                 }
+                               </div>
+                               {/* Suggestion text with highlight */}
+                               <span className="text-sm text-slate-700 truncate flex-1">
+                                 {matchStart >= 0 ? (
+                                   <>{before}<span className="font-bold text-slate-900">{match}</span>{after}</>
+                                 ) : (
+                                   sug.name
+                                 )}
+                               </span>
+                               {/* Arrow icon */}
+                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 flex-shrink-0">
+                                 <path d="M7 17L17 7M17 7H7M17 7V17"/>
+                               </svg>
+                             </button>
+                           );
+                         })}
+                       </div>
+                     )}
+                   </div>
 
                   {/* ── SEARCH RESULTS ── */}
                   {search.length > 1 ? (
