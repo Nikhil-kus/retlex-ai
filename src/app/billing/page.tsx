@@ -1320,7 +1320,7 @@ export default function BillingPage() {
         if (seen.has(baseKey)) continue;
         seen.add(baseKey);
         suggestions.push({ name: displayName, imageUrl: p.imageUrl || null, matchField });
-        if (suggestions.length >= 3) break;
+        if (suggestions.length >= 5) break;
       }
       setSearchSuggestions(suggestions);
     } else {
@@ -1599,11 +1599,14 @@ export default function BillingPage() {
       {/* Main Panel — fills full height, voice button floats over the bottom */}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="bg-white shadow-sm border-b border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
+          {/* Tab bar — hidden when manual search is active */}
+          {!(mode === 'MANUAL' && search.length > 0) && (
           <div className="flex border-b border-slate-100 flex-shrink-0">
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
             <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
             <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan Slip" />
           </div>
+          )}
 
           {/* Swipeable slider - 3 panels side by side */}
           <div className="overflow-hidden flex-1" style={{minHeight: 0}}>
@@ -1699,58 +1702,58 @@ export default function BillingPage() {
                         </button>
                       )}
                     </div>
+                  </div>
 
-                     {/* ── Blinkit-style autocomplete suggestions ── */}
-                     {search.length > 1 && searchSuggestions.length > 0 && (
-                       <div className="mt-2 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden">
-                         {searchSuggestions.map((sug, idx) => {
-                           // Highlight matching portion
-                           const q = search.toLowerCase();
-                           const qHindi = transliterateHinglishToHindi(q);
-                           const sugLower = sug.name.toLowerCase();
-                           let matchStart = sugLower.indexOf(q);
-                           let matchLen = q.length;
-                           if (matchStart === -1 && qHindi !== q) {
-                             matchStart = sugLower.indexOf(qHindi);
-                             matchLen = qHindi.length;
-                           }
-                           const before = matchStart >= 0 ? sug.name.slice(0, matchStart) : sug.name;
-                           const match = matchStart >= 0 ? sug.name.slice(matchStart, matchStart + matchLen) : '';
-                           const after = matchStart >= 0 ? sug.name.slice(matchStart + matchLen) : '';
+                  {/* ── Blinkit-style autocomplete suggestions — inline in page flow, not a floating overlay ── */}
+                  {search.length > 1 && searchSuggestions.length > 0 && (
+                    <div className="bg-white border-b border-slate-100">
+                      {searchSuggestions.map((sug, idx) => {
+                        // Highlight matching portion
+                        const q = search.toLowerCase();
+                        const qHindi = transliterateHinglishToHindi(q);
+                        const sugLower = sug.name.toLowerCase();
+                        let matchStart = sugLower.indexOf(q);
+                        let matchLen = q.length;
+                        if (matchStart === -1 && qHindi !== q) {
+                          matchStart = sugLower.indexOf(qHindi);
+                          matchLen = qHindi.length;
+                        }
+                        const before = matchStart >= 0 ? sug.name.slice(0, matchStart) : sug.name;
+                        const match = matchStart >= 0 ? sug.name.slice(matchStart, matchStart + matchLen) : '';
+                        const after = matchStart >= 0 ? sug.name.slice(matchStart + matchLen) : '';
 
-                           return (
-                             <button
-                               key={idx}
-                               className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors ${
-                                 idx < searchSuggestions.length - 1 ? 'border-b border-slate-100' : ''
-                               }`}
-                               onClick={() => setSearch(sug.name)}
-                             >
-                               {/* Thumbnail */}
-                               <div className="w-8 h-8 rounded-lg bg-slate-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                                 {sug.imageUrl
-                                   ? <img src={sug.imageUrl} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
-                                   : <Package size={14} className="text-slate-300" />
-                                 }
-                               </div>
-                               {/* Suggestion text with highlight */}
-                               <span className="text-sm text-slate-700 truncate flex-1">
-                                 {matchStart >= 0 ? (
-                                   <>{before}<span className="font-bold text-slate-900">{match}</span>{after}</>
-                                 ) : (
-                                   sug.name
-                                 )}
-                               </span>
-                               {/* Arrow icon */}
-                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 flex-shrink-0">
-                                 <path d="M7 17L17 7M17 7H7M17 7V17"/>
-                               </svg>
-                             </button>
-                           );
-                         })}
-                       </div>
-                     )}
-                   </div>
+                        return (
+                          <button
+                            key={idx}
+                            className={`w-full flex items-center gap-3 px-4 py-3 text-left bg-white hover:bg-slate-50 active:bg-slate-100 transition-colors ${
+                              idx < searchSuggestions.length - 1 ? 'border-b border-slate-100' : ''
+                            }`}
+                            onClick={() => setSearch(sug.name)}
+                          >
+                            {/* Thumbnail */}
+                            <div className="w-9 h-9 rounded-xl bg-slate-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                              {sug.imageUrl
+                                ? <img src={sug.imageUrl} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                : <Package size={16} className="text-slate-300" />
+                              }
+                            </div>
+                            {/* Suggestion text with highlight */}
+                            <span className="text-sm text-slate-700 truncate flex-1">
+                              {matchStart >= 0 ? (
+                                <>{before}<span className="font-bold text-slate-900">{match}</span>{after}</>
+                              ) : (
+                                sug.name
+                              )}
+                            </span>
+                            {/* Search arrow icon */}
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 flex-shrink-0">
+                              <path d="M7 17L17 7M17 7H7M17 7V17"/>
+                            </svg>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {/* ── SEARCH RESULTS ── */}
                   {search.length > 1 ? (
@@ -2434,7 +2437,8 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* Floating Voice Button - fixed bottom center, visible on all tabs */}
+      {/* Floating Voice Button - fixed bottom center, hidden during manual search */}
+      {!(mode === 'MANUAL' && search.length > 0) && (
       <button
         onClick={isListening ? stopVoiceInput : startVoiceInput}
         className={`fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-6 py-3.5 rounded-full font-bold text-white shadow-2xl transition-all duration-500 ${
@@ -2463,6 +2467,7 @@ export default function BillingPage() {
           </>
         )}
       </button>
+      )}
 
       {/* Cart Bottom Sheet — shown after "Add items to Bill" on mobile */}
       {/* Cart Bottom Sheet — mini bar when collapsed, full sheet when expanded */}
