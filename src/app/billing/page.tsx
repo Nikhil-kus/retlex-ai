@@ -120,7 +120,7 @@ const unitKeywords = new Set([
 ]);
 
 export default function BillingPage() {
-  const { pName, hindiMode, catName } = useHindi();
+  const { pName, hindiMode, catName, setIsSearching } = useHindi();
   const [isListening, setIsListening] = useState(false);
   const [finalTranscript, setFinalTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
@@ -1330,16 +1330,11 @@ export default function BillingPage() {
     }
   }, [search, catalog]);
 
-  // Toggle body class to hide fixed UI buttons (Hindi toggle, hamburger) when search is active or focused
+  // Tell the Sidebar (via shared context) to hide its fixed buttons when search is active or focused
   const [searchFocused, setSearchFocused] = useState(false);
   useEffect(() => {
-    const active = search.length > 0 || searchFocused;
-    if (active) {
-      document.body.classList.add('searching-active');
-    } else {
-      document.body.classList.remove('searching-active');
-    }
-    return () => { document.body.classList.remove('searching-active'); };
+    setIsSearching(search.length > 0 || searchFocused);
+    return () => { setIsSearching(false); };
   }, [search, searchFocused]);
 
   const addToCart = (product: any, qty?: number) => {

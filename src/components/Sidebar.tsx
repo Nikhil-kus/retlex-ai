@@ -19,7 +19,7 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const { hindiMode, toggleHindi } = useHindi();
+  const { hindiMode, toggleHindi, isSearching } = useHindi();
 
   // Reset main scroll container on route change
   useEffect(() => {
@@ -35,15 +35,18 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile Toggle Button */}
+      {/* Mobile Toggle Button — hidden during manual search */}
+      {!isSearching && (
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="menu-toggle-btn md:hidden fixed top-4 right-4 z-50 p-2 bg-indigo-600 text-white rounded-md"
       >
         {isOpen ? <X size={24} /> : <Menu size={24} />}
       </button>
+      )}
 
-      {/* Hindi toggle — fixed top-left, visible on mobile when sidebar is closed */}
+      {/* Hindi toggle — fixed top-left, hidden during manual search */}
+      {!isSearching && (
       <button
         onClick={toggleHindi}
         className={`hindi-toggle-btn md:hidden fixed top-4 left-4 z-50 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold shadow-md transition-all ${
@@ -58,6 +61,7 @@ export default function Sidebar() {
           <span className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow transition-all ${hindiMode ? 'left-3' : 'left-0.5'}`} />
         </span>
       </button>
+      )}
 
       {/* Sidebar navigation */}
       <nav

@@ -9,6 +9,9 @@ interface HindiContextType {
   pName: (name: string, localName?: string | null) => string;
   /** Returns Hindi category name if hindiMode is on, else original */
   catName: (cat: string) => string;
+  /** True when the manual search input is focused or has text — used to hide fixed UI buttons */
+  isSearching: boolean;
+  setIsSearching: (v: boolean) => void;
 }
 
 export const CATEGORY_HINDI: Record<string, string> = {
@@ -76,10 +79,13 @@ const HindiContext = createContext<HindiContextType>({
   toggleHindi: () => {},
   pName: (name) => name,
   catName: (cat) => cat,
+  isSearching: false,
+  setIsSearching: () => {},
 });
 
 export function HindiProvider({ children }: { children: ReactNode }) {
   const [hindiMode, setHindiMode] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('hindiMode');
@@ -104,7 +110,7 @@ export function HindiProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <HindiContext.Provider value={{ hindiMode, toggleHindi, pName, catName }}>
+    <HindiContext.Provider value={{ hindiMode, toggleHindi, pName, catName, isSearching, setIsSearching }}>
       {children}
     </HindiContext.Provider>
   );
