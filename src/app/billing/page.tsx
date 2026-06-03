@@ -1187,9 +1187,23 @@ export default function BillingPage() {
     }
   }, [selectedCategory, selectedBill, isReviewing]);
 
+  // Push a separate history entry when manual search becomes active so the
+  // Android back button clears the search instead of closing the app.
+  const searchIsActive = search.length > 0;
+  useEffect(() => {
+    if (searchIsActive) {
+      window.history.pushState({ searchOpen: true }, '');
+    }
+  }, [searchIsActive]);
+
   useEffect(() => {
     const handlePopState = () => {
-      // Close sub-views in priority order: bill modal > review > category
+      // Close sub-views in priority order: search > bill modal > review > category
+      if (search.length > 0) {
+        setSearch('');
+        searchInputRef.current?.blur();
+        return;
+      }
       if (selectedBill) { setSelectedBill(null); return; }
       if (isReviewing) {
         setIsReviewing(false);
@@ -1203,7 +1217,7 @@ export default function BillingPage() {
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [selectedBill, isReviewing, selectedCategory]);
+  }, [search, selectedBill, isReviewing, selectedCategory]);
   // ─────────────────────────────────────────────────────────────────────────
 
   const modeIndex = mode === 'MANUAL' ? 0 : mode === 'PENDING' ? 1 : 2;
