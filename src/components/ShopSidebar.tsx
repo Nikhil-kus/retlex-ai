@@ -26,7 +26,7 @@ interface ShopSidebarProps {
 export default function ShopSidebar({ shopId }: ShopSidebarProps) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const { hindiMode, toggleHindi } = useHindi();
+  const { hindiMode, toggleHindi, isSearching } = useHindi();
 
   const base = `/${shopId}`;
 
@@ -51,28 +51,32 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
 
   return (
     <>
-      {/* Mobile toggle */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="md:hidden fixed top-4 right-4 z-50 p-2 bg-indigo-600 text-white rounded-md"
-        aria-label="Toggle menu"
-      >
-        {isOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
+      {/* Mobile hamburger — hidden during manual search */}
+      {!isSearching && (
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="md:hidden fixed top-4 right-4 z-50 p-2 bg-indigo-600 text-white rounded-md"
+          aria-label="Toggle menu"
+        >
+          {isOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      )}
 
-      {/* Hindi toggle — mobile */}
-      <button
-        onClick={toggleHindi}
-        className={`md:hidden fixed top-4 left-4 z-50 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold shadow-md transition-all ${
-          hindiMode ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 border border-slate-200'
-        }`}
-        title={hindiMode ? 'Hindi ON' : 'Hindi OFF'}
-      >
-        <span>अ</span>
-        <span className={`w-6 h-3.5 rounded-full relative transition-colors ${hindiMode ? 'bg-orange-300' : 'bg-slate-200'}`}>
-          <span className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow transition-all ${hindiMode ? 'left-3' : 'left-0.5'}`} />
-        </span>
-      </button>
+      {/* Hindi toggle — mobile, hidden during manual search (moved into search bar instead) */}
+      {!isSearching && (
+        <button
+          onClick={toggleHindi}
+          className={`md:hidden fixed top-4 left-4 z-50 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold shadow-md transition-all ${
+            hindiMode ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 border border-slate-200'
+          }`}
+          title={hindiMode ? 'Hindi ON' : 'Hindi OFF'}
+        >
+          <span>अ</span>
+          <span className={`w-6 h-3.5 rounded-full relative transition-colors ${hindiMode ? 'bg-orange-300' : 'bg-slate-200'}`}>
+            <span className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow transition-all ${hindiMode ? 'left-3' : 'left-0.5'}`} />
+          </span>
+        </button>
+      )}
 
       {/* Sidebar */}
       <nav
