@@ -25,9 +25,9 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Hide the fixed Hindi language toggle button while manual search is active.
-   The billing page root sets data-searching="true" when the search input has text,
-   but since the button is fixed-position (outside normal flow), we use a body class instead. */
-body.searching-active .hindi-toggle-btn {
+/* Hide the fixed Hindi language toggle and hamburger menu buttons while manual search is active.
+   The billing page adds 'searching-active' to <body> when the search input is focused or has text. */
+body.searching-active .hindi-toggle-btn,
+body.searching-active .menu-toggle-btn {
   display: none !important;
 }

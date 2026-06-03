@@ -38,7 +38,7 @@ export default function Sidebar() {
       {/* Mobile Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="md:hidden fixed top-4 right-4 z-50 p-2 bg-indigo-600 text-white rounded-md"
+        className="menu-toggle-btn md:hidden fixed top-4 right-4 z-50 p-2 bg-indigo-600 text-white rounded-md"
       >
         {isOpen ? <X size={24} /> : <Menu size={24} />}
       </button>

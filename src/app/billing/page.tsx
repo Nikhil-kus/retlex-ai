@@ -1330,15 +1330,17 @@ export default function BillingPage() {
     }
   }, [search, catalog]);
 
-  // Toggle body class to hide the fixed Hindi toggle button during search
+  // Toggle body class to hide fixed UI buttons (Hindi toggle, hamburger) when search is active or focused
+  const [searchFocused, setSearchFocused] = useState(false);
   useEffect(() => {
-    if (search.length > 0) {
+    const active = search.length > 0 || searchFocused;
+    if (active) {
       document.body.classList.add('searching-active');
     } else {
       document.body.classList.remove('searching-active');
     }
     return () => { document.body.classList.remove('searching-active'); };
-  }, [search]);
+  }, [search, searchFocused]);
 
   const addToCart = (product: any, qty?: number) => {
     const baseUnit = product.baseUnit || 'pc';
@@ -1715,6 +1717,8 @@ export default function BillingPage() {
                         placeholder="Search products…"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
+                        onFocus={() => setSearchFocused(true)}
+                        onBlur={() => setSearchFocused(false)}
                         className="w-full pl-10 pr-4 py-2.5 bg-slate-100 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition font-medium"
                       />
                       {search && (
