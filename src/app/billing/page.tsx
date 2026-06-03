@@ -1293,7 +1293,9 @@ export default function BillingPage() {
     if (search.length > 1) {
       const q = search.toLowerCase();
       const qHindi = transliterateHinglishToHindi(q);
-      const matched = catalog.filter(p =>
+
+      // ── Exact / substring pass ──────────────────────────────────────────────
+      const exactMatched = catalog.filter(p =>
         p.name.toLowerCase().includes(q) ||
         (p.localName && p.localName.toLowerCase().includes(q)) ||
         (p.barcode && p.barcode.includes(search)) ||
@@ -1302,21 +1304,57 @@ export default function BillingPage() {
           p.name.toLowerCase().includes(qHindi)
         ))
       );
+
+      let matched: any[];
+
+      if (exactMatched.length > 0) {
+        // Good spelling — use exact results
+        matched = exactMatched;
+      } else {
+        // Misspelled / wrong spelling — fall back to fuzzy search (Blinkit-style)
+        const fuzzy = new Fuse(catalog, {
+          keys: ['name', 'localName', 'localAliases'],
+          threshold: 0.45,       // 0 = perfect match, 1 = match anything
+          includeScore: true,
+          ignoreLocation: true,
+          minMatchCharLength: 2,
+        });
+
+        // Search both the raw query and its Hindi transliteration
+        const fuseResultsRaw = fuzzy.search(q);
+        const fuseResultsHindi = qHindi !== q ? fuzzy.search(qHindi) : [];
+
+        // Merge, keep best score per product
+        const scoreMap = new Map<string, { item: any; score: number }>();
+        for (const r of [...fuseResultsRaw, ...fuseResultsHindi]) {
+          const key = r.item.id || r.item.name;
+          const existing = scoreMap.get(key);
+          if (!existing || (r.score ?? 1) < existing.score) {
+            scoreMap.set(key, { item: r.item, score: r.score ?? 1 });
+          }
+        }
+
+        matched = Array.from(scoreMap.values())
+          .sort((a, b) => a.score - b.score)
+          .map(v => v.item);
+      }
+
       setSearchResults(matched);
 
-      // Build Blinkit-style autocomplete suggestions (unique product names, max 3)
+      // ── Autocomplete suggestions (unique display names, max 5) ─────────────
       const seen = new Set<string>();
       const suggestions: {name: string; imageUrl: string | null; matchField: string}[] = [];
       for (const p of matched) {
-        // Determine which field matched for display
         const localLower = (p.localName || '').toLowerCase();
         let displayName = p.name;
         let matchField = 'name';
-        if (localLower.includes(q) || (qHindi !== q && localLower.includes(qHindi))) {
+        if (
+          localLower.includes(q) ||
+          (qHindi !== q && localLower.includes(qHindi))
+        ) {
           displayName = p.localName || p.name;
           matchField = 'localName';
         }
-        // Deduplicate by cleaned base name (strip weight/size)
         const baseKey = cleanProductName(displayName);
         if (seen.has(baseKey)) continue;
         seen.add(baseKey);
