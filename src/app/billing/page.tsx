@@ -1017,58 +1017,74 @@ export default function BillingPage() {
                         if (pref) {
                             const prefProduct = catalog.find((p: any) => p.id === pref.productId);
                             if (prefProduct) {
-                                // Find family variants by stripping weight/volume suffix from the product name
-                                const baseBrandName = prefProduct.name.replace(/\s*\d+(?:\.\d+)?\s*(g|gm|gram|grams|kg|kilo|kilos|l|ml|liter|litre|litres|ltr|pcs?|pieces?|pkts?|pack|packet|box|bottles?|can)\b/i, '').trim();
-                                const candidates = catalog.filter((p: any) => {
-                                    const pBaseName = p.name.replace(/\s*\d+(?:\.\d+)?\s*(g|gm|gram|grams|kg|kilo|kilos|l|ml|liter|litre|litres|ltr|pcs?|pieces?|pkts?|pack|packet|box|bottles?|can)\b/i, '').trim();
-                                    return pBaseName.toLowerCase() === baseBrandName.toLowerCase();
+                                // Safeguard: Verify if the spokenKey actually matches the prefProduct using Fuse.js
+                                // to prevent historical wrong matches (stored in localStorage) from hijacking the search.
+                                const singleFuse = new Fuse([prefProduct], {
+                                    keys: ['name', 'localName', 'localAliases'],
+                                    threshold: 0.6,
+                                    ignoreLocation: true,
+                                    minMatchCharLength: 2
                                 });
-
-                                let matchedProduct = prefProduct;
-
-                                let requestedWeightGrams: number | null = null;
-                                if (item.unit === 'kg' || item.unit === 'l') {
-                                    requestedWeightGrams = item.quantity * 1000;
-                                } else if (item.unit === 'g' || item.unit === 'ml') {
-                                    requestedWeightGrams = item.quantity;
-                                }
-
-                                if (requestedWeightGrams !== null && candidates.length > 0) {
-                                    let bestCand = candidates[0];
-                                    let minDiff = Infinity;
-                                    for (const cand of candidates) {
-                                        const candWeight = cand.packetWeight || cand.baseQuantity || 0;
-                                        const diff = Math.abs(candWeight - requestedWeightGrams);
-                                        if (diff < minDiff) {
-                                            minDiff = diff;
-                                            bestCand = cand;
-                                        }
+                                const isMatchValid = singleFuse.search(spokenKey).length > 0;
+                                if (!isMatchValid) {
+                                    // Clean up this bad cached override to prevent it from happening again
+                                    if (shop?.id) {
+                                        voicePrefsCache.clear(shop.id, spokenKey);
                                     }
-                                    matchedProduct = bestCand;
+                                } else {
+                                    // Find family variants by stripping weight/volume suffix from the product name
+                                    const baseBrandName = prefProduct.name.replace(/\s*\d+(?:\.\d+)?\s*(g|gm|gram|grams|kg|kilo|kilos|l|ml|liter|litre|litres|ltr|pcs?|pieces?|pkts?|pack|packet|box|bottles?|can)\b/i, '').trim();
+                                    const candidates = catalog.filter((p: any) => {
+                                        const pBaseName = p.name.replace(/\s*\d+(?:\.\d+)?\s*(g|gm|gram|grams|kg|kilo|kilos|l|ml|liter|litre|litres|ltr|pcs?|pieces?|pkts?|pack|packet|box|bottles?|can)\b/i, '').trim();
+                                        return pBaseName.toLowerCase() === baseBrandName.toLowerCase();
+                                    });
+
+                                    let matchedProduct = prefProduct;
+
+                                    let requestedWeightGrams: number | null = null;
+                                    if (item.unit === 'kg' || item.unit === 'l') {
+                                        requestedWeightGrams = item.quantity * 1000;
+                                    } else if (item.unit === 'g' || item.unit === 'ml') {
+                                        requestedWeightGrams = item.quantity;
+                                    }
+
+                                    if (requestedWeightGrams !== null && candidates.length > 0) {
+                                        let bestCand = candidates[0];
+                                        let minDiff = Infinity;
+                                        for (const cand of candidates) {
+                                            const candWeight = cand.packetWeight || cand.baseQuantity || 0;
+                                            const diff = Math.abs(candWeight - requestedWeightGrams);
+                                            if (diff < minDiff) {
+                                                minDiff = diff;
+                                                bestCand = cand;
+                                            }
+                                        }
+                                        matchedProduct = bestCand;
+                                    }
+
+                                    // Recalculate quantity and unit for the matched variant
+                                    const pQty = item.parsedQty !== undefined ? item.parsedQty : item.quantity;
+                                    const pUnit = item.parsedUnit !== undefined ? item.parsedUnit : (item.unit || item.baseUnit || 'pc');
+                                    const recalculated = recalculateQtyAndUnit(pQty, pUnit, matchedProduct);
+
+                                    finalItem = {
+                                        ...finalItem,
+                                        productId: matchedProduct.id,
+                                        name: matchedProduct.name,
+                                        localName: matchedProduct.localName,
+                                        price: matchedProduct.price,
+                                        costPrice: matchedProduct.costPrice,
+                                        baseUnit: matchedProduct.baseUnit,
+                                        baseQuantity: matchedProduct.baseQuantity,
+                                        packetWeight: matchedProduct.packetWeight,
+                                        packetUnit: matchedProduct.packetUnit,
+                                        imageUrl: matchedProduct.imageUrl,
+                                        quantity: recalculated.quantity,
+                                        unit: recalculated.unit,
+                                        parsedQty: pQty,
+                                        parsedUnit: pUnit
+                                    };
                                 }
-
-                                // Recalculate quantity and unit for the matched variant
-                                const pQty = item.parsedQty !== undefined ? item.parsedQty : item.quantity;
-                                const pUnit = item.parsedUnit !== undefined ? item.parsedUnit : (item.unit || item.baseUnit || 'pc');
-                                const recalculated = recalculateQtyAndUnit(pQty, pUnit, matchedProduct);
-
-                                finalItem = {
-                                    ...finalItem,
-                                    productId: matchedProduct.id,
-                                    name: matchedProduct.name,
-                                    localName: matchedProduct.localName,
-                                    price: matchedProduct.price,
-                                    costPrice: matchedProduct.costPrice,
-                                    baseUnit: matchedProduct.baseUnit,
-                                    baseQuantity: matchedProduct.baseQuantity,
-                                    packetWeight: matchedProduct.packetWeight,
-                                    packetUnit: matchedProduct.packetUnit,
-                                    imageUrl: matchedProduct.imageUrl,
-                                    quantity: recalculated.quantity,
-                                    unit: recalculated.unit,
-                                    parsedQty: pQty,
-                                    parsedUnit: pUnit
-                                };
                             }
                         }
                     }
