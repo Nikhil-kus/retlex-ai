@@ -2351,25 +2351,27 @@ export default function BillingPage() {
                             </button>
                           </div>
 
-                          {/* Row 2: qty (tappable) + price */}
+                          {/* Row 2: rate | total | qty-pill */}
                           <div className="flex gap-2 mt-2.5 items-center">
-                            {/* Tappable quantity pill — opens the quantity selector sheet */}
+                            {/* 1st: Rate box — fixed width so it doesn't crowd others */}
+                            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-9 w-24 shrink-0">
+                              <span className="text-slate-400 text-xs font-medium">₹</span>
+                              <input type="number" className="w-full bg-transparent focus:outline-none text-xs font-bold text-slate-800 min-w-0" value={item.price || item.sellingPrice || 0} onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }} />
+                            </div>
+                            {/* 2nd: Total */}
+                            <span className="text-xs font-bold text-indigo-600 shrink-0">
+                              ₹{calculateItemTotal(item).toFixed(0)}
+                            </span>
+                            {/* 3rd: Tappable quantity pill — opens the quantity selector sheet */}
                             <button
                               onClick={() => setQtyPickerIdx(idx)}
-                              className="flex items-center gap-1.5 bg-indigo-50 border-2 border-indigo-300 rounded-xl h-9 px-3 shrink-0 active:bg-indigo-100 active:scale-95 transition-all"
+                              className="flex items-center gap-1.5 bg-indigo-50 border-2 border-indigo-300 rounded-xl h-9 px-3 ml-auto shrink-0 active:bg-indigo-100 active:scale-95 transition-all"
                               title="Tap to change quantity"
                             >
                               <span className="text-sm font-black text-indigo-700">{item.quantity}</span>
                               <span className="text-[11px] font-semibold text-indigo-400">{item.unit || item.baseUnit}</span>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400 ml-0.5"><path d="M6 9l6 6 6-6"/></svg>
                             </button>
-                            <div className="flex items-center gap-1 flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-9">
-                              <span className="text-slate-400 text-xs font-medium">₹</span>
-                              <input type="number" className="flex-1 bg-transparent focus:outline-none text-xs font-bold text-slate-800 min-w-0" value={item.price || item.sellingPrice || 0} onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }} />
-                            </div>
-                            <span className="text-xs font-bold text-indigo-600 shrink-0">
-                              ₹{calculateItemTotal(item).toFixed(0)}
-                            </span>
                           </div>
 
                           {/* Suggestions — two rows: brands/variants + size/price packs */}
