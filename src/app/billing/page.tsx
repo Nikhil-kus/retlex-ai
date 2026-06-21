@@ -3154,48 +3154,35 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
 
   type QtyOption = { label: string; qty: number; unit: string; isCustom?: boolean };
 
-  // ── Piece / packet: 3-column grid (unchanged) ──────────────────────────────
+  // ── Piece / packet: 3-column grid rows ────────────────────────────────────
   const pieceRows: QtyOption[][] = [
     [{ label: '1', qty: 1, unit }, { label: '2', qty: 2, unit }, { label: '3', qty: 3, unit }],
     [{ label: '4', qty: 4, unit }, { label: '5', qty: 5, unit }, { label: '6', qty: 6, unit }],
     [{ label: '10', qty: 10, unit }, { label: '12', qty: 12, unit }, { label: '20', qty: 20, unit }],
   ];
 
-  // ── Weight: single horizontally-scrollable row ─────────────────────────────
-  // grams on the left, kg on the right, Custom at the far right
-  const weightRow: QtyOption[] = [
-    { label: '25g',   qty: 25,   unit: 'g' },
-    { label: '50g',   qty: 50,   unit: 'g' },
-    { label: '100g',  qty: 100,  unit: 'g' },
-    { label: '200g',  qty: 200,  unit: 'g' },
-    { label: '250g',  qty: 250,  unit: 'g' },
-    { label: '500g',  qty: 500,  unit: 'g' },
-    { label: '750g',  qty: 750,  unit: 'g' },
-    { label: '1 kg',  qty: 1,    unit: 'kg' },
-    { label: '2 kg',  qty: 2,    unit: 'kg' },
-    { label: '3 kg',  qty: 3,    unit: 'kg' },
-    { label: '4 kg',  qty: 4,    unit: 'kg' },
-    { label: '5 kg',  qty: 5,    unit: 'kg' },
-    { label: '7 kg',  qty: 7,    unit: 'kg' },
-    { label: '10 kg', qty: 10,   unit: 'kg' },
-    { label: '15 kg', qty: 15,   unit: 'kg' },
-    { label: '20 kg', qty: 20,   unit: 'kg' },
-    { label: 'Custom', qty: -1,  unit: unit, isCustom: true },
+  // ── Weight: 2-column grid rows, scroll the sheet to see all ───────────────
+  // grams section on top, kg section below — sheet is scrollable
+  const weightRows: QtyOption[][] = [
+    [{ label: '25g',   qty: 25,   unit: 'g'  }, { label: '50g',   qty: 50,   unit: 'g'  }],
+    [{ label: '100g',  qty: 100,  unit: 'g'  }, { label: '200g',  qty: 200,  unit: 'g'  }],
+    [{ label: '250g',  qty: 250,  unit: 'g'  }, { label: '500g',  qty: 500,  unit: 'g'  }],
+    [{ label: '750g',  qty: 750,  unit: 'g'  }, { label: '1 kg',  qty: 1,    unit: 'kg' }],
+    [{ label: '2 kg',  qty: 2,    unit: 'kg' }, { label: '3 kg',  qty: 3,    unit: 'kg' }],
+    [{ label: '4 kg',  qty: 4,    unit: 'kg' }, { label: '5 kg',  qty: 5,    unit: 'kg' }],
+    [{ label: '7 kg',  qty: 7,    unit: 'kg' }, { label: '10 kg', qty: 10,   unit: 'kg' }],
+    [{ label: '15 kg', qty: 15,   unit: 'kg' }, { label: '20 kg', qty: 20,   unit: 'kg' }],
+    [{ label: 'Custom', qty: -1,  unit: unit, isCustom: true }, { label: '', qty: -2, unit }],
   ];
 
-  // ── Liquid: single horizontally-scrollable row ─────────────────────────────
-  const liquidRow: QtyOption[] = [
-    { label: '100ml', qty: 100,  unit: 'ml' },
-    { label: '200ml', qty: 200,  unit: 'ml' },
-    { label: '250ml', qty: 250,  unit: 'ml' },
-    { label: '500ml', qty: 500,  unit: 'ml' },
-    { label: '750ml', qty: 750,  unit: 'ml' },
-    { label: '1 L',   qty: 1,    unit: 'l' },
-    { label: '2 L',   qty: 2,    unit: 'l' },
-    { label: '3 L',   qty: 3,    unit: 'l' },
-    { label: '5 L',   qty: 5,    unit: 'l' },
-    { label: '10 L',  qty: 10,   unit: 'l' },
-    { label: 'Custom', qty: -1,  unit: unit, isCustom: true },
+  // ── Liquid: 2-column grid rows, sheet scrollable ───────────────────────────
+  const liquidRows: QtyOption[][] = [
+    [{ label: '100ml', qty: 100,  unit: 'ml' }, { label: '200ml', qty: 200,  unit: 'ml' }],
+    [{ label: '250ml', qty: 250,  unit: 'ml' }, { label: '500ml', qty: 500,  unit: 'ml' }],
+    [{ label: '750ml', qty: 750,  unit: 'ml' }, { label: '1 L',   qty: 1,    unit: 'l'  }],
+    [{ label: '2 L',   qty: 2,    unit: 'l'  }, { label: '3 L',   qty: 3,    unit: 'l'  }],
+    [{ label: '5 L',   qty: 5,    unit: 'l'  }, { label: '10 L',  qty: 10,   unit: 'l'  }],
+    [{ label: 'Custom', qty: -1,  unit: unit, isCustom: true }, { label: '', qty: -2, unit }],
   ];
 
   // Custom input state
@@ -3221,46 +3208,46 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
 
   const productName = item.localName || item.name || 'Product';
 
-  // Scroll row (weight / liquid): renders a single horizontally-scrollable strip
-  const ScrollRow = ({ opts }: { opts: QtyOption[] }) => (
-    <div
-      className="flex gap-2.5 overflow-x-auto pb-2"
-      style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
-      onTouchStart={e => e.stopPropagation()}
-      onTouchMove={e => e.stopPropagation()}
-      onTouchEnd={e => e.stopPropagation()}
-    >
-      {opts.map((opt, i) => {
-        const selected = isSelected(opt);
-        if (opt.isCustom) {
-          return (
-            <button
-              key={i}
-              onClick={() => setCustomMode(true)}
-              className="flex-shrink-0 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 font-bold active:bg-slate-100 transition-all hover:border-indigo-300 hover:text-indigo-600"
-              style={{ minWidth: '72px', height: '72px' }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-              <span className="text-xs font-bold mt-1">Custom</span>
-            </button>
-          );
-        }
-        return (
-          <button
-            key={i}
-            onClick={() => onSelect(opt.qty, opt.unit)}
-            className={`flex-shrink-0 flex flex-col items-center justify-center rounded-2xl border-2 font-black active:scale-95 transition-all ${
-              selected
-                ? 'border-indigo-600 bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-                : 'border-slate-200 bg-white text-slate-800 hover:border-indigo-300 hover:bg-indigo-50'
-            }`}
-            style={{ minWidth: '72px', height: '72px' }}
-          >
-            <span className="text-base leading-tight">{opt.label}</span>
-            {selected && <span className="text-[9px] font-bold text-indigo-200 mt-0.5">selected</span>}
-          </button>
-        );
-      })}
+  // Shared grid renderer for weight / liquid / piece rows
+  const renderGrid = (rows: QtyOption[][]) => (
+    <div className="space-y-2.5">
+      {rows.map((row, rowIdx) => (
+        <div
+          key={rowIdx}
+          className="grid gap-2.5"
+          style={{ gridTemplateColumns: `repeat(${row.filter(o => o.label !== '').length === 1 ? 1 : row.length}, 1fr)` }}
+        >
+          {row.filter(o => o.label !== '').map((opt, optIdx) => {
+            const selected = isSelected(opt);
+            if (opt.isCustom) {
+              return (
+                <button
+                  key={optIdx}
+                  onClick={() => setCustomMode(true)}
+                  className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 font-bold py-4 text-base active:bg-slate-100 transition-all hover:border-indigo-300 hover:text-indigo-600"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                  <span className="text-sm font-bold mt-1">Custom</span>
+                </button>
+              );
+            }
+            return (
+              <button
+                key={optIdx}
+                onClick={() => onSelect(opt.qty, opt.unit)}
+                className={`flex flex-col items-center justify-center rounded-2xl border-2 font-black py-4 text-xl active:scale-95 transition-all ${
+                  selected
+                    ? 'border-indigo-600 bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+                    : 'border-slate-200 bg-white text-slate-800 hover:border-indigo-300 hover:bg-indigo-50'
+                }`}
+              >
+                {opt.label}
+                {selected && <span className="text-[10px] font-bold text-indigo-200 mt-0.5">selected</span>}
+              </button>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 
@@ -3306,51 +3293,16 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
 
           {!customMode && (
             <>
-              {/* Weight — horizontal scrollable row: g values → kg values → Custom */}
-              {isWeight && (
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                    ← grams &nbsp;·&nbsp; kg → &nbsp;<span className="font-normal normal-case text-slate-300">scroll to see all</span>
-                  </p>
-                  <ScrollRow opts={weightRow} />
-                </div>
-              )}
+              {/* Weight — 2-column grid, scroll the sheet to reach all values */}
+              {isWeight && renderGrid(weightRows)}
 
-              {/* Liquid — horizontal scrollable row */}
-              {isLiquid && (
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                    ← ml &nbsp;·&nbsp; litres → &nbsp;<span className="font-normal normal-case text-slate-300">scroll to see all</span>
-                  </p>
-                  <ScrollRow opts={liquidRow} />
-                </div>
-              )}
+              {/* Liquid — 2-column grid, scroll the sheet to reach all values */}
+              {isLiquid && renderGrid(liquidRows)}
 
               {/* Piece / packet — 3-column grid */}
               {!isWeight && !isLiquid && (
-                <div className="space-y-2.5">
-                  {pieceRows.map((row, rowIdx) => (
-                    <div key={rowIdx} className="grid grid-cols-3 gap-2.5">
-                      {row.map((opt, optIdx) => {
-                        const selected = isSelected(opt);
-                        return (
-                          <button
-                            key={optIdx}
-                            onClick={() => onSelect(opt.qty, opt.unit)}
-                            className={`flex flex-col items-center justify-center rounded-2xl border-2 font-black py-4 text-xl active:scale-95 transition-all ${
-                              selected
-                                ? 'border-indigo-600 bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-                                : 'border-slate-200 bg-white text-slate-800 hover:border-indigo-300 hover:bg-indigo-50'
-                            }`}
-                          >
-                            {opt.label}
-                            {selected && <span className="text-[10px] font-bold text-indigo-200 mt-0.5">selected</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ))}
-                  {/* Custom button for pieces */}
+                <>
+                  {renderGrid(pieceRows)}
                   <button
                     onClick={() => setCustomMode(true)}
                     className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 font-bold py-3.5 active:bg-slate-100 transition-all hover:border-indigo-300 hover:text-indigo-600"
@@ -3358,7 +3310,7 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                     Custom
                   </button>
-                </div>
+                </>
               )}
             </>
           )}
