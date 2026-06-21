@@ -3198,7 +3198,7 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
   const pieceRows: QtyOption[][] = [
     [{ label: '1',  qty: 1,  unit }, { label: '2',  qty: 2,  unit }, { label: '3',  qty: 3,  unit }],
     [{ label: '4',  qty: 4,  unit }, { label: '5',  qty: 5,  unit }, { label: '6',  qty: 6,  unit }],
-    [{ label: '10', qty: 10, unit }, { label: '12', qty: 12, unit }, { label: '20', qty: 20, unit }],
+    [{ label: '10', qty: 10, unit }, { label: '12', qty: 12, unit }, { label: 'Custom', qty: -1, unit, isCustom: true }],
   ];
 
   // Custom input state
