@@ -136,6 +136,8 @@ export default function BillingPage() {
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Toast: id of the product just pinned as default (auto-clears after 1.5s)
   const [pinnedProductId, setPinnedProductId] = useState<string | null>(null);
+  // Quantity selector sheet: index of the review item whose picker is open (null = closed)
+  const [qtyPickerIdx, setQtyPickerIdx] = useState<number | null>(null);
 
   const areWordsSimilar = (w1: string, w2: string): boolean => {
     const val1 = w1.trim().toLowerCase();
@@ -2349,15 +2351,19 @@ export default function BillingPage() {
                             </button>
                           </div>
 
-                          {/* Row 2: qty + price */}
+                          {/* Row 2: qty (tappable) + price */}
                           <div className="flex gap-2 mt-2.5 items-center">
-                            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden h-8 shrink-0">
-                              <button onClick={() => { const n = [...reviewItems]; n[idx].quantity = Math.max(1, n[idx].quantity - 1); setReviewItems(n); }} className="w-7 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition font-bold text-sm">−</button>
-                              <input type="number" className="w-10 text-center text-xs font-bold focus:outline-none bg-transparent text-slate-800" value={item.quantity} onChange={e => { const n = [...reviewItems]; n[idx].quantity = parseFloat(e.target.value) || 1; setReviewItems(n); }} />
-                              <span className="text-[10px] text-slate-400 font-semibold pr-1.5">{item.unit || item.baseUnit}</span>
-                              <button onClick={() => { const n = [...reviewItems]; n[idx].quantity += 1; setReviewItems(n); }} className="w-7 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition font-bold text-sm">+</button>
-                            </div>
-                            <div className="flex items-center gap-1 flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
+                            {/* Tappable quantity pill — opens the quantity selector sheet */}
+                            <button
+                              onClick={() => setQtyPickerIdx(idx)}
+                              className="flex items-center gap-1.5 bg-indigo-50 border-2 border-indigo-300 rounded-xl h-9 px-3 shrink-0 active:bg-indigo-100 active:scale-95 transition-all"
+                              title="Tap to change quantity"
+                            >
+                              <span className="text-sm font-black text-indigo-700">{item.quantity}</span>
+                              <span className="text-[11px] font-semibold text-indigo-400">{item.unit || item.baseUnit}</span>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400 ml-0.5"><path d="M6 9l6 6 6-6"/></svg>
+                            </button>
+                            <div className="flex items-center gap-1 flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-9">
                               <span className="text-slate-400 text-xs font-medium">₹</span>
                               <input type="number" className="flex-1 bg-transparent focus:outline-none text-xs font-bold text-slate-800 min-w-0" value={item.price || item.sellingPrice || 0} onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }} />
                             </div>
@@ -2689,6 +2695,20 @@ export default function BillingPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Quantity Selector Sheet — opens when user taps quantity pill in review list */}
+      {qtyPickerIdx !== null && reviewItems[qtyPickerIdx] && (
+        <QuantitySelectorSheet
+          item={reviewItems[qtyPickerIdx]}
+          onSelect={(newQty: number, newUnit: string) => {
+            const n = [...reviewItems];
+            n[qtyPickerIdx] = { ...n[qtyPickerIdx], quantity: newQty, unit: newUnit };
+            setReviewItems(n);
+            setQtyPickerIdx(null);
+          }}
+          onClose={() => setQtyPickerIdx(null)}
+        />
       )}
     </div>
   );
@@ -3108,5 +3128,238 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
         )}
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QuantitySelectorSheet
+// A mobile-friendly bottom sheet for selecting quantity with one tap.
+// Opens when the shopkeeper taps the quantity pill on a review item.
+// Adapts its options based on the product's baseUnit.
+// Does NOT touch any voice recognition, product matching, or billing logic.
+// ─────────────────────────────────────────────────────────────────────────────
+function QuantitySelectorSheet({ item, onSelect, onClose }: {
+  item: any;
+  onSelect: (qty: number, unit: string) => void;
+  onClose: () => void;
+}) {
+  const unit = (item.unit || item.baseUnit || 'pc').toLowerCase();
+  const currentQty = item.quantity || 1;
+
+  // Classify unit type
+  const isWeight = ['kg', 'g', 'gram', 'grams'].includes(unit);
+  const isLiquid = ['l', 'ml', 'litre', 'liter', 'liters', 'litres'].includes(unit);
+  const isPiece  = !isWeight && !isLiquid; // pc, pkt, piece, etc.
+
+  // Build option groups based on unit type
+  type QtyOption = { label: string; qty: number; unit: string; isCustom?: boolean };
+
+  let options: QtyOption[][] = [];
+
+  if (isWeight) {
+    options = [
+      [
+        { label: '250g',  qty: 250,  unit: 'g' },
+        { label: '500g',  qty: 500,  unit: 'g' },
+      ],
+      [
+        { label: '1 kg',  qty: 1,    unit: 'kg' },
+        { label: '2 kg',  qty: 2,    unit: 'kg' },
+      ],
+      [
+        { label: '5 kg',  qty: 5,    unit: 'kg' },
+        { label: 'Custom', qty: -1,   unit: unit, isCustom: true },
+      ],
+    ];
+  } else if (isLiquid) {
+    options = [
+      [
+        { label: '250ml', qty: 250,  unit: 'ml' },
+        { label: '500ml', qty: 500,  unit: 'ml' },
+      ],
+      [
+        { label: '1 L',   qty: 1,    unit: 'l' },
+        { label: '2 L',   qty: 2,    unit: 'l' },
+      ],
+      [
+        { label: '5 L',   qty: 5,    unit: 'l' },
+        { label: 'Custom', qty: -1,  unit: unit, isCustom: true },
+      ],
+    ];
+  } else {
+    // Packet / piece
+    options = [
+      [
+        { label: '1',  qty: 1,  unit },
+        { label: '2',  qty: 2,  unit },
+        { label: '3',  qty: 3,  unit },
+      ],
+      [
+        { label: '4',  qty: 4,  unit },
+        { label: '5',  qty: 5,  unit },
+        { label: '6',  qty: 6,  unit },
+      ],
+      [
+        { label: '10', qty: 10, unit },
+        { label: '12', qty: 12, unit },
+        { label: '20', qty: 20, unit },
+      ],
+    ];
+  }
+
+  // Custom input state
+  const [customMode, setCustomMode] = useState(false);
+  const [customValue, setCustomValue] = useState(String(currentQty));
+  const customInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (customMode) {
+      setTimeout(() => customInputRef.current?.focus(), 80);
+    }
+  }, [customMode]);
+
+  const handleCustomConfirm = () => {
+    const parsed = parseFloat(customValue);
+    if (!isNaN(parsed) && parsed > 0) {
+      onSelect(parsed, unit);
+    }
+  };
+
+  // Determine if a qty+unit matches the current item
+  const isSelected = (opt: QtyOption) =>
+    !opt.isCustom && opt.qty === currentQty && opt.unit === unit;
+
+  const productName = item.localName || item.name || 'Product';
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Sheet */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-[70] bg-white rounded-t-3xl shadow-2xl"
+        style={{ maxHeight: '80vh', overflowY: 'auto' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Drag pill */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1.5 rounded-full bg-slate-300" />
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pb-3 pt-1 border-b border-slate-100">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Select Quantity</p>
+            <p className="font-bold text-slate-900 text-base leading-tight mt-0.5 truncate max-w-[220px]">{productName}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 active:bg-slate-300 transition"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div className="px-4 py-4 space-y-3">
+          {/* Current quantity indicator */}
+          <div className="flex items-center gap-2 bg-indigo-50 rounded-2xl px-4 py-2.5">
+            <span className="text-xs font-bold uppercase tracking-widest text-indigo-400">Current</span>
+            <span className="ml-auto text-lg font-black text-indigo-700">{currentQty} {unit}</span>
+          </div>
+
+          {/* Option grid — rows of 2 or 3 depending on type */}
+          {!customMode && (
+            <div className="space-y-2.5">
+              {options.map((row, rowIdx) => (
+                <div
+                  key={rowIdx}
+                  className="grid gap-2.5"
+                  style={{ gridTemplateColumns: `repeat(${row.length}, 1fr)` }}
+                >
+                  {row.map((opt, optIdx) => {
+                    const selected = isSelected(opt);
+                    if (opt.isCustom) {
+                      return (
+                        <button
+                          key={optIdx}
+                          onClick={() => setCustomMode(true)}
+                          className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 font-bold py-4 text-base active:bg-slate-100 transition-all hover:border-indigo-300 hover:text-indigo-600"
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                          <span className="text-sm font-bold mt-1">Custom</span>
+                        </button>
+                      );
+                    }
+                    return (
+                      <button
+                        key={optIdx}
+                        onClick={() => onSelect(opt.qty, opt.unit)}
+                        className={`flex flex-col items-center justify-center rounded-2xl border-2 font-black py-4 text-xl active:scale-95 transition-all ${
+                          selected
+                            ? 'border-indigo-600 bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+                            : 'border-slate-200 bg-white text-slate-800 hover:border-indigo-300 hover:bg-indigo-50'
+                        }`}
+                      >
+                        {opt.label}
+                        {selected && (
+                          <span className="text-[10px] font-bold text-indigo-200 mt-0.5">selected</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Custom input panel */}
+          {customMode && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setCustomMode(false)}
+                className="flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800 transition"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+                Back to options
+              </button>
+              <div className="flex items-center bg-slate-50 border-2 border-indigo-300 rounded-2xl px-4 h-14 gap-2 focus-within:border-indigo-500 transition-colors">
+                <input
+                  ref={customInputRef}
+                  type="number"
+                  inputMode="decimal"
+                  className="flex-1 bg-transparent text-2xl font-bold text-slate-900 focus:outline-none"
+                  value={customValue}
+                  onChange={e => setCustomValue(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleCustomConfirm(); }}
+                  placeholder="0"
+                />
+                <span className="text-base font-bold text-slate-400">{unit}</span>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setCustomMode(false)}
+                  className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCustomConfirm}
+                  className="flex-1 py-3.5 rounded-2xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200"
+                >
+                  Set Quantity
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Safe-area spacer for notched phones */}
+        <div className="pb-6" />
+      </div>
+    </>
   );
 }
