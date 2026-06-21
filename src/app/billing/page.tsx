@@ -3154,8 +3154,9 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
 
   type QtyOption = { label: string; qty: number; unit: string; isCustom?: boolean };
 
-  // page: 0=main, 1=small extras (grams/ml), 2=large extras (kg/L)
-  const [page, setPage] = useState(0);
+  // page: 0=small extras (grams/ml), 1=main, 2=large extras (kg/L)
+  // Default to 1 (main) so grams are to the LEFT and kg are to the RIGHT
+  const [page, setPage] = useState(1);
 
   // Weight option pages
   const weightMain: QtyOption[][] = [
@@ -3224,11 +3225,11 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
 
   const productName = item.localName || item.name || 'Product';
   const hasExtraPages = isWeight || isLiquid;
-  const pageLabels = isWeight ? ['Main', 'Grams', 'Kilograms'] : isLiquid ? ['Main', 'ml', 'Litres'] : ['Main'];
+  const pageLabels = isWeight ? ['Grams', 'Main', 'Kilograms'] : isLiquid ? ['ml', 'Main', 'Litres'] : ['Main'];
 
   const activeRows: QtyOption[][] = (() => {
-    if (isWeight) return page === 0 ? weightMain : page === 1 ? weightGrams : weightKg;
-    if (isLiquid) return page === 0 ? liquidMain : page === 1 ? liquidSmall : liquidLarge;
+    if (isWeight) return page === 1 ? weightMain : page === 0 ? weightGrams : weightKg;
+    if (isLiquid) return page === 1 ? liquidMain : page === 0 ? liquidSmall : liquidLarge;
     return pieceRows;
   })();
 
@@ -3335,7 +3336,7 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
               }}
             >
               {renderGrid(activeRows)}
-              {hasExtraPages && page === 0 && (
+              {hasExtraPages && page === 1 && (
                 <p className="text-center text-[10px] text-slate-300 font-medium mt-2 select-none">
                   ← swipe for more values →
                 </p>
