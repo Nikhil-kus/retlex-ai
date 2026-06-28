@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 import Fuse from 'fuse.js';
 
@@ -116,7 +116,7 @@ const getClosestWordSyllableCount = (query: string, cand: any, isHindi: boolean)
 const unitKeywords = new Set([
   'kg', 'g', 'gram', 'grams', 'kilo', 'kilos', 'ml', 'l', 'ltr', 'liter', 'liters',
   'pkt', 'packet', 'packets', 'pc', 'pcs', 'piece', 'pieces', 'box', 'sachet', 'sachets',
-  'half', 'आधा', 'किलो', 'ग्राम', 'लीटर', 'पैकेट', 'पीस', 'बोतल', 'डिब्बा', 'खुला', 'khula', 'khule'
+  'half', 'à¤†à¤§à¤¾', 'à¤•à¤¿à¤²à¥‹', 'à¤—à¥à¤°à¤¾à¤®', 'à¤²à¥€à¤Ÿà¤°', 'à¤ªà¥ˆà¤•à¥‡à¤Ÿ', 'à¤ªà¥€à¤¸', 'à¤¬à¥‹à¤¤à¤²', 'à¤¡à¤¿à¤¬à¥à¤¬à¤¾', 'à¤–à¥à¤²à¤¾', 'khula', 'khule'
 ]);
 
 export default function BillingPage() {
@@ -163,7 +163,7 @@ export default function BillingPage() {
       if (w1.length <= 3 || w2.length <= 3) return false;
       const dist = getLevenshteinDistance(w1, w2);
       // For longer words in Hindi, speech recognition variations can be larger.
-      // E.g. "पारले-जी" (8) and "परले-ग" (6) has distance 3.
+      // E.g. "à¤ªà¤¾à¤°à¤²à¥‡-à¤œà¥€" (8) and "à¤ªà¤°à¤²à¥‡-à¤—" (6) has distance 3.
       const maxAllowed = Math.max(w1.length, w2.length) >= 6 ? 3 : 1;
       return dist <= maxAllowed;
     }
@@ -188,8 +188,8 @@ export default function BillingPage() {
     if (!s2) return s1;
     
     // Strip Android auto-punctuation to fix overlap matching
-    s1 = s1.replace(/[.,!?।]/g, '');
-    s2 = s2.replace(/[.,!?।]/g, '');
+    s1 = s1.replace(/[.,!?à¥¤]/g, '');
+    s2 = s2.replace(/[.,!?à¥¤]/g, '');
 
     const s1Lower = s1.trim().toLowerCase();
     const s2Lower = s2.trim().toLowerCase();
@@ -220,72 +220,72 @@ export default function BillingPage() {
     // PRE-PROCESSING: Normalization for robust parsing
     text = text.toLowerCase().trim()
       // Remove prices so they aren't parsed as quantities (e.g. "50 wala namak" -> "namak")
-      .replace(/(\d+(?:\.\d+)?)\s*(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)/gi, ' ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' ')
+      .replace(/(\d+(?:\.\d+)?)\s*(wala|wale|wali|à¤µà¤¾à¤²à¤¾|à¤µà¤¾à¤²à¥‡|à¤µà¤¾à¤²à¥€|rs|rupees|rupya|rupaye|à¤°à¥à¤ªà¤¯à¥‡|à¤°à¥à¤ªà¤¯à¤¾|à¤°à¥à¤ªà¤)/gi, ' ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(wala|wale|wali|à¤µà¤¾à¤²à¤¾|à¤µà¤¾à¤²à¥‡|à¤µà¤¾à¤²à¥€|rs|rupees|rupya|rupaye|à¤°à¥à¤ªà¤¯à¥‡|à¤°à¥à¤ªà¤¯à¤¾|à¤°à¥à¤ªà¤)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' ')
       // Use | as a separator for conjunctions and commas
       .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(and|plus)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' | ')
-      .replace(/और|तथा|भी|या/g, ' | ')
+      .replace(/à¤”à¤°|à¤¤à¤¥à¤¾|à¤­à¥€|à¤¯à¤¾/g, ' | ')
       .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(aur|tatha|bhi|ya)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' | ')
       .replace(/,/g, ' | ')
       // Fix misheard numbers (phonetic matching)
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(to|too|tu|two|तो|टो|do|दो)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 2 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(for|four|फ़ॉर|फॉर|फोर)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 4 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(won|one|वन|on|un|an)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 1 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(at|eight|एट|it)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 8 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(teen|three|थ्री|तीन|tin)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 3 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(five|फाइव|पाइप|पांच|panch)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 5 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(six|सिक्स|छह|che|chhe)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 6 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(ten|टेन|दस|das)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 10 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(to|too|tu|two|à¤¤à¥‹|à¤Ÿà¥‹|do|à¤¦à¥‹)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 2 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(for|four|à¤«à¤¼à¥‰à¤°|à¤«à¥‰à¤°|à¤«à¥‹à¤°)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 4 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(won|one|à¤µà¤¨|on|un|an)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 1 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(at|eight|à¤à¤Ÿ|it)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 8 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(teen|three|à¤¥à¥à¤°à¥€|à¤¤à¥€à¤¨|tin)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 3 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(five|à¤«à¤¾à¤‡à¤µ|à¤ªà¤¾à¤‡à¤ª|à¤ªà¤¾à¤‚à¤š|panch)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 5 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(six|à¤¸à¤¿à¤•à¥à¤¸|à¤›à¤¹|che|chhe)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 6 ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(ten|à¤Ÿà¥‡à¤¨|à¤¦à¤¸|das)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 10 ')
       // Convert compound weights (2 kg 500 g -> 2.5 kg)
-      .replace(/(\d+(?:\.\d+)?)\s*(kg|kilo|kilos|किलो)\s+(\d+(?:\.\d+)?)\s*(g|gram|grams|ग्राम)/gi, (match, kg, kgUnit, g, gUnit) => {
+      .replace(/(\d+(?:\.\d+)?)\s*(kg|kilo|kilos|à¤•à¤¿à¤²à¥‹)\s+(\d+(?:\.\d+)?)\s*(g|gram|grams|à¤—à¥à¤°à¤¾à¤®)/gi, (match, kg, kgUnit, g, gUnit) => {
         return (parseFloat(kg) + parseFloat(g) / 1000).toString() + " kg";
       })
-      .replace(/(\d+(?:\.\d+)?)\s*(l|liter|litre|litres|लीटर)\s+(\d+(?:\.\d+)?)\s*(ml|mili|मिली)/gi, (match, l, lUnit, ml, mlUnit) => {
+      .replace(/(\d+(?:\.\d+)?)\s*(l|liter|litre|litres|à¤²à¥€à¤Ÿà¤°)\s+(\d+(?:\.\d+)?)\s*(ml|mili|à¤®à¤¿à¤²à¥€)/gi, (match, l, lUnit, ml, mlUnit) => {
         return (parseFloat(l) + parseFloat(ml) / 1000).toString() + " l";
       })
       // Hindi weight phrasing
-      .replace(/ढाई\s*सौ/g, '250').replace(/dhai\s*sau/g, '250')
-      .replace(/डेढ़\s*सौ/g, '150').replace(/dedh\s*sau/g, '150')
-      .replace(/एक\s*सौ\s*पचास/g, '150').replace(/ek\s*sau\s*pachas/g, '150')
-      .replace(/दो\s*सौ\s*पचास/g, '250').replace(/do\s*sau\s*pachas/g, '250')
-      .replace(/एक\s*सौ/g, '100').replace(/ek\s*sau/g, '100')
-      .replace(/दो\s*सौ/g, '200').replace(/do\s*sau/g, '200')
-      .replace(/तीन\s*सौ/g, '300').replace(/teen\s*sau/g, '300')
-      .replace(/चार\s*सौ/g, '400').replace(/char\s*sau/g, '400')
-      .replace(/पांच\s*सौ/g, '500').replace(/paanch\s*sau/g, '500')
-      .replace(/छह\s*सौ/g, '600').replace(/che\s*sau/g, '600')
-      .replace(/सात\s*सौ/g, '700').replace(/saat\s*sau/g, '700')
-      .replace(/आठ\s*सौ/g, '800').replace(/aath\s*sau/g, '800')
-      .replace(/नौ\s*सौ/g, '900').replace(/nau\s*sau/g, '900')
+      .replace(/à¤¢à¤¾à¤ˆ\s*à¤¸à¥Œ/g, '250').replace(/dhai\s*sau/g, '250')
+      .replace(/à¤¡à¥‡à¤¢à¤¼\s*à¤¸à¥Œ/g, '150').replace(/dedh\s*sau/g, '150')
+      .replace(/à¤à¤•\s*à¤¸à¥Œ\s*à¤ªà¤šà¤¾à¤¸/g, '150').replace(/ek\s*sau\s*pachas/g, '150')
+      .replace(/à¤¦à¥‹\s*à¤¸à¥Œ\s*à¤ªà¤šà¤¾à¤¸/g, '250').replace(/do\s*sau\s*pachas/g, '250')
+      .replace(/à¤à¤•\s*à¤¸à¥Œ/g, '100').replace(/ek\s*sau/g, '100')
+      .replace(/à¤¦à¥‹\s*à¤¸à¥Œ/g, '200').replace(/do\s*sau/g, '200')
+      .replace(/à¤¤à¥€à¤¨\s*à¤¸à¥Œ/g, '300').replace(/teen\s*sau/g, '300')
+      .replace(/à¤šà¤¾à¤°\s*à¤¸à¥Œ/g, '400').replace(/char\s*sau/g, '400')
+      .replace(/à¤ªà¤¾à¤‚à¤š\s*à¤¸à¥Œ/g, '500').replace(/paanch\s*sau/g, '500')
+      .replace(/à¤›à¤¹\s*à¤¸à¥Œ/g, '600').replace(/che\s*sau/g, '600')
+      .replace(/à¤¸à¤¾à¤¤\s*à¤¸à¥Œ/g, '700').replace(/saat\s*sau/g, '700')
+      .replace(/à¤†à¤ \s*à¤¸à¥Œ/g, '800').replace(/aath\s*sau/g, '800')
+      .replace(/à¤¨à¥Œ\s*à¤¸à¥Œ/g, '900').replace(/nau\s*sau/g, '900')
       // Hindi fractions
-      .replace(/आधा/g, '0.5').replace(/aadha/g, '0.5')
-      .replace(/पाव/g, '0.25').replace(/paav/g, '0.25')
-      .replace(/सवा/g, '1.25').replace(/sawa/g, '1.25')
-      .replace(/डेढ़/g, '1.5').replace(/dedh/g, '1.5')
-      .replace(/ढाई/g, '2.5').replace(/dhai/g, '2.5');
+      .replace(/à¤†à¤§à¤¾/g, '0.5').replace(/aadha/g, '0.5')
+      .replace(/à¤ªà¤¾à¤µ/g, '0.25').replace(/paav/g, '0.25')
+      .replace(/à¤¸à¤µà¤¾/g, '1.25').replace(/sawa/g, '1.25')
+      .replace(/à¤¡à¥‡à¤¢à¤¼/g, '1.5').replace(/dedh/g, '1.5')
+      .replace(/à¤¢à¤¾à¤ˆ/g, '2.5').replace(/dhai/g, '2.5');
 
     const words = text.split(/\s+/).filter(w => w.length > 0);
     const items: any[] = [];
 
     const unitMap: any = {
-      kg: "kg", kilo: "kg", kilos: "kg", 'किलो': "kg",
-      g: "g", gram: "g", grams: "g", 'ग्राम': "g",
-      l: "l", liter: "l", litre: "l", litres: "l", 'लीटर': "l",
-      ml: "ml", mili: "ml", 'मिली': "ml",
-      pc: "pc", pcs: "pc", piece: "pc", packet: "pc", pkt: "pc", pack: "pc", 'पैकेट': "pc", 'पीस': "pc"
+      kg: "kg", kilo: "kg", kilos: "kg", 'à¤•à¤¿à¤²à¥‹': "kg",
+      g: "g", gram: "g", grams: "g", 'à¤—à¥à¤°à¤¾à¤®': "g",
+      l: "l", liter: "l", litre: "l", litres: "l", 'à¤²à¥€à¤Ÿà¤°': "l",
+      ml: "ml", mili: "ml", 'à¤®à¤¿à¤²à¥€': "ml",
+      pc: "pc", pcs: "pc", piece: "pc", packet: "pc", pkt: "pc", pack: "pc", 'à¤ªà¥ˆà¤•à¥‡à¤Ÿ': "pc", 'à¤ªà¥€à¤¸': "pc"
     };
 
     const numMap: any = {
-      'एक': 1, 'do': 2, 'दो': 2, 'dui': 2, 'दुई': 2, 'teen': 3, 'तीन': 3, 'char': 4, 'चार': 4, 'paanch': 5, 'पांच': 5,
-      'che': 6, 'छह': 6, 'chhe': 6, 'chay': 6, 'छय': 6, 'saat': 7, 'सात': 7, 'aath': 8, 'आठ': 8, 'nau': 9, 'नौ': 9, 'das': 10, 'दस': 10,
-      'gyarah': 11, 'ग्यारह': 11, 'barah': 12, 'बारह': 12, 'bara': 12, 'बारा': 12,
-      'tera': 13, 'तेरा': 13, 'तेरह': 13, 'chauda': 14, 'चौदह': 14, 'चौदा': 14,
-      'pandrah': 15, 'पंद्रह': 15, 
-      'bees': 20, 'बीस': 20, 'ikkis': 21, 'इक्कीस': 21, 'ikais': 21, 'इकाईस': 21,
-      'bais': 22, 'बाइस': 22, 'teis': 23, 'तेइस': 23, 'chaubis': 24, 'चौबीस': 24,
-      'pachees': 25, 'पच्चीस': 25, 'tees': 30, 'तीस': 30,
-      'aadha': 0.5, 'आधा': 0.5, 'paav': 0.25, 'पाव': 0.25, 'sawa': 1.25, 'सवा': 1.25,
-      'dedh': 1.5, 'डेढ़': 1.5, 'dhai': 2.5, 'ढाई': 2.5,
+      'à¤à¤•': 1, 'do': 2, 'à¤¦à¥‹': 2, 'dui': 2, 'à¤¦à¥à¤ˆ': 2, 'teen': 3, 'à¤¤à¥€à¤¨': 3, 'char': 4, 'à¤šà¤¾à¤°': 4, 'paanch': 5, 'à¤ªà¤¾à¤‚à¤š': 5,
+      'che': 6, 'à¤›à¤¹': 6, 'chhe': 6, 'chay': 6, 'à¤›à¤¯': 6, 'saat': 7, 'à¤¸à¤¾à¤¤': 7, 'aath': 8, 'à¤†à¤ ': 8, 'nau': 9, 'à¤¨à¥Œ': 9, 'das': 10, 'à¤¦à¤¸': 10,
+      'gyarah': 11, 'à¤—à¥à¤¯à¤¾à¤°à¤¹': 11, 'barah': 12, 'à¤¬à¤¾à¤°à¤¹': 12, 'bara': 12, 'à¤¬à¤¾à¤°à¤¾': 12,
+      'tera': 13, 'à¤¤à¥‡à¤°à¤¾': 13, 'à¤¤à¥‡à¤°à¤¹': 13, 'chauda': 14, 'à¤šà¥Œà¤¦à¤¹': 14, 'à¤šà¥Œà¤¦à¤¾': 14,
+      'pandrah': 15, 'à¤ªà¤‚à¤¦à¥à¤°à¤¹': 15, 
+      'bees': 20, 'à¤¬à¥€à¤¸': 20, 'ikkis': 21, 'à¤‡à¤•à¥à¤•à¥€à¤¸': 21, 'ikais': 21, 'à¤‡à¤•à¤¾à¤ˆà¤¸': 21,
+      'bais': 22, 'à¤¬à¤¾à¤‡à¤¸': 22, 'teis': 23, 'à¤¤à¥‡à¤‡à¤¸': 23, 'chaubis': 24, 'à¤šà¥Œà¤¬à¥€à¤¸': 24,
+      'pachees': 25, 'à¤ªà¤šà¥à¤šà¥€à¤¸': 25, 'tees': 30, 'à¤¤à¥€à¤¸': 30,
+      'aadha': 0.5, 'à¤†à¤§à¤¾': 0.5, 'paav': 0.25, 'à¤ªà¤¾à¤µ': 0.25, 'sawa': 1.25, 'à¤¸à¤µà¤¾': 1.25,
+      'dedh': 1.5, 'à¤¡à¥‡à¤¢à¤¼': 1.5, 'dhai': 2.5, 'à¤¢à¤¾à¤ˆ': 2.5,
       'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'half': 0.5, 'quarter': 0.25
     };
 
@@ -323,7 +323,7 @@ export default function BillingPage() {
                 if (!isNaN(Number(nextW))) nextIsNum = true;
                 else if (numMap[nextW] !== undefined) nextIsNum = true;
                 else {
-                    const match = nextW.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
+                    const match = nextW.match(/^([\d\.]+)([a-zA-Z]+|à¤•à¤¿à¤²à¥‹|à¤—à¥à¤°à¤¾à¤®|à¤²à¥€à¤Ÿà¤°|à¤ªà¥ˆà¤•à¥‡à¤Ÿ|à¤ªà¥€à¤¸)$/i);
                     if (match) nextIsNum = true;
                 }
                 if (nextIsNum) continue; // skip the separator, it's followed by a number
@@ -335,7 +335,7 @@ export default function BillingPage() {
         if (!isNaN(Number(w))) isNum = true;
         else if (numMap[w] !== undefined) isNum = true;
         else {
-          const match = w.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
+          const match = w.match(/^([\d\.]+)([a-zA-Z]+|à¤•à¤¿à¤²à¥‹|à¤—à¥à¤°à¤¾à¤®|à¤²à¥€à¤Ÿà¤°|à¤ªà¥ˆà¤•à¥‡à¤Ÿ|à¤ªà¥€à¤¸)$/i);
           if (match) isNum = true;
         }
         if (!isNum) return true;
@@ -354,7 +354,7 @@ export default function BillingPage() {
               if (!isNaN(Number(nextWord))) nextIsNum = true;
               else if (numMap[nextWord] !== undefined) nextIsNum = true;
               else {
-                  const match = nextWord.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
+                  const match = nextWord.match(/^([\d\.]+)([a-zA-Z]+|à¤•à¤¿à¤²à¥‹|à¤—à¥à¤°à¤¾à¤®|à¤²à¥€à¤Ÿà¤°|à¤ªà¥ˆà¤•à¥‡à¤Ÿ|à¤ªà¥€à¤¸)$/i);
                   if (match) nextIsNum = true;
               }
           }
@@ -388,7 +388,7 @@ export default function BillingPage() {
       if (isNumber) {
         parsedUnitStr = unitMap[nextWord] || "";
       } else {
-        const match = word.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
+        const match = word.match(/^([\d\.]+)([a-zA-Z]+|à¤•à¤¿à¤²à¥‹|à¤—à¥à¤°à¤¾à¤®|à¤²à¥€à¤Ÿà¤°|à¤ªà¥ˆà¤•à¥‡à¤Ÿ|à¤ªà¥€à¤¸)$/i);
         if (match) {
            parsedNum = parseFloat(match[1]);
            if (unitMap[match[2]]) {
@@ -475,10 +475,10 @@ export default function BillingPage() {
     const normalizedItems = parsedItems.map(item => {
       const cleanName = String(item.name || '').trim().toLowerCase();
       let normalizedUnit = String(item.unit || '').trim().toLowerCase();
-      if (['g', 'gm', 'grams', 'gram', 'ग्राम'].includes(normalizedUnit)) normalizedUnit = 'g';
-      else if (['kg', 'kilo', 'kilos', 'किलो'].includes(normalizedUnit)) normalizedUnit = 'kg';
-      else if (['litre', 'litres', 'l', 'ltr', 'लीटर'].includes(normalizedUnit)) normalizedUnit = 'l';
-      else if (['packet', 'pack', 'pkt', 'pc', 'pcs', 'piece', 'पैकेट', 'पीस'].includes(normalizedUnit)) normalizedUnit = 'pc';
+      if (['g', 'gm', 'grams', 'gram', 'à¤—à¥à¤°à¤¾à¤®'].includes(normalizedUnit)) normalizedUnit = 'g';
+      else if (['kg', 'kilo', 'kilos', 'à¤•à¤¿à¤²à¥‹'].includes(normalizedUnit)) normalizedUnit = 'kg';
+      else if (['litre', 'litres', 'l', 'ltr', 'à¤²à¥€à¤Ÿà¤°'].includes(normalizedUnit)) normalizedUnit = 'l';
+      else if (['packet', 'pack', 'pkt', 'pc', 'pcs', 'piece', 'à¤ªà¥ˆà¤•à¥‡à¤Ÿ', 'à¤ªà¥€à¤¸'].includes(normalizedUnit)) normalizedUnit = 'pc';
       else if (!normalizedUnit) normalizedUnit = 'pc';
       const cleanQuantity = (item.quantity && !isNaN(item.quantity) && item.quantity > 0) ? item.quantity : 1;
 
@@ -527,8 +527,8 @@ export default function BillingPage() {
       let bestMatch: any = null;
 
       const rawTextLower = (item.rawText || '').toLowerCase();
-      const isPacketRequested = /(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(packet|pack|pkt|packt|पैकेट|पीस|pc|pcs|piece|pieces|box|bottles?|can)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/i.test(rawTextLower);
-      const isKhulaRequested = /(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(khula|loose|khulla|खुला)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/i.test(rawTextLower);
+      const isPacketRequested = /(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(packet|pack|pkt|packt|à¤ªà¥ˆà¤•à¥‡à¤Ÿ|à¤ªà¥€à¤¸|pc|pcs|piece|pieces|box|bottles?|can)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/i.test(rawTextLower);
+      const isKhulaRequested = /(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(khula|loose|khulla|à¤–à¥à¤²à¤¾)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/i.test(rawTextLower);
       
       let requestedWeightGrams: number | null = null;
       if (item.unit === 'kg' || item.unit === 'l') {
@@ -553,8 +553,8 @@ export default function BillingPage() {
         const nameLower = (cand.name || '').toLowerCase();
         const localLower = (cand.localName || '').toLowerCase();
         const isCandLoose = (
-          nameLower.includes('khula') || nameLower.includes('loose') || nameLower.includes('खुला') || nameLower.includes('खुली') ||
-          localLower.includes('khula') || localLower.includes('loose') || localLower.includes('खुला') || localLower.includes('खुली') ||
+          nameLower.includes('khula') || nameLower.includes('loose') || nameLower.includes('à¤–à¥à¤²à¤¾') || nameLower.includes('à¤–à¥à¤²à¥€') ||
+          localLower.includes('khula') || localLower.includes('loose') || localLower.includes('à¤–à¥à¤²à¤¾') || localLower.includes('à¤–à¥à¤²à¥€') ||
           ['kg', 'g', 'l', 'ml'].includes(cand.baseUnit)
         );
 
@@ -597,7 +597,7 @@ export default function BillingPage() {
       if (!bestMatch) {
         const words = searchName.split(/\s+/).filter((w: string) => w.length > 2);
         if (words.length > 0) {
-          // For each word, find catalog products it matches well (score ≤ 0.45)
+          // For each word, find catalog products it matches well (score â‰¤ 0.45)
           const productHits = new Map<string, { item: any; hitCount: number; bestScore: number }>();
           for (const w of words) {
             const subResult = fuse.search(w);
@@ -648,8 +648,8 @@ export default function BillingPage() {
               const nameLower = (cand.name || '').toLowerCase();
               const localLower = (cand.localName || '').toLowerCase();
               const isCandLoose = (
-                nameLower.includes('khula') || nameLower.includes('loose') || nameLower.includes('खुला') || nameLower.includes('खुली') ||
-                localLower.includes('khula') || localLower.includes('loose') || localLower.includes('खुला') || localLower.includes('खुली') ||
+                nameLower.includes('khula') || nameLower.includes('loose') || nameLower.includes('à¤–à¥à¤²à¤¾') || nameLower.includes('à¤–à¥à¤²à¥€') ||
+                localLower.includes('khula') || localLower.includes('loose') || localLower.includes('à¤–à¥à¤²à¤¾') || localLower.includes('à¤–à¥à¤²à¥€') ||
                 ['kg', 'g', 'l', 'ml'].includes(cand.baseUnit)
               );
 
@@ -824,7 +824,7 @@ export default function BillingPage() {
         confidence: 'high',
         hasExplicitQty: item.hasExplicitQty || false,
         aiLabel: match.name,
-        spokenWord: item.name, // original spoken word — used for generic category detection
+        spokenWord: item.name, // original spoken word â€” used for generic category detection
         isRepeated,
         parsedQty: item.quantity,
         parsedUnit: item.unit
@@ -1121,7 +1121,7 @@ export default function BillingPage() {
     };
 
     recognition.onend = () => {
-        // Restart FIRST before anything else — absolute minimum gap between
+        // Restart FIRST before anything else â€” absolute minimum gap between
         // stop and start so Android has no time to close the audio session.
         if (isListeningRef.current) {
             try { recognition.start(); } catch(_) {}
@@ -1195,7 +1195,7 @@ export default function BillingPage() {
     }
   }, [reviewItems.length]);
 
-  // ── Android hardware back button support ──────────────────────────────────
+  // â”€â”€ Android hardware back button support â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Push a history entry whenever a sub-view opens so the browser back button
   // closes it instead of navigating away from the page.
   useEffect(() => {
@@ -1236,7 +1236,7 @@ export default function BillingPage() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [search, selectedBill, isReviewing, selectedCategory]);
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const modeIndex = mode === 'MANUAL' ? 0 : mode === 'PENDING' ? 1 : 2;
   const isProgrammaticScroll = useRef(false);
@@ -1326,7 +1326,7 @@ export default function BillingPage() {
       const q = search.toLowerCase();
       const qHindi = transliterateHinglishToHindi(q);
 
-      // ── Exact / substring pass ──────────────────────────────────────────────
+      // â”€â”€ Exact / substring pass â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const exactMatched = catalog.filter(p =>
         p.name.toLowerCase().includes(q) ||
         (p.localName && p.localName.toLowerCase().includes(q)) ||
@@ -1340,10 +1340,10 @@ export default function BillingPage() {
       let matched: any[];
 
       if (exactMatched.length > 0) {
-        // Good spelling — use exact results
+        // Good spelling â€” use exact results
         matched = exactMatched;
       } else {
-        // Misspelled / wrong spelling — fall back to fuzzy search (Blinkit-style)
+        // Misspelled / wrong spelling â€” fall back to fuzzy search (Blinkit-style)
         const fuzzy = new Fuse(catalog, {
           keys: ['name', 'localName', 'localAliases'],
           threshold: 0.45,       // 0 = perfect match, 1 = match anything
@@ -1373,7 +1373,7 @@ export default function BillingPage() {
 
       setSearchResults(matched);
 
-      // ── Autocomplete suggestions (unique display names, max 5) ─────────────
+      // â”€â”€ Autocomplete suggestions (unique display names, max 5) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const seen = new Set<string>();
       const suggestions: {name: string; imageUrl: string | null; matchField: string}[] = [];
       for (const p of matched) {
@@ -1674,10 +1674,10 @@ export default function BillingPage() {
   return (
     <div className="flex flex-col max-w-7xl mx-auto h-full bg-white" data-searching={search.length > 0 ? 'true' : undefined}>
 
-      {/* Main Panel — fills full height, voice button floats over the bottom */}
+      {/* Main Panel â€” fills full height, voice button floats over the bottom */}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="bg-white shadow-sm border-b border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
-          {/* Tab bar — hidden when manual search is active */}
+          {/* Tab bar â€” hidden when manual search is active */}
           {!(mode === 'MANUAL' && search.length > 0) && (
           <div className="flex border-b border-slate-100 flex-shrink-0">
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
@@ -1730,7 +1730,7 @@ export default function BillingPage() {
               onScroll={() => { if (search.length > 0) searchInputRef.current?.blur(); }}
             >
 
-              {/* ── Category full-page view ── */}
+              {/* â”€â”€ Category full-page view â”€â”€ */}
               {selectedCategory ? (
                 <div className="flex flex-col flex-1">
                   {/* Header */}
@@ -1763,13 +1763,13 @@ export default function BillingPage() {
                 </div>
 
               ) : (
-                /* ── Home view ── */
+                /* â”€â”€ Home view â”€â”€ */
                 <div className="flex flex-col gap-0">
 
                   {/* Search bar */}
                   <div className="px-4 pt-4 pb-3 sticky top-0 bg-white z-20 border-b border-slate-100">
                     <div className="flex items-center gap-2">
-                      {/* Language toggle — shown here on mobile during search */}
+                      {/* Language toggle â€” shown here on mobile during search */}
                       <button
                         onClick={toggleHindi}
                         className={`md:hidden flex-shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-bold shadow-sm transition-all ${
@@ -1777,7 +1777,7 @@ export default function BillingPage() {
                         }`}
                         title={hindiMode ? 'Hindi ON' : 'Hindi OFF'}
                       >
-                        <span>अ</span>
+                        <span>à¤…</span>
                         <span className={`w-5 h-3 rounded-full relative transition-colors ${hindiMode ? 'bg-orange-300' : 'bg-slate-300'}`}>
                           <span className={`absolute top-0.5 w-2 h-2 rounded-full bg-white shadow transition-all ${hindiMode ? 'left-2.5' : 'left-0.5'}`} />
                         </span>
@@ -1793,7 +1793,7 @@ export default function BillingPage() {
                           autoCapitalize="off"
                           spellCheck={false}
                           enterKeyHint="search"
-                          placeholder="Search products…"
+                          placeholder="Search productsâ€¦"
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
                           onFocus={() => setSearchFocused(true)}
@@ -1809,7 +1809,7 @@ export default function BillingPage() {
                     </div>
                   </div>
 
-                  {/* ── Blinkit-style autocomplete suggestions — inline in page flow, not a floating overlay ── */}
+                  {/* â”€â”€ Blinkit-style autocomplete suggestions â€” inline in page flow, not a floating overlay â”€â”€ */}
                   {search.length > 1 && searchSuggestions.length > 0 && (
                     <div className="bg-white border-b border-slate-100">
                       {searchSuggestions.map((sug, idx) => {
@@ -1860,7 +1860,7 @@ export default function BillingPage() {
                     </div>
                   )}
 
-                  {/* ── SEARCH RESULTS ── */}
+                  {/* â”€â”€ SEARCH RESULTS â”€â”€ */}
                   {search.length > 1 ? (
                     <div className="px-4 pt-3">
                       {searchResults.length === 0 ? (
@@ -1886,13 +1886,13 @@ export default function BillingPage() {
                     </div>
 
                   ) : (
-                    /* ── HOME: Top selling + Categories ── */
+                    /* â”€â”€ HOME: Top selling + Categories â”€â”€ */
                     <>
-                      {/* Top Selling — horizontal scroll with suggestions */}
+                      {/* Top Selling â€” horizontal scroll with suggestions */}
                       {catalog.length > 0 && (
                         <div className="pt-4 pb-2">
                           <div className="flex items-center justify-between px-4 mb-3">
-                            <h2 className="text-sm font-bold text-slate-900">⚡ Top Selling</h2>
+                            <h2 className="text-sm font-bold text-slate-900">âš¡ Top Selling</h2>
                             {activeSuggestionId && (
                               <button onClick={() => setActiveSuggestionId(null)} className="text-[11px] text-slate-400 hover:text-slate-600 font-medium">Dismiss</button>
                             )}
@@ -1932,7 +1932,7 @@ export default function BillingPage() {
                             })}
                           </div>
 
-                          {/* Suggestions panel — slides in below the row */}
+                          {/* Suggestions panel â€” slides in below the row */}
                           {activeSuggestionId && (() => {
                             const activeProduct = catalog.find(p => p.id === activeSuggestionId);
                             if (!activeProduct) return null;
@@ -1993,10 +1993,10 @@ export default function BillingPage() {
                                             </div>
                                             <div className="p-1.5">
                                               <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                              <p className="text-[10px] font-black text-amber-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
+                                              <p className="text-[10px] font-black text-amber-600 mt-0.5">â‚¹{(sug.price || 0).toFixed(0)}</p>
                                               <p className="text-[9px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
                                               <div className={`mt-1 w-full rounded-lg py-0.5 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-amber-500 text-white' : 'border border-amber-400 text-amber-600'}`}>
-                                                {sugQty > 0 ? <><span>✓</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
+                                                {sugQty > 0 ? <><span>âœ“</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
                                               </div>
                                             </div>
                                           </div>
@@ -2044,10 +2044,10 @@ export default function BillingPage() {
                                             </div>
                                             <div className="p-1.5">
                                               <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                              <p className="text-[10px] font-bold text-emerald-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
+                                              <p className="text-[10px] font-bold text-emerald-600 mt-0.5">â‚¹{(sug.price || 0).toFixed(0)}</p>
                                               <p className="text-[9px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
                                               <div className={`mt-1 w-full rounded-lg py-0.5 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-indigo-600 text-white' : 'border border-indigo-400 text-indigo-600'}`}>
-                                                {sugQty > 0 ? <><span>✓</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
+                                                {sugQty > 0 ? <><span>âœ“</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
                                               </div>
                                             </div>
                                           </div>
@@ -2067,7 +2067,7 @@ export default function BillingPage() {
 
                       {/* Categories grid */}
                       <div className="px-4 pt-4 pb-6">
-                        <h2 className="text-sm font-bold text-slate-900 mb-3">🛒 Shop by Category</h2>
+                        <h2 className="text-sm font-bold text-slate-900 mb-3">ðŸ›’ Shop by Category</h2>
                         {(() => {
                           const cats = Array.from(new Set(catalog.map(p => p.category || 'Uncategorized'))).sort();
                           // Pick a representative image per category
@@ -2123,9 +2123,9 @@ export default function BillingPage() {
                   <div className="space-y-2">
                     {(showMorePending ? allPendingBills : pendingBills).map((bill) => (
                       <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-orange-300 hover:shadow-md hover:shadow-orange-50 transition-all">
-                        <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0"><span className="text-orange-500 text-lg">🕐</span></div>
-                        <div className="flex-1 min-w-0"><p className="font-semibold text-slate-900 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{bill.items?.length || 0} items · {new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <div className="text-right shrink-0"><p className="font-bold text-slate-900 text-sm">₹{bill.totalAmount?.toFixed(0) || '0'}</p><span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md">Pending</span></div>
+                        <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0"><span className="text-orange-500 text-lg">ðŸ•</span></div>
+                        <div className="flex-1 min-w-0"><p className="font-semibold text-slate-900 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{bill.items?.length || 0} items Â· {new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
+                        <div className="text-right shrink-0"><p className="font-bold text-slate-900 text-sm">â‚¹{bill.totalAmount?.toFixed(0) || '0'}</p><span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md">Pending</span></div>
                         <div className="absolute inset-y-0 left-0 w-1 bg-orange-400 rounded-full" />
                       </div>
                     ))}
@@ -2147,7 +2147,7 @@ export default function BillingPage() {
                       <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-50 transition-all">
                         <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0"><CheckCircle size={16} className="text-emerald-500" /></div>
                         <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <p className="font-semibold text-slate-700 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
+                        <p className="font-semibold text-slate-700 text-sm shrink-0">â‚¹{bill.totalAmount?.toFixed(0) || '0'}</p>
                         <div className="absolute inset-y-0 left-0 w-0.5 bg-emerald-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     ))}
@@ -2169,7 +2169,7 @@ export default function BillingPage() {
                       <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-rose-300 hover:shadow-md hover:shadow-rose-50 transition-all">
                         <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0"><TriangleAlert size={15} className="text-rose-500" /></div>
                         <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <p className="font-semibold text-rose-600 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
+                        <p className="font-semibold text-rose-600 text-sm shrink-0">â‚¹{bill.totalAmount?.toFixed(0) || '0'}</p>
                         <div className="absolute inset-y-0 left-0 w-0.5 bg-rose-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     ))}
@@ -2183,7 +2183,7 @@ export default function BillingPage() {
             {/* Slide 2 - Scan Slip / Review */}
             <div ref={slide2Ref} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}>
               {!isReviewing ? (
-                /* ── IDLE STATE: Upload / Voice prompt ── */
+                /* â”€â”€ IDLE STATE: Upload / Voice prompt â”€â”€ */
                 <div className="flex flex-col gap-4 p-5">
                   {/* Voice hint banner */}
                   {isListening ? (
@@ -2195,14 +2195,14 @@ export default function BillingPage() {
                           <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold uppercase tracking-widest text-rose-500 mb-1">Listening…</p>
-                          <p className="text-slate-700 text-sm leading-relaxed break-words">{finalTranscript || 'Say items like "2 kg sugar, 1 packet salt…"'}</p>
+                          <p className="text-xs font-bold uppercase tracking-widest text-rose-500 mb-1">Listeningâ€¦</p>
+                          <p className="text-slate-700 text-sm leading-relaxed break-words">{finalTranscript || 'Say items like "2 kg sugar, 1 packet saltâ€¦"'}</p>
                         </div>
                       </div>
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 flex items-center gap-3">
-                      <span className="text-2xl">🎤</span>
+                      <span className="text-2xl">ðŸŽ¤</span>
                       <div>
                         <p className="text-sm font-semibold text-indigo-700">Speak your order</p>
                         <p className="text-xs text-indigo-500 mt-0.5">Tap "Start Speaking" below and say items</p>
@@ -2243,7 +2243,7 @@ export default function BillingPage() {
                       className="w-full bg-indigo-600 text-white font-semibold py-3.5 rounded-xl hover:bg-indigo-700 active:bg-indigo-800 transition flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
                     >
                       {isProcessing ? (
-                        <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Analyzing…</>
+                        <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Analyzingâ€¦</>
                       ) : (
                         <><Camera size={16} />Analyze Image</>
                       )}
@@ -2251,7 +2251,7 @@ export default function BillingPage() {
                   )}
                 </div>
               ) : (
-                /* ── REVIEW STATE: Detected items list ── */
+                /* â”€â”€ REVIEW STATE: Detected items list â”€â”€ */
                 <div className="flex flex-col" style={{height: '100%'}}>
                   {/* Header */}
                   <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 flex-shrink-0">
@@ -2353,16 +2353,16 @@ export default function BillingPage() {
 
                           {/* Row 2: rate | total | qty-pill */}
                           <div className="flex gap-2 mt-2.5 items-center">
-                            {/* 1st: Rate box — fixed width so it doesn't crowd others */}
+                            {/* 1st: Rate box â€” fixed width so it doesn't crowd others */}
                             <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-9 w-24 shrink-0">
-                              <span className="text-slate-400 text-xs font-medium">₹</span>
+                              <span className="text-slate-400 text-xs font-medium">â‚¹</span>
                               <input type="number" className="w-full bg-transparent focus:outline-none text-xs font-bold text-slate-800 min-w-0" value={item.price || item.sellingPrice || 0} onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }} />
                             </div>
                             {/* 2nd: Total */}
                             <span className="text-xs font-bold text-indigo-600 shrink-0">
-                              ₹{calculateItemTotal(item).toFixed(0)}
+                              â‚¹{calculateItemTotal(item).toFixed(0)}
                             </span>
-                            {/* 3rd: Tappable quantity pill — opens the quantity selector sheet */}
+                            {/* 3rd: Tappable quantity pill â€” opens the quantity selector sheet */}
                             <button
                               onClick={() => setQtyPickerIdx(idx)}
                               className="flex items-center gap-1.5 bg-indigo-50 border-2 border-indigo-300 rounded-xl h-9 px-3 ml-auto shrink-0 active:bg-indigo-100 active:scale-95 transition-all"
@@ -2374,7 +2374,7 @@ export default function BillingPage() {
                             </button>
                           </div>
 
-                          {/* Suggestions — two rows: brands/variants + size/price packs */}
+                          {/* Suggestions â€” two rows: brands/variants + size/price packs */}
                           {item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
                             const selectedBrand = selectedBrandPerItem[idx] || null;
                             const activeSizeVariants = selectedBrand
@@ -2417,11 +2417,11 @@ export default function BillingPage() {
 
                             return (
                             <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2.5">
-                              {/* Row 1: Pack Sizes — updates when a brand is selected */}
+                              {/* Row 1: Pack Sizes â€” updates when a brand is selected */}
                               {activeSizeVariants.length > 0 && (
                                 <div>
                                   <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">
-                                    {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} — Pack Sizes` : 'Pack Sizes'}
+                                    {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} â€” Pack Sizes` : 'Pack Sizes'}
                                     <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span>
                                   </p>
                                   <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
@@ -2448,14 +2448,14 @@ export default function BillingPage() {
                                           }`}
                                         >
                                           {isPinned && (
-                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
+                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">â˜…</span>
                                           )}
                                           <div className="w-full h-12 bg-amber-50 overflow-hidden flex items-center justify-center">
                                             {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-amber-300" size={16} />}
                                           </div>
                                           <div className="p-1 text-center">
                                             <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                            <p className="text-[9px] font-black text-amber-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                            <p className="text-[9px] font-black text-amber-600">â‚¹{(sug.price || 0).toFixed(0)}</p>
                                           </div>
                                         </button>
                                       );
@@ -2506,14 +2506,14 @@ export default function BillingPage() {
                                           }`}
                                         >
                                           {isPinned && (
-                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
+                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">â˜…</span>
                                           )}
                                           <div className="w-full h-12 bg-slate-50 overflow-hidden flex items-center justify-center">
                                             {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={16} />}
                                           </div>
                                           <div className="p-1 text-center">
                                             <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                            <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                            <p className="text-[9px] font-bold text-emerald-600">â‚¹{(sug.price || 0).toFixed(0)}</p>
                                           </div>
                                         </button>
                                       );
@@ -2573,15 +2573,15 @@ export default function BillingPage() {
           </>
         ) : (
           <>
-            <span className="text-lg leading-none">🎤</span>
+            <span className="text-lg leading-none">ðŸŽ¤</span>
             Start Speaking
           </>
         )}
       </button>
       )}
 
-      {/* Cart Bottom Sheet — shown after "Add items to Bill" on mobile */}
-      {/* Cart Bottom Sheet — mini bar when collapsed, full sheet when expanded */}
+      {/* Cart Bottom Sheet â€” shown after "Add items to Bill" on mobile */}
+      {/* Cart Bottom Sheet â€” mini bar when collapsed, full sheet when expanded */}
       {(showCartSheet || cart.length > 0) && (
         <CartBottomSheet
           cart={cart}
@@ -2612,7 +2612,7 @@ export default function BillingPage() {
                 onClick={() => setSelectedBill(null)}
                 className="text-slate-500 hover:text-slate-700 text-2xl"
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -2665,10 +2665,10 @@ export default function BillingPage() {
                           {item.quantity} {item.unit}
                         </td>
                         <td className="py-3 text-right text-slate-600">
-                          ₹{(item.price || item.sellingPrice || 0).toFixed(2)}
+                          â‚¹{(item.price || item.sellingPrice || 0).toFixed(2)}
                         </td>
                         <td className="py-3 text-right font-medium text-slate-800">
-                          ₹{(item.total || 0).toFixed(2)}
+                          â‚¹{(item.total || 0).toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -2680,7 +2680,7 @@ export default function BillingPage() {
               <div className="pt-4 flex flex-col items-end border-t border-slate-200 border-dashed">
                 <div className="flex justify-between w-full max-w-xs text-lg font-bold">
                   <span className="text-slate-600">Total:</span>
-                  <span className="text-slate-900">₹{(selectedBill.totalAmount || 0).toFixed(2)}</span>
+                  <span className="text-slate-900">â‚¹{(selectedBill.totalAmount || 0).toFixed(2)}</span>
                 </div>
                 <p className="text-xs text-slate-400 mt-4 text-center w-full">Thank you for shopping with us!</p>
               </div>
@@ -2699,7 +2699,7 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* Quantity Selector Sheet — opens when user taps quantity pill in review list */}
+      {/* Quantity Selector Sheet â€” opens when user taps quantity pill in review list */}
       {qtyPickerIdx !== null && reviewItems[qtyPickerIdx] && (
         <QuantitySelectorSheet
           item={reviewItems[qtyPickerIdx]}
@@ -2803,7 +2803,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
 
   return (
     <>
-      {/* Backdrop — only when expanded */}
+      {/* Backdrop â€” only when expanded */}
       {expanded && (
         <div
           className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
@@ -2811,7 +2811,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
         />
       )}
 
-      {/* The sheet itself — always mounted, switches between mini and full */}
+      {/* The sheet itself â€” always mounted, switches between mini and full */}
       <div
         ref={sheetRef}
         className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-white shadow-2xl"
@@ -2825,7 +2825,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
           flexDirection: 'column',
         }}
       >
-        {/* ── MINI BAR (collapsed) ── */}
+        {/* â”€â”€ MINI BAR (collapsed) â”€â”€ */}
         {!expanded && (
           <div
             className="flex items-center gap-3 px-4 h-full cursor-pointer active:bg-slate-50 transition"
@@ -2844,7 +2844,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
               <p className="text-xs text-slate-500">Tap or swipe up to view</p>
             </div>
             <div className="text-right shrink-0">
-              <p className="font-bold text-emerald-600 text-base">₹{totalAmount.toFixed(0)}</p>
+              <p className="font-bold text-emerald-600 text-base">â‚¹{totalAmount.toFixed(0)}</p>
             </div>
             <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
@@ -2852,7 +2852,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
           </div>
         )}
 
-        {/* ── FULL SHEET (expanded) ── */}
+        {/* â”€â”€ FULL SHEET (expanded) â”€â”€ */}
         {expanded && (
           <>
             {/* Drag handle + down arrow button */}
@@ -2897,7 +2897,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
               ) : (
                 cart.map((item: any, idx: number) => (
                   <div key={idx} className="flex gap-3 items-center bg-slate-50 rounded-xl p-3 border border-slate-100">
-                    {/* Tappable left section — opens price editor */}
+                    {/* Tappable left section â€” opens price editor */}
                     <button
                       className="flex items-center gap-3 flex-1 min-w-0 text-left active:opacity-70 transition-opacity"
                       onClick={() => openPriceEdit(idx)}
@@ -2913,7 +2913,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
                           const bu = (item.baseUnit || 'pc').toLowerCase();
                           const isWV = ['g','ml','kg','l'].includes(bu);
                           const unitLabel = isWV && bq > 1 ? `${bq}${bu}` : bu;
-                          return <p className="text-xs text-indigo-500 font-medium">₹{(item.price || 0).toFixed(2)} / {unitLabel} <span className="text-slate-400 font-normal">· tap to edit</span></p>;
+                          return <p className="text-xs text-indigo-500 font-medium">â‚¹{(item.price || 0).toFixed(2)} / {unitLabel} <span className="text-slate-400 font-normal">Â· tap to edit</span></p>;
                         })()}
                       </div>
                     </button>
@@ -2923,13 +2923,13 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
                       const step = ['g','ml','kg','l'].includes(bu) && bq > 1 ? bq : 1;
                       return (
                         <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg h-7 shrink-0">
-                          <button onClick={() => { const q = item.quantity - step; q <= 0 ? removeFromCart(idx) : updateCartItem(idx, 'quantity', q); }} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">−</button>
+                          <button onClick={() => { const q = item.quantity - step; q <= 0 ? removeFromCart(idx) : updateCartItem(idx, 'quantity', q); }} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">âˆ’</button>
                           <span className="text-xs font-bold text-slate-800 px-1">{item.quantity}</span>
                           <button onClick={() => updateCartItem(idx, 'quantity', item.quantity + step)} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">+</button>
                         </div>
                       );
                     })()}
-                    <p className="text-sm font-bold text-indigo-600 shrink-0 w-14 text-right">₹{calculateItemTotal(item).toFixed(0)}</p>
+                    <p className="text-sm font-bold text-indigo-600 shrink-0 w-14 text-right">â‚¹{calculateItemTotal(item).toFixed(0)}</p>
                   </div>
                 ))
               )}
@@ -2940,7 +2940,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
               <div className="px-4 pb-6 pt-3 border-t border-slate-100 space-y-3 flex-shrink-0">
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 text-sm">Total</span>
-                  <span className="text-xl font-bold text-emerald-600">₹{totalAmount.toFixed(2)}</span>
+                  <span className="text-xl font-bold text-emerald-600">â‚¹{totalAmount.toFixed(2)}</span>
                 </div>
                 <div className="flex flex-col gap-2">
                   <input
@@ -2948,7 +2948,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={10}
-                    placeholder="📱 Phone Number"
+                    placeholder="ðŸ“± Phone Number"
                     value={customerInfo.phone}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const val = e.target.value.replace(/\D/g, '');
@@ -2967,7 +2967,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
                   />
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setCustomerInfo({ ...customerInfo, status: 'PAID' })} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status === 'PAID' ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>✓ Paid</button>
+                  <button onClick={() => setCustomerInfo({ ...customerInfo, status: 'PAID' })} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status === 'PAID' ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>âœ“ Paid</button>
                   <button onClick={() => setCustomerInfo({ ...customerInfo, status: 'UNPAID' })} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status === 'UNPAID' ? 'bg-rose-100 text-rose-700 border border-rose-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>Unpaid</button>
                 </div>
                 <button
@@ -2976,7 +2976,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
                   className="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-2xl hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50"
                 >
                   <CheckCircle size={18} />
-                  {savingBill ? 'Saving…' : 'Generate Bill'}
+                  {savingBill ? 'Savingâ€¦' : 'Generate Bill'}
                 </button>
               </div>
             )}
@@ -2984,7 +2984,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
         )}
       </div>
 
-      {/* Price Edit Modal — shown when a cart item card is tapped */}
+      {/* Price Edit Modal â€” shown when a cart item card is tapped */}
       {editingPriceIdx !== null && (
         <div
           className="fixed inset-0 z-[60] flex items-end justify-center"
@@ -3005,7 +3005,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
 
             {/* Price input */}
             <div className="flex items-center bg-slate-50 border-2 border-indigo-300 rounded-2xl px-4 h-14 gap-2 focus-within:border-indigo-500 transition-colors">
-              <span className="text-2xl font-bold text-slate-400">₹</span>
+              <span className="text-2xl font-bold text-slate-400">â‚¹</span>
               <input
                 ref={priceInputRef}
                 type="number"
@@ -3020,7 +3020,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
             </div>
 
             <p className="text-xs text-slate-400 mt-2 mb-5">
-              Original price: ₹{(cart[editingPriceIdx]?.price || 0).toFixed(2)} — change will update the product catalog
+              Original price: â‚¹{(cart[editingPriceIdx]?.price || 0).toFixed(2)} â€” change will update the product catalog
             </p>
 
             {/* Actions */}
@@ -3066,13 +3066,13 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
         mini ? 'flex-shrink-0 w-28' : ''
       } ${inCart ? 'border-indigo-400 shadow-indigo-100' : 'border-slate-200'}`}
     >
-      {/* Image area — tappable overlay when in cart */}
+      {/* Image area â€” tappable overlay when in cart */}
       <div
         className="relative w-full bg-slate-100 overflow-hidden"
         style={{ paddingBottom: '100%' }}
         onClick={inCart ? onInc : handlePress}
       >
-        {/* Product image — fills entire box */}
+        {/* Product image â€” fills entire box */}
         {p.imageUrl
           ? <img src={p.imageUrl} alt={p.name} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           : <div className="absolute inset-0 flex items-center justify-center"><Package className="text-slate-300" size={mini ? 22 : 28} /></div>
@@ -3104,7 +3104,7 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
       <div className="p-2">
         <p className={`font-semibold text-slate-900 line-clamp-2 leading-tight mb-0.5 ${mini ? 'text-[11px]' : 'text-xs'}`}>{pName(p.name, p.localName)}</p>
         <p className="text-[10px] text-slate-400 mb-1">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
-        <p className={`font-bold text-slate-900 ${mini ? 'text-xs mb-1.5' : 'text-sm mb-2'}`}>₹{(p.price || 0).toFixed(0)}</p>
+        <p className={`font-bold text-slate-900 ${mini ? 'text-xs mb-1.5' : 'text-sm mb-2'}`}>â‚¹{(p.price || 0).toFixed(0)}</p>
 
         {inCart ? (
           /* Qty stepper */
@@ -3112,7 +3112,7 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
             <button
               onClick={e => { e.stopPropagation(); onDec(); }}
               className={`flex items-center justify-center text-white font-bold ${mini ? 'w-5 h-5 text-sm' : 'w-6 h-6 text-base'}`}
-            >−</button>
+            >âˆ’</button>
             <span className={`text-white font-bold ${mini ? 'text-[11px]' : 'text-xs'}`}>{qty}</span>
             <button
               onClick={e => { e.stopPropagation(); onInc(); }}
@@ -3133,14 +3133,14 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // QuantitySelectorSheet
-// Main page: same 6 buttons as original (250g/500g/1kg/2kg/5kg/Custom).
-// Swipe LEFT → extra grams page (25g,50g,100g,200g,300g,400g,750g,Custom)
-// Swipe RIGHT ← back to main. Tab buttons also let you switch pages.
-// Piece/packet: original 3×3 grid, no extra pages.
+// For weight/liquid: 3 swipeable pages (Grams | Main | Kilograms).
+// For piece/packet: 3Ã—3 grid + a "By Weight" drawer at the bottom.
+//   The drawer peeks half-visible; tap/swipe up to expand.
+//   Entering a weight auto-suggests nearest packet count.
 // Does NOT touch any voice recognition, product matching, or billing logic.
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function QuantitySelectorSheet({ item, onSelect, onClose }: {
   item: any;
   onSelect: (qty: number, unit: string) => void;
@@ -3151,11 +3151,11 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
 
   const isWeight = ['kg', 'g', 'gram', 'grams'].includes(unit);
   const isLiquid = ['l', 'ml', 'litre', 'liter', 'liters', 'litres'].includes(unit);
+  const isPiece  = !isWeight && !isLiquid;
 
   type QtyOption = { label: string; qty: number; unit: string; isCustom?: boolean };
 
   // page: 0=small extras (grams/ml), 1=main, 2=large extras (kg/L)
-  // Default to 1 (main) so grams are to the LEFT and kg are to the RIGHT
   const [page, setPage] = useState(1);
 
   // Weight option pages
@@ -3176,8 +3176,6 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
     [{ label: '15 kg', qty: 15, unit: 'kg' }, { label: '20 kg', qty: 20, unit: 'kg' }],
     [{ label: '25 kg', qty: 25, unit: 'kg' }, { label: 'Custom', qty: -1, unit, isCustom: true }],
   ];
-
-  // Liquid option pages
   const liquidMain: QtyOption[][] = [
     [{ label: '250ml', qty: 250, unit: 'ml' }, { label: '500ml', qty: 500, unit: 'ml' }],
     [{ label: '1 L',   qty: 1,   unit: 'l'  }, { label: '2 L',   qty: 2,   unit: 'l'  }],
@@ -3193,23 +3191,37 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
     [{ label: '10 L', qty: 10, unit: 'l' }, { label: '15 L', qty: 15, unit: 'l' }],
     [{ label: '20 L', qty: 20, unit: 'l' }, { label: 'Custom', qty: -1, unit, isCustom: true }],
   ];
-
-  // Piece / packet — unchanged 3-column grid
   const pieceRows: QtyOption[][] = [
     [{ label: '1',  qty: 1,  unit }, { label: '2',  qty: 2,  unit }, { label: '3',  qty: 3,  unit }],
     [{ label: '4',  qty: 4,  unit }, { label: '5',  qty: 5,  unit }, { label: '6',  qty: 6,  unit }],
     [{ label: '10', qty: 10, unit }, { label: '12', qty: 12, unit }, { label: 'Custom', qty: -1, unit, isCustom: true }],
   ];
 
-  // Custom input state
+  // â”€â”€ Custom input (piece/weight shared) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [customMode, setCustomMode] = useState(false);
   const [customValue, setCustomValue] = useState(String(currentQty));
   const customInputRef = useRef<HTMLInputElement>(null);
 
-  // Touch tracking for swipe gesture on the options area
+  // â”€â”€ Weight drawer state (piece/packet only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const [weightDrawerOpen, setWeightDrawerOpen] = useState(false);
+  // weight drawer has its own 3-page swipe
+  const [wPage, setWPage] = useState(1); // 0=grams,1=main,2=kg
+  // packed weight in grams (from item metadata)
+  const packetWeightG: number = (() => {
+    const pw = item.packetWeight || item.baseQuantity || 0;
+    const pu = (item.packetUnit || item.baseUnit || 'g').toLowerCase();
+    if (!pw) return 0;
+    if (['kg', 'kilo', 'l'].includes(pu)) return pw * 1000;
+    return pw; // already grams/ml
+  })();
+
+  // swipe tracking (shared for both main grid and weight drawer grid)
   const swipeTouchStartX = useRef(0);
   const swipeTouchStartY = useRef(0);
   const swipeActive = useRef(false);
+  const wSwipeTouchStartX = useRef(0);
+  const wSwipeTouchStartY = useRef(0);
+  const wSwipeActive = useRef(false);
 
   useEffect(() => {
     if (customMode) setTimeout(() => customInputRef.current?.focus(), 80);
@@ -3233,7 +3245,36 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
     return pieceRows;
   })();
 
-  const renderGrid = (rows: QtyOption[][]) => (
+  // Weight drawer active rows (same sets as weight, reused)
+  const wActiveRows: QtyOption[][] =
+    wPage === 1 ? weightMain : wPage === 0 ? weightGrams : weightKg;
+
+  // â”€â”€ When a weight value is tapped in the drawer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const handleWeightSelect = (weightQty: number, weightUnit: string) => {
+    // Convert to grams
+    let requestedG = weightQty;
+    if (weightUnit === 'kg') requestedG = weightQty * 1000;
+
+    if (packetWeightG > 0) {
+      // Calculate nearest packet count
+      const nearestPkts = Math.max(1, Math.round(requestedG / packetWeightG));
+      const coveredG = nearestPkts * packetWeightG;
+      const coveredLabel = coveredG >= 1000 ? `${coveredG / 1000} kg` : `${coveredG}g`;
+      // Show confirmation â€” suggest packets or allow exact weight
+      setPendingWeight({ requestedG, requestedQty: weightQty, requestedUnit: weightUnit, nearestPkts, coveredLabel });
+    } else {
+      // No packet weight info â€” just use the weight value directly
+      onSelect(weightQty, weightUnit);
+    }
+  };
+
+  // Pending weight confirmation state
+  const [pendingWeight, setPendingWeight] = useState<{
+    requestedG: number; requestedQty: number; requestedUnit: string;
+    nearestPkts: number; coveredLabel: string;
+  } | null>(null);
+
+  const renderGrid = (rows: QtyOption[][], onWgt?: (q: number, u: string) => void) => (
     <div className="space-y-2.5">
       {rows.map((row, rowIdx) => (
         <div key={rowIdx} className="grid gap-2.5" style={{ gridTemplateColumns: `repeat(${row.length}, 1fr)` }}>
@@ -3248,15 +3289,16 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
                 </button>
               );
             }
+            const handler = onWgt ? () => onWgt(opt.qty, opt.unit) : () => onSelect(opt.qty, opt.unit);
             return (
-              <button key={optIdx} onClick={() => onSelect(opt.qty, opt.unit)}
+              <button key={optIdx} onClick={handler}
                 className={`flex flex-col items-center justify-center rounded-2xl border-2 font-black py-4 text-xl active:scale-95 transition-all ${
-                  selected
+                  selected && !onWgt
                     ? 'border-indigo-600 bg-indigo-600 text-white shadow-lg shadow-indigo-200'
                     : 'border-slate-200 bg-white text-slate-800 hover:border-indigo-300 hover:bg-indigo-50'
                 }`}>
                 {opt.label}
-                {selected && <span className="text-[10px] font-bold text-indigo-200 mt-0.5">selected</span>}
+                {selected && !onWgt && <span className="text-[10px] font-bold text-indigo-200 mt-0.5">selected</span>}
               </button>
             );
           })}
@@ -3267,22 +3309,21 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
 
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Sheet */}
+      {/* Main sheet */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-[70] bg-white rounded-t-3xl shadow-2xl"
-        style={{ maxHeight: '80vh', overflowY: 'auto' }}
+        className="fixed bottom-0 left-0 right-0 z-[70] bg-white rounded-t-3xl shadow-2xl flex flex-col"
+        style={{ maxHeight: '88vh' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Drag pill */}
-        <div className="flex justify-center pt-3 pb-1">
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
           <div className="w-10 h-1.5 rounded-full bg-slate-300" />
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pb-3 pt-1 border-b border-slate-100">
+        <div className="flex items-center justify-between px-5 pb-3 pt-1 border-b border-slate-100 flex-shrink-0">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Select Quantity</p>
             <p className="font-bold text-slate-900 text-base leading-tight mt-0.5 truncate max-w-[220px]">{productName}</p>
@@ -3293,14 +3334,15 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
           </button>
         </div>
 
-        <div className="px-4 py-4 space-y-3">
-          {/* Current quantity */}
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ paddingBottom: isPiece ? '80px' : '24px' }}>
+          {/* Current */}
           <div className="flex items-center gap-2 bg-indigo-50 rounded-2xl px-4 py-2.5">
             <span className="text-xs font-bold uppercase tracking-widest text-indigo-400">Current</span>
             <span className="ml-auto text-lg font-black text-indigo-700">{currentQty} {unit}</span>
           </div>
 
-          {/* Page tabs — weight / liquid only */}
+          {/* Page tabs â€” weight/liquid */}
           {hasExtraPages && !customMode && (
             <div className="flex gap-1.5">
               {pageLabels.map((label, i) => (
@@ -3314,32 +3356,16 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
             </div>
           )}
 
-          {/* Options grid — swipe left/right to change page */}
+          {/* Main options grid */}
           {!customMode && (
             <div
-              onTouchStart={e => {
-                swipeTouchStartX.current = e.touches[0].clientX;
-                swipeTouchStartY.current = e.touches[0].clientY;
-                swipeActive.current = false;
-              }}
-              onTouchMove={e => {
-                const dx = Math.abs(e.touches[0].clientX - swipeTouchStartX.current);
-                const dy = Math.abs(e.touches[0].clientY - swipeTouchStartY.current);
-                if (!swipeActive.current && dx > dy && dx > 10) swipeActive.current = true;
-              }}
-              onTouchEnd={e => {
-                if (!hasExtraPages || !swipeActive.current) return;
-                const dx = e.changedTouches[0].clientX - swipeTouchStartX.current;
-                if (dx < -40) setPage(p => Math.min(p + 1, 2));
-                else if (dx > 40) setPage(p => Math.max(p - 1, 0));
-                swipeActive.current = false;
-              }}
+              onTouchStart={e => { swipeTouchStartX.current = e.touches[0].clientX; swipeTouchStartY.current = e.touches[0].clientY; swipeActive.current = false; }}
+              onTouchMove={e => { const dx = Math.abs(e.touches[0].clientX - swipeTouchStartX.current); const dy = Math.abs(e.touches[0].clientY - swipeTouchStartY.current); if (!swipeActive.current && dx > dy && dx > 10) swipeActive.current = true; }}
+              onTouchEnd={e => { if (!hasExtraPages || !swipeActive.current) return; const dx = e.changedTouches[0].clientX - swipeTouchStartX.current; if (dx < -40) setPage(p => Math.min(p + 1, 2)); else if (dx > 40) setPage(p => Math.max(p - 1, 0)); swipeActive.current = false; }}
             >
               {renderGrid(activeRows)}
               {hasExtraPages && page === 1 && (
-                <p className="text-center text-[10px] text-slate-300 font-medium mt-2 select-none">
-                  ← swipe for more values →
-                </p>
+                <p className="text-center text-[10px] text-slate-300 font-medium mt-2 select-none">â† swipe for more values â†’</p>
               )}
             </div>
           )}
@@ -3362,19 +3388,94 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setCustomMode(false)}
-                  className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition">
-                  Cancel
-                </button>
+                  className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition">Cancel</button>
                 <button onClick={handleCustomConfirm}
-                  className="flex-1 py-3.5 rounded-2xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200">
-                  Set Quantity
-                </button>
+                  className="flex-1 py-3.5 rounded-2xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200">Set Quantity</button>
               </div>
             </div>
           )}
         </div>
 
-        <div className="pb-6" />
+        {/* â”€â”€ By Weight drawer â€” piece/packet only â”€â”€ */}
+        {isPiece && !customMode && (
+          <div
+            className="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-[0_-4px_24px_rgba(0,0,0,0.12)] border-t border-slate-100 transition-all duration-300 ease-out"
+            style={{ height: weightDrawerOpen ? '340px' : '52px', overflow: 'hidden', zIndex: 10 }}
+          >
+            {/* Drawer handle / mini bar */}
+            <div
+              className="flex items-center gap-3 px-4 h-[52px] cursor-pointer select-none"
+              onClick={() => { setWeightDrawerOpen(o => !o); setPendingWeight(null); }}
+            >
+              <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v1h4V6a2 2 0 0 0-2-2z"/></svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-amber-700">Enter by Weight</p>
+                {packetWeightG > 0 && <p className="text-[10px] text-slate-400">1 packet = {packetWeightG >= 1000 ? `${packetWeightG/1000}kg` : `${packetWeightG}g`}</p>}
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={`text-slate-400 transition-transform duration-300 ${weightDrawerOpen ? 'rotate-180' : ''}`}>
+                <path d="M18 15l-6-6-6 6"/>
+              </svg>
+            </div>
+
+            {/* Drawer content */}
+            {weightDrawerOpen && (
+              <div className="px-4 pb-4 space-y-3 overflow-y-auto" style={{ height: '288px' }}>
+                {/* Pending weight confirmation */}
+                {pendingWeight ? (
+                  <div className="space-y-3">
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
+                      <p className="text-xs font-bold text-amber-700 mb-1">Weight entered: {pendingWeight.requestedQty} {pendingWeight.requestedUnit}</p>
+                      <p className="text-sm text-slate-700">
+                        Nearest = <span className="font-black text-indigo-700">{pendingWeight.nearestPkts} packet{pendingWeight.nearestPkts > 1 ? 's' : ''}</span>
+                        <span className="text-slate-400 text-xs ml-1">({pendingWeight.coveredLabel})</span>
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { onSelect(pendingWeight.nearestPkts, unit); }}
+                        className="flex-1 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm active:scale-95 transition-all shadow-md shadow-indigo-200">
+                        âœ“ {pendingWeight.nearestPkts} pkt ({pendingWeight.coveredLabel})
+                      </button>
+                      <button
+                        onClick={() => { onSelect(pendingWeight.requestedQty, pendingWeight.requestedUnit); }}
+                        className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 font-bold text-sm active:scale-95 transition border border-slate-200">
+                        {pendingWeight.requestedQty}{pendingWeight.requestedUnit} exact
+                      </button>
+                    </div>
+                    <button onClick={() => setPendingWeight(null)}
+                      className="w-full text-xs text-slate-400 font-semibold py-1 hover:text-slate-600 transition">â† back to weight options</button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Weight page tabs */}
+                    <div className="flex gap-1.5">
+                      {['Grams', 'Main', 'Kilograms'].map((label, i) => (
+                        <button key={i} onClick={() => setWPage(i)}
+                          className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                            wPage === i ? 'bg-amber-500 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                          }`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Weight grid */}
+                    <div
+                      onTouchStart={e => { wSwipeTouchStartX.current = e.touches[0].clientX; wSwipeTouchStartY.current = e.touches[0].clientY; wSwipeActive.current = false; }}
+                      onTouchMove={e => { const dx = Math.abs(e.touches[0].clientX - wSwipeTouchStartX.current); const dy = Math.abs(e.touches[0].clientY - wSwipeTouchStartY.current); if (!wSwipeActive.current && dx > dy && dx > 10) wSwipeActive.current = true; }}
+                      onTouchEnd={e => { if (!wSwipeActive.current) return; const dx = e.changedTouches[0].clientX - wSwipeTouchStartX.current; if (dx < -40) setWPage(p => Math.min(p + 1, 2)); else if (dx > 40) setWPage(p => Math.max(p - 1, 0)); wSwipeActive.current = false; }}
+                    >
+                      {renderGrid(wActiveRows, handleWeightSelect)}
+                      {wPage === 1 && <p className="text-center text-[10px] text-slate-300 font-medium mt-2 select-none">â† swipe for more values â†’</p>}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </>
   );
