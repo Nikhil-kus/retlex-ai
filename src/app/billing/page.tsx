@@ -3248,6 +3248,11 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
     if (packetWeightG > 0) {
       const nearestPkts = Math.max(1, Math.round(requestedG / packetWeightG));
       const coveredG = nearestPkts * packetWeightG;
+      // Exact multiple — no need for confirmation, select immediately
+      if (coveredG === requestedG) {
+        onSelect(nearestPkts, unit);
+        return;
+      }
       const coveredLabel = coveredG >= 1000 ? `${coveredG / 1000}kg` : `${coveredG}g`;
       setPendingWeight({ requestedQty: wQty, requestedUnit: wUnit, nearestPkts, coveredLabel });
     } else {
