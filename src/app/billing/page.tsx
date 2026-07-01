@@ -540,6 +540,7 @@ export default function BillingPage() {
       // Score and sort candidates
       let scoredResults = combined.map((r: any) => {
         let score = r.score ?? 1;
+        const nameScore = score; // preserve original name-match score before adjustments
         const cand = r.item;
         
         const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
@@ -563,7 +564,8 @@ export default function BillingPage() {
             score += 2.0;
           } else if (requestedWeightGrams !== null) {
             const candWeight = cand.packetWeight || cand.baseQuantity || 0;
-            if (candWeight === requestedWeightGrams) {
+            // Only apply weight bonus if this candidate already has a reasonable name match
+            if (candWeight === requestedWeightGrams && nameScore <= 0.5) {
               score -= 0.45;
             }
           }
@@ -577,7 +579,12 @@ export default function BillingPage() {
             if (!isCandLoose) {
               const candWeight = cand.packetWeight || cand.baseQuantity || 0;
               if (candWeight === requestedWeightGrams) {
-                score -= 0.45;
+                // Only apply weight bonus if this candidate already has a reasonable name match.
+                // This prevents a wrong-named product from winning purely because its packet
+                // weight happens to match the requested weight.
+                if (nameScore <= 0.5) {
+                  score -= 0.45;
+                }
               } else {
                 score += 0.25; // wrong weight packet gets penalized
               }
@@ -635,6 +642,7 @@ export default function BillingPage() {
             // Apply scoring adjustments to these hits as well
             const hitCandidates = Array.from(productHits.values()).map(h => {
               let score = h.bestScore;
+              const nameScore = score; // preserve original name-match score before adjustments
               const cand = h.item;
               
               const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
@@ -658,7 +666,8 @@ export default function BillingPage() {
                   score += 2.0;
                 } else if (requestedWeightGrams !== null) {
                   const candWeight = cand.packetWeight || cand.baseQuantity || 0;
-                  if (candWeight === requestedWeightGrams) {
+                  // Only apply weight bonus if this candidate already has a reasonable name match
+                  if (candWeight === requestedWeightGrams && nameScore <= 0.5) {
                     score -= 0.45;
                   }
                 }
@@ -671,7 +680,12 @@ export default function BillingPage() {
                   if (!isCandLoose) {
                     const candWeight = cand.packetWeight || cand.baseQuantity || 0;
                     if (candWeight === requestedWeightGrams) {
-                      score -= 0.45;
+                      // Only apply weight bonus if this candidate already has a reasonable name match.
+                      // This prevents a wrong-named product from winning purely because its packet
+                      // weight happens to match the requested weight.
+                      if (nameScore <= 0.5) {
+                        score -= 0.45;
+                      }
                     } else {
                       score += 0.25;
                     }
