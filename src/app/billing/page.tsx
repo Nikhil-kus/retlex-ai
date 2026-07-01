@@ -1337,7 +1337,8 @@ export default function BillingPage() {
 
   const fetchCatalog = async (shopId: string) => {
     const cached = catalogCache.get(shopId);
-    if (cached) { setCatalog(cached); return; }
+    if (cached) { setCatalog(cached); }
+    // Always refresh from server in background to pick up product edits (unit changes, price changes, etc.)
     const res = await fetch(`/api/products?shopId=${shopId}`);
     if (res.ok) {
       const data = await res.json();

@@ -7,6 +7,8 @@
 const SHOP_KEY = 'cache_shop';
 const CATALOG_KEY = 'cache_catalog';
 const CATALOG_SHOP_KEY = 'cache_catalog_shopId'; // track which shop the catalog belongs to
+const CATALOG_TS_KEY = 'cache_catalog_ts'; // timestamp for TTL
+const CATALOG_TTL_MS = 3 * 60 * 1000; // 3 minutes — ensures fresh baseUnit after product edits
 
 export const shopCache = {
   get(): any | null {
@@ -28,6 +30,8 @@ export const catalogCache = {
     try {
       const cachedShopId = sessionStorage.getItem(CATALOG_SHOP_KEY);
       if (cachedShopId !== shopId) return null; // different shop, ignore
+      const ts = sessionStorage.getItem(CATALOG_TS_KEY);
+      if (!ts || Date.now() - Number(ts) > CATALOG_TTL_MS) return null; // expired
       const raw = sessionStorage.getItem(CATALOG_KEY);
       return raw ? JSON.parse(raw) : null;
     } catch { return null; }
@@ -36,12 +40,14 @@ export const catalogCache = {
     try {
       sessionStorage.setItem(CATALOG_SHOP_KEY, shopId);
       sessionStorage.setItem(CATALOG_KEY, JSON.stringify(catalog));
+      sessionStorage.setItem(CATALOG_TS_KEY, String(Date.now()));
     } catch {}
   },
   clear() {
     try {
       sessionStorage.removeItem(CATALOG_KEY);
       sessionStorage.removeItem(CATALOG_SHOP_KEY);
+      sessionStorage.removeItem(CATALOG_TS_KEY);
     } catch {}
   },
 };
