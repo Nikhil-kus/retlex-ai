@@ -538,11 +538,12 @@ export default function BillingPage() {
       }
 
       // Score and sort candidates
-      let scoredResults = combined.map((r: any) => {
+      // Step 1: compute a name-quality score (with syllable penalty) for each candidate,
+      // before any weight adjustments. This is used later to gate weight bonuses so that
+      // a wrong-named product can never win purely because its packet weight matches.
+      const nameQualityResults = combined.map((r: any) => {
         let score = r.score ?? 1;
-        const nameScore = score; // preserve original name-match score before adjustments
         const cand = r.item;
-        
         const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
         const querySyllables = countSyllables(isQueryHindi ? searchName : transliterated);
         const matchSyllables = getClosestWordSyllableCount(searchName, cand, isQueryHindi);
@@ -550,7 +551,16 @@ export default function BillingPage() {
           const syllablePenalty = Math.abs(querySyllables - matchSyllables) / Math.max(querySyllables, matchSyllables);
           score += syllablePenalty * 0.8;
         }
-        
+        return { item: cand, nameScore: score };
+      });
+      // Best (lowest) name score across all candidates
+      const bestNameScore = nameQualityResults.length
+        ? Math.min(...nameQualityResults.map(r => r.nameScore))
+        : 1;
+
+      let scoredResults = nameQualityResults.map(({ item: cand, nameScore }) => {
+        let score = nameScore;
+
         const nameLower = (cand.name || '').toLowerCase();
         const localLower = (cand.localName || '').toLowerCase();
         const isCandLoose = (
@@ -559,13 +569,17 @@ export default function BillingPage() {
           ['kg', 'g', 'l', 'ml'].includes(cand.baseUnit)
         );
 
+        // Weight bonus is only a tiebreaker: only candidates whose name score is
+        // within 0.15 of the best name score are eligible for the weight bonus.
+        // This ensures a poorly-named product never wins just because its weight matches.
+        const isNameCompetitive = (nameScore - bestNameScore) <= 0.15;
+
         if (isPacketRequested) {
           if (isCandLoose) {
             score += 2.0;
-          } else if (requestedWeightGrams !== null) {
+          } else if (requestedWeightGrams !== null && isNameCompetitive) {
             const candWeight = cand.packetWeight || cand.baseQuantity || 0;
-            // Only apply weight bonus if this candidate already has a reasonable name match
-            if (candWeight === requestedWeightGrams && nameScore <= 0.5) {
+            if (candWeight === requestedWeightGrams) {
               score -= 0.45;
             }
           }
@@ -579,10 +593,10 @@ export default function BillingPage() {
             if (!isCandLoose) {
               const candWeight = cand.packetWeight || cand.baseQuantity || 0;
               if (candWeight === requestedWeightGrams) {
-                // Only apply weight bonus if this candidate already has a reasonable name match.
-                // This prevents a wrong-named product from winning purely because its packet
-                // weight happens to match the requested weight.
-                if (nameScore <= 0.5) {
+                // Only boost products that are already competitive on name match.
+                // This prevents e.g. "Tata Salt 500g" from beating "Aashirvaad Atta 500g"
+                // when the user asked for "aata 500g".
+                if (isNameCompetitive) {
                   score -= 0.45;
                 }
               } else {
@@ -642,7 +656,7 @@ export default function BillingPage() {
             // Apply scoring adjustments to these hits as well
             const hitCandidates = Array.from(productHits.values()).map(h => {
               let score = h.bestScore;
-              const nameScore = score; // preserve original name-match score before adjustments
+              const nameScore = score; // preserve name-match score before adjustments
               const cand = h.item;
               
               const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
@@ -661,13 +675,35 @@ export default function BillingPage() {
                 ['kg', 'g', 'l', 'ml'].includes(cand.baseUnit)
               );
 
+              // Will be replaced after bestNameScoreFallback is computed below
+              return { item: cand, hitCount: h.hitCount, nameScore, score };
+            });
+
+            // Compute the best name score among fallback candidates
+            const bestNameScoreFallback = hitCandidates.length
+              ? Math.min(...hitCandidates.map(c => c.nameScore))
+              : 1;
+
+            // Now apply weight adjustments, gated by name-competitiveness
+            const weightAdjustedCandidates = hitCandidates.map(({ item: cand, hitCount, nameScore, score }) => {
+              const nameLower = (cand.name || '').toLowerCase();
+              const localLower = (cand.localName || '').toLowerCase();
+              const isCandLoose = (
+                nameLower.includes('khula') || nameLower.includes('loose') || nameLower.includes('खुला') || nameLower.includes('खुली') ||
+                localLower.includes('khula') || localLower.includes('loose') || localLower.includes('खुला') || localLower.includes('खुली') ||
+                ['kg', 'g', 'l', 'ml'].includes(cand.baseUnit)
+              );
+
+              // Weight bonus is only a tiebreaker: only candidates within 0.15 of the
+              // best name score are eligible, so a wrong-named product can't win by weight alone.
+              const isNameCompetitive = (nameScore - bestNameScoreFallback) <= 0.15;
+
               if (isPacketRequested) {
                 if (isCandLoose) {
                   score += 2.0;
-                } else if (requestedWeightGrams !== null) {
+                } else if (requestedWeightGrams !== null && isNameCompetitive) {
                   const candWeight = cand.packetWeight || cand.baseQuantity || 0;
-                  // Only apply weight bonus if this candidate already has a reasonable name match
-                  if (candWeight === requestedWeightGrams && nameScore <= 0.5) {
+                  if (candWeight === requestedWeightGrams) {
                     score -= 0.45;
                   }
                 }
@@ -680,10 +716,7 @@ export default function BillingPage() {
                   if (!isCandLoose) {
                     const candWeight = cand.packetWeight || cand.baseQuantity || 0;
                     if (candWeight === requestedWeightGrams) {
-                      // Only apply weight bonus if this candidate already has a reasonable name match.
-                      // This prevents a wrong-named product from winning purely because its packet
-                      // weight happens to match the requested weight.
-                      if (nameScore <= 0.5) {
+                      if (isNameCompetitive) {
                         score -= 0.45;
                       }
                     } else {
@@ -692,17 +725,17 @@ export default function BillingPage() {
                   }
                 }
               }
-              return { item: cand, hitCount: h.hitCount, score };
+              return { item: cand, hitCount, score };
             });
 
             // Sort product hits: most hitCounts first; break ties by best score
-            hitCandidates.sort((a: any, b: any) =>
+            weightAdjustedCandidates.sort((a: any, b: any) =>
               b.hitCount !== a.hitCount ? b.hitCount - a.hitCount : a.score - b.score
             );
 
             // Verify if the best hit has an acceptable score after adjustments
-            if (hitCandidates.length && hitCandidates[0].score <= 0.6) {
-              bestMatch = hitCandidates[0].item;
+            if (weightAdjustedCandidates.length && weightAdjustedCandidates[0].score <= 0.6) {
+              bestMatch = weightAdjustedCandidates[0].item;
             }
           }
         }
