@@ -769,9 +769,14 @@ export default function CustomerPage() {
           }
       } else {
         // Mismatch between spoken unit and base unit without a conversion rule
-        // If both are packet/piece types, align to baseUnit
         if (['pc', 'pkt'].includes(item.unit) && ['pc', 'pkt'].includes(baseUnit)) {
+          // Both are packet/piece types — align to baseUnit
           finalUnit = baseUnit;
+        } else if (['pc', 'pkt'].includes(item.unit) && ['kg', 'g', 'l', 'ml'].includes(baseUnit)) {
+          // User said no unit (defaulted to 'pc') but the product is weight-based.
+          // Honour the product's baseUnit — the spoken quantity means "N units of that weight".
+          finalUnit = baseUnit;
+          // No quantity conversion: "2 namak" for a 1-kg product means qty=2 in kg
         } else {
           finalUnit = item.unit;
         }
