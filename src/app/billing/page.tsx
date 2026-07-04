@@ -9,7 +9,7 @@ import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
-import { transliterateHinglishToHindi } from '@/lib/transliterate';
+import { transliterateHinglishToHindi, transliterateHindiToHinglish } from '@/lib/transliterate';
 
 const cleanProductName = (name: string) => {
   return name
@@ -507,20 +507,33 @@ export default function BillingPage() {
       const transliterated = transliterateHinglishToHindi(searchName);
       
       let combined = [...origRes];
-      if (transliterated !== searchName.toLowerCase()) {
-        const transRes = fuse.search(transliterated);
-        const seen = new Map<string, any>(origRes.map(r => [r.item.id || r.item.name, r]));
-        for (const r of transRes) {
+      // Helper to merge a new Fuse result list into combined, keeping the best score per product
+      const mergeResults = (newResults: any[]) => {
+        const seen = new Map<string, any>(combined.map(r => [r.item.id || r.item.name, r]));
+        for (const r of newResults) {
           const key = r.item.id || r.item.name;
           const existing = seen.get(key);
           if (!existing) {
             combined.push(r);
             seen.set(key, r);
-          } else {
-            if ((r.score ?? 1) < (existing.score ?? 1)) {
-              existing.score = r.score;
-            }
+          } else if ((r.score ?? 1) < (existing.score ?? 1)) {
+            existing.score = r.score;
           }
+        }
+      };
+
+      // If query is Hinglish/Latin, also search its Hindi transliteration
+      if (transliterated !== searchName.toLowerCase()) {
+        mergeResults(fuse.search(transliterated));
+      }
+
+      // If query is already Hindi (Devanagari), also search its Hinglish/English equivalent
+      // so that English-named catalog products (e.g. "Kali Til") can be found
+      const isQueryHindiScript = /[\u0900-\u097F]/.test(searchName);
+      if (isQueryHindiScript) {
+        const hinglish = transliterateHindiToHinglish(searchName);
+        if (hinglish !== searchName) {
+          mergeResults(fuse.search(hinglish));
         }
       }
 

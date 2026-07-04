@@ -115,3 +115,124 @@ export function transliterateHinglishToHindi(text: string): string {
   const mapped = words.map(w => HINGLISH_TO_HINDI_MAP[w] || w);
   return mapped.join(" ");
 }
+
+/**
+ * Reverse map: Hindi/Devanagari word → most common Hinglish/English equivalent.
+ * Used so that a Hindi voice query can also match English-named catalog products.
+ * E.g., "काली तिल" -> "kali til" which Fuse can match against "Kali Til"
+ */
+export const HINDI_TO_HINGLISH_MAP: Record<string, string> = {
+  // Reverse of HINGLISH_TO_HINDI_MAP (most useful entries only)
+  'लक्स': 'lux',
+  'निरमा': 'nirma',
+  'नवरत्न': 'navratna',
+  'डिटॉल': 'dettol',
+  'एवरेस्ट': 'everest',
+  'पुष्प': 'pushp',
+  'सुहाना': 'suhana',
+  'फॉर्च्यून': 'fortune',
+  'धारा': 'dhara',
+  'टाटा': 'tata',
+  'अमूल': 'amul',
+  'सांची': 'sanchi',
+  'पतंजलि': 'patanjali',
+  'कोलगेट': 'colgate',
+  'सर्फ': 'surf',
+  'रिन': 'rin',
+  'टाइड': 'tide',
+  'घड़ी': 'ghadi',
+  'हार्पिक': 'harpic',
+  'रुचि': 'ruchi',
+  'डव': 'dove',
+  'निमा': 'nima',
+  'साबुन': 'sabun',
+  'तेल': 'tel',
+  'दूध': 'doodh',
+  'आटा': 'atta',
+  'चावल': 'chawal',
+  'दाल': 'dal',
+  'नमक': 'namak',
+  'चीनी': 'chini',
+  'चाय': 'chai',
+  'मसाला': 'masala',
+  'मिर्च': 'mirch',
+  'हल्दी': 'haldi',
+  'धनिया': 'dhaniya',
+  'जीरा': 'jeera',
+  'दही': 'dahi',
+  'पनीर': 'paneer',
+  'बिस्कुट': 'biscuit',
+  'शैम्पू': 'shampoo',
+  'पाउडर': 'powder',
+  'मखाना': 'makhana',
+  'दलिया': 'daliya',
+  'सूजी': 'sooji',
+  'पोहा': 'poha',
+  'मैदा': 'maida',
+  'बेसन': 'besan',
+  'घी': 'ghee',
+  'चना': 'chana',
+  'साबुत': 'sabut',
+  'हरी': 'hari',
+  'खुला': 'khula',
+  'पैकेट': 'packet',
+  'डिटर्जेंट': 'detergent',
+  // Common product descriptors spoken in Hindi
+  'काली': 'kali',
+  'काला': 'kala',
+  'सफेद': 'safed',
+  'लाल': 'lal',
+  'हरा': 'hara',
+  'तिल': 'til',
+  'सरसों': 'sarson',
+  'राई': 'rai',
+  'अजवाइन': 'ajwain',
+  'मेथी': 'methi',
+  'सौंफ': 'saunf',
+  'कलौंजी': 'kalonji',
+  'इलायची': 'elaichi',
+  'लौंग': 'laung',
+  'दालचीनी': 'dalchini',
+  'काली मिर्च': 'kali mirch',
+  'अदरक': 'adrak',
+  'लहसुन': 'lahsun',
+  'प्याज': 'pyaaz',
+  'आलू': 'aloo',
+  'मूंग': 'moong',
+  'उड़द': 'urad',
+  'अरहर': 'arhar',
+  'मसूर': 'masoor',
+  'राजमा': 'rajma',
+  'चने': 'chane',
+  'मूंगफली': 'moongfali',
+  'नारियल': 'nariyal',
+  'सोयाबीन': 'soyabean',
+  'सूरजमुखी': 'surajmukhi',
+  'बादाम': 'badam',
+  'काजू': 'kaju',
+  'किशमिश': 'kishmish',
+  'खजूर': 'khajoor',
+  'नूडल्स': 'noodles',
+  'मैगी': 'maggi',
+  'सेंवई': 'sewai',
+  'खीर': 'kheer',
+  'कॉफी': 'coffee',
+  'हॉर्लिक्स': 'horlicks',
+  'बोर्नविटा': 'bornvita',
+};
+
+/**
+ * Transliterates a Hindi/Devanagari query into its Hinglish/English equivalent.
+ * E.g., "काली तिल" -> "kali til"
+ * Used to match Hindi voice queries against English-named catalog products.
+ */
+export function transliterateHindiToHinglish(text: string): string {
+  if (!text) return "";
+  // First try exact multi-word phrases
+  const trimmed = text.toLowerCase().trim();
+  if (HINDI_TO_HINGLISH_MAP[trimmed]) return HINDI_TO_HINGLISH_MAP[trimmed];
+  // Then map word-by-word
+  const words = trimmed.split(/\s+/);
+  const mapped = words.map(w => HINDI_TO_HINGLISH_MAP[w] || w);
+  return mapped.join(" ");
+}
