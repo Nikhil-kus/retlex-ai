@@ -603,23 +603,22 @@ export default function ProductsPage() {
 
             <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
 
-              {/* ── AI Image Section ── */}
-              {!editingId && (
-                <div className="rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/40 p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Sparkles size={16} className="text-indigo-500" />
-                    <span className="text-sm font-bold text-indigo-700">AI Auto-fill from Image</span>
-                    <span className="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-semibold">BETA</span>
-                  </div>
+              {/* ── Image Section ── */}
+              <div className="rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/40 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Camera size={16} className="text-indigo-500" />
+                  <span className="text-sm font-bold text-indigo-700">Product Image {!editingId && '& AI Auto-fill'}</span>
+                  {!editingId && <span className="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-semibold">BETA</span>}
+                </div>
 
-                  <div className="flex gap-3 items-start">
+                <div className="flex gap-3 items-start">
                     {/* Preview */}
                     <div
                       className="w-24 h-24 rounded-xl border-2 border-indigo-200 bg-white overflow-hidden flex items-center justify-center shrink-0 cursor-pointer hover:border-indigo-400 transition"
                       onClick={() => imageInputRef.current?.click()}
                     >
-                      {imagePreview
-                        ? <img src={imagePreview} alt="preview" className="w-full h-full object-contain" />
+                      {imagePreview || formData.imageUrl
+                        ? <img src={imagePreview || formData.imageUrl} alt="preview" className="w-full h-full object-contain" />
                         : <div className="flex flex-col items-center gap-1 text-indigo-300">
                             <Camera size={24} />
                             <span className="text-[10px] font-medium">Tap to add</span>
@@ -668,13 +667,12 @@ export default function ProductsPage() {
                           AI filled {aiFields.size} field{aiFields.size > 1 ? 's' : ''} — review before saving
                         </div>
                       )}
-                      {!imagePreview && !isAnalyzing && (
+                      {!imagePreview && !formData.imageUrl && !isAnalyzing && (
                         <p className="text-[11px] text-slate-400 mt-1">Take a photo of the product packaging to auto-fill name, category & unit</p>
                       )}
                     </div>
                   </div>
                 </div>
-              )}
 
               {/* ── Form Fields ── */}
               <div className="grid md:grid-cols-2 gap-4">
@@ -762,13 +760,6 @@ export default function ProductsPage() {
                   <input value={formData.barcode} onChange={e => setFormData({ ...formData, barcode: e.target.value })}
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-slate-500"
                     placeholder="Scan or type barcode" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Image URL</label>
-                  <input value={formData.imageUrl.startsWith('data:') ? '' : formData.imageUrl}
-                    onChange={e => setFormData({ ...formData, imageUrl: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-slate-500"
-                    placeholder="https://... (or use camera above)" />
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-slate-700 mb-1">
