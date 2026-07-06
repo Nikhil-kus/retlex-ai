@@ -1168,16 +1168,18 @@ export default function BillingPage() {
                     }
                     return {
                         ...finalItem,
-                        suggestions: getSuggestions(finalItem)
+                        suggestions: []
                     };
                 });
 
                 const allItems = [...baseReviewItemsRef.current, ...enrichedItems];
 
-                // Only keep suggestions for the most recently spoken item
+                // Compute suggestions only for the last item — the only one the UI shows
+                // them for. Previously getSuggestions() ran for every item and was then
+                // immediately discarded for all but the last, wasting 3 catalog scans per item.
                 const finalItems = allItems.map((item, idx) => {
-                    if (idx === allItems.length - 1) return item;
-                    return { ...item, suggestions: [] };
+                    if (idx === allItems.length - 1) return { ...item, suggestions: getSuggestions(item) };
+                    return item;
                 });
 
                 setReviewItems(finalItems);
