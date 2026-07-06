@@ -557,7 +557,7 @@ export default function BillingPage() {
       // (max delta ±0.45 / ±0.8) cannot realistically promote them over the
       // genuinely close matches already in the top 20. This is the primary
       // fix for voice-search slowdown when weight+quantity is spoken.
-      const TOP_N = 20;
+      const TOP_N = 10;
       const topCombined = combined
         .slice()
         .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
