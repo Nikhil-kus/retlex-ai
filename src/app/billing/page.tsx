@@ -551,10 +551,22 @@ export default function BillingPage() {
       }
 
       // Score and sort candidates
+      // Limit to top 20 by raw Fuse score before running the expensive
+      // syllable-penalty (Levenshtein) pass. Candidates beyond position 20
+      // are already weak fuzzy matches and the weight/syllable adjustments
+      // (max delta ±0.45 / ±0.8) cannot realistically promote them over the
+      // genuinely close matches already in the top 20. This is the primary
+      // fix for voice-search slowdown when weight+quantity is spoken.
+      const TOP_N = 20;
+      const topCombined = combined
+        .slice()
+        .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
+        .slice(0, TOP_N);
+
       // Step 1: compute a name-quality score (with syllable penalty) for each candidate,
       // before any weight adjustments. This is used later to gate weight bonuses so that
       // a wrong-named product can never win purely because its packet weight matches.
-      const nameQualityResults = combined.map((r: any) => {
+      const nameQualityResults = topCombined.map((r: any) => {
         let score = r.score ?? 1;
         const cand = r.item;
         const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
