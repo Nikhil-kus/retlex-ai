@@ -472,7 +472,11 @@ export default function BillingPage() {
 
   const processVoiceTextToItems = (text: string) => {
     if (!text || text.trim().length === 0) return [];
+
+    // ── TIMING: Phase 1 — parse ──────────────────────────────────────────────
+    const _t0 = performance.now();
     const parsedItems = parseVoiceItems(text);
+    const _tParse = performance.now();
     
     // PHASE 2: NORMALIZATION LAYER
     const normalizedItems = parsedItems.map(item => {
@@ -495,6 +499,8 @@ export default function BillingPage() {
 
     // PHASE 3: CONNECT WITH EXISTING CATALOG (FORGIVING MODE)
     // Use the cached Fuse index (rebuilt only when catalog changes, not on every speech event).
+    // ── TIMING: Phase 3 start (Fuse search + scoring) ────────────────────────
+    const _tFuseStart = performance.now();
     const fuse = fuseRef.current;
     if (!fuse) return [];
 
@@ -935,6 +941,15 @@ export default function BillingPage() {
       }
     }
 
+    // ── TIMING: log processVoiceTextToItems breakdown ────────────────────────
+    const _tEnd = performance.now();
+    console.log(
+      `[PERF] processVoiceTextToItems | items=${deduplicatedItems.length}` +
+      ` | parse=${(_tParse - _t0).toFixed(1)}ms` +
+      ` | fuseSearch+scoring=${(_tEnd - _tFuseStart).toFixed(1)}ms` +
+      ` | total=${(_tEnd - _t0).toFixed(1)}ms`
+    );
+
     return deduplicatedItems;
   };
 
@@ -1067,6 +1082,9 @@ export default function BillingPage() {
     recognitionRef.current = recognition;
 
     recognition.onresult = (event: any) => {
+        // ── TIMING: total onresult event ─────────────────────────────────────
+        const _tEvent = performance.now();
+
         let merged = "";
         for (let i = 0; i < event.results.length; ++i) {
             const text = event.results[i][0].transcript.trim();
@@ -1079,8 +1097,11 @@ export default function BillingPage() {
         setFinalTranscript(fullText);
 
         if (fullText.length > 1) {
+            // ── TIMING: processVoiceTextToItems (logged internally) ───────────
             const newParsedItems = processVoiceTextToItems(fullText);
             if (newParsedItems.length > 0) {
+                // ── TIMING: enrichment loop ───────────────────────────────────
+                const _tEnrichStart = performance.now();
                 const enrichedItems = newParsedItems.map((item: any) => {
                     let finalItem = item;
                     // 1. Session override (tapped a suggestion card during this voice session)
@@ -1171,9 +1192,13 @@ export default function BillingPage() {
                         suggestions: []
                     };
                 });
+                // ── TIMING: enrichment done ───────────────────────────────────
+                const _tEnrichEnd = performance.now();
 
                 const allItems = [...baseReviewItemsRef.current, ...enrichedItems];
 
+                // ── TIMING: suggestion generation ─────────────────────────────
+                const _tSugStart = performance.now();
                 // Compute suggestions only for the last item — the only one the UI shows
                 // them for. Previously getSuggestions() ran for every item and was then
                 // immediately discarded for all but the last, wasting 3 catalog scans per item.
@@ -1181,9 +1206,22 @@ export default function BillingPage() {
                     if (idx === allItems.length - 1) return { ...item, suggestions: getSuggestions(item) };
                     return item;
                 });
+                const _tSugEnd = performance.now();
 
+                // ── TIMING: setState ──────────────────────────────────────────
+                const _tSetState = performance.now();
                 setReviewItems(finalItems);
                 setIsReviewing(true);
+                const _tSetStateEnd = performance.now();
+
+                // ── TIMING: full onresult summary ─────────────────────────────
+                console.log(
+                  `[PERF] onresult | totalItems=${allItems.length}` +
+                  ` | enrichment=${(_tEnrichEnd - _tEnrichStart).toFixed(1)}ms` +
+                  ` | suggestions=${(_tSugEnd - _tSugStart).toFixed(1)}ms` +
+                  ` | setState=${(_tSetStateEnd - _tSetState).toFixed(1)}ms` +
+                  ` | totalEvent=${(_tSetStateEnd - _tEvent).toFixed(1)}ms`
+                );
             }
         }
     };
