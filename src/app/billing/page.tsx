@@ -134,6 +134,9 @@ export default function BillingPage() {
   const [selectedBrandPerItem, setSelectedBrandPerItem] = useState<Record<number, any>>({});
   // Long-press timer for pinning a suggestion as default
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cached Fuse index for voice product matching — rebuilt only when catalog changes,
+  // not on every speech recognition event.
+  const fuseRef = useRef<Fuse<any> | null>(null);
   // Toast: id of the product just pinned as default (auto-clears after 1.5s)
   const [pinnedProductId, setPinnedProductId] = useState<string | null>(null);
   // Quantity selector sheet: index of the review item whose picker is open (null = closed)
@@ -491,13 +494,9 @@ export default function BillingPage() {
     });
 
     // PHASE 3: CONNECT WITH EXISTING CATALOG (FORGIVING MODE)
-    const fuse = new Fuse(catalog, {
-      keys: ['name', 'localName', 'localAliases'],
-      threshold: 0.6,
-      includeScore: true,
-      ignoreLocation: true,
-      minMatchCharLength: 2
-    });
+    // Use the cached Fuse index (rebuilt only when catalog changes, not on every speech event).
+    const fuse = fuseRef.current;
+    if (!fuse) return [];
 
     const seenItemsMap = new Set();
 
@@ -1228,6 +1227,20 @@ export default function BillingPage() {
   const [shop, setShop] = useState<any>(null);
   const [catalog, setCatalog] = useState<any[]>([]);
   const [mode, setMode] = useState<'MANUAL' | 'OCR' | 'PENDING'>('MANUAL');
+
+  // Rebuild the voice Fuse index whenever the catalog changes (page load, background
+  // refresh, or inline price edit). This avoids rebuilding it on every speech event.
+  useEffect(() => {
+    if (catalog.length > 0) {
+      fuseRef.current = new Fuse(catalog, {
+        keys: ['name', 'localName', 'localAliases'],
+        threshold: 0.6,
+        includeScore: true,
+        ignoreLocation: true,
+        minMatchCharLength: 2
+      });
+    }
+  }, [catalog]);
 
   // Cart state
   const [cart, setCart] = useState<any[]>([]);
