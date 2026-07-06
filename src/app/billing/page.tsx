@@ -137,6 +137,11 @@ export default function BillingPage() {
   // Cached Fuse index for voice product matching — rebuilt only when catalog changes,
   // not on every speech recognition event.
   const fuseRef = useRef<Fuse<any> | null>(null);
+  // Debug timing panel — populated by [PERF] instrumentation, shown during voice input
+  const [perfStats, setPerfStats] = useState<{
+    items: number; parse: string; fuse: string; enrichment: string;
+    suggestions: string; setState: string; total: string;
+  } | null>(null);
   // Toast: id of the product just pinned as default (auto-clears after 1.5s)
   const [pinnedProductId, setPinnedProductId] = useState<string | null>(null);
   // Quantity selector sheet: index of the review item whose picker is open (null = closed)
@@ -471,7 +476,7 @@ export default function BillingPage() {
   };
 
   const processVoiceTextToItems = (text: string) => {
-    if (!text || text.trim().length === 0) return [];
+    if (!text || text.trim().length === 0) return { items: [], _timing: { parse: '0.0', fuse: '0.0' } };
 
     // ── TIMING: Phase 1 — parse ──────────────────────────────────────────────
     const _t0 = performance.now();
@@ -502,7 +507,7 @@ export default function BillingPage() {
     // ── TIMING: Phase 3 start (Fuse search + scoring) ────────────────────────
     const _tFuseStart = performance.now();
     const fuse = fuseRef.current;
-    if (!fuse) return [];
+    if (!fuse) return { items: [], _timing: { parse: '0.0', fuse: '0.0' } };
 
     const seenItemsMap = new Set();
 
@@ -950,7 +955,13 @@ export default function BillingPage() {
       ` | total=${(_tEnd - _t0).toFixed(1)}ms`
     );
 
-    return deduplicatedItems;
+    return {
+      items: deduplicatedItems,
+      _timing: {
+        parse: (_tParse - _t0).toFixed(1),
+        fuse:  (_tEnd   - _tFuseStart).toFixed(1),
+      }
+    };
   };
 
   const getSuggestions = (item: any) => {
@@ -1098,7 +1109,9 @@ export default function BillingPage() {
 
         if (fullText.length > 1) {
             // ── TIMING: processVoiceTextToItems (logged internally) ───────────
-            const newParsedItems = processVoiceTextToItems(fullText);
+            const _pvResult = processVoiceTextToItems(fullText);
+            const newParsedItems = _pvResult.items;
+            const _pvTiming = _pvResult._timing;
             if (newParsedItems.length > 0) {
                 // ── TIMING: enrichment loop ───────────────────────────────────
                 const _tEnrichStart = performance.now();
@@ -1222,6 +1235,15 @@ export default function BillingPage() {
                   ` | setState=${(_tSetStateEnd - _tSetState).toFixed(1)}ms` +
                   ` | totalEvent=${(_tSetStateEnd - _tEvent).toFixed(1)}ms`
                 );
+                setPerfStats({
+                  items:       allItems.length,
+                  parse:       _pvTiming.parse,
+                  fuse:        _pvTiming.fuse,
+                  enrichment:  (_tEnrichEnd - _tEnrichStart).toFixed(1),
+                  suggestions: (_tSugEnd   - _tSugStart   ).toFixed(1),
+                  setState:    (_tSetStateEnd - _tSetState).toFixed(1),
+                  total:       (_tSetStateEnd - _tEvent   ).toFixed(1),
+                });
             }
         }
     };
@@ -2418,6 +2440,22 @@ export default function BillingPage() {
                   {isListening && finalTranscript && (
                     <div className="mx-4 mt-3 px-3 py-2 bg-rose-50 border border-rose-100 rounded-xl flex-shrink-0">
                       <p className="text-xs text-rose-600 leading-relaxed line-clamp-2">{finalTranscript}</p>
+                    </div>
+                  )}
+
+                  {/* ── DEBUG PERF PANEL — remove after testing ── */}
+                  {isListening && perfStats && (
+                    <div className="mx-4 mt-2 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl flex-shrink-0 font-mono">
+                      <p className="text-[10px] font-bold text-yellow-400 mb-1">⏱ PERF · {perfStats.items} items</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-slate-300">
+                        <span>parse</span>       <span className="text-white text-right">{perfStats.parse} ms</span>
+                        <span>fuse+score</span>  <span className="text-white text-right">{perfStats.fuse} ms</span>
+                        <span>enrich</span>      <span className="text-white text-right">{perfStats.enrichment} ms</span>
+                        <span>suggest</span>     <span className="text-white text-right">{perfStats.suggestions} ms</span>
+                        <span>setState</span>    <span className="text-white text-right">{perfStats.setState} ms</span>
+                        <span className="text-yellow-400 font-bold">TOTAL</span>
+                        <span className="text-yellow-400 font-bold text-right">{perfStats.total} ms</span>
+                      </div>
                     </div>
                   )}
 
