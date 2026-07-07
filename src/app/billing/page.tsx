@@ -2069,16 +2069,26 @@ export default function BillingPage() {
                               const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
                               const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
                               const isActive = activeSuggestionId === p.id;
+                              const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1;
                               return (
                                 <div
                                   key={p.id}
                                   className={`transition-all duration-200 ${isActive ? 'scale-105' : 'scale-100'}`}
-                                  onClick={() => setActiveSuggestionId(isActive ? null : p.id)}
+                                  onClick={() => {
+                                    // Always count the tap as an add/inc regardless of drawer state
+                                    if (qty > 0) {
+                                      updateCartItem(cartIdx, 'quantity', qty + step);
+                                    } else {
+                                      addToCart(p);
+                                    }
+                                    // Toggle drawer: open if not already open for this product
+                                    setActiveSuggestionId(isActive ? null : p.id);
+                                  }}
                                 >
                                   <ProductCard p={p} qty={qty} mini
                                     onAdd={() => { addToCart(p); setActiveSuggestionId(p.id); }}
-                                    onInc={() => updateCartItem(cartIdx, 'quantity', qty + (Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1))}
-                                    onDec={() => { const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1; cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
+                                    onInc={() => updateCartItem(cartIdx, 'quantity', qty + step)}
+                                    onDec={() => { cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
                                   />
                                   {/* Active indicator dot */}
                                   {isActive && (
@@ -2768,128 +2778,108 @@ export default function BillingPage() {
           : { brandVariants: [], sizeVariants: [] };
         const hasSugs = suggestions.brandVariants.length > 0 || suggestions.sizeVariants.length > 0;
         const isOpen = !!activeSuggestionId && !!activeProduct && hasSugs;
+
+        // Compact suggestion card — button lives inside the image, no button row below
+        const SugCard = ({ sug, accentColor }: { sug: any; accentColor: 'amber' | 'indigo' }) => {
+          const sugCartItem = cart.find((c: any) => c.productId === sug.id && c.unit === sug.baseUnit);
+          const sugQty = sugCartItem ? sugCartItem.quantity : 0;
+          const sugCartIdx = cart.findIndex((c: any) => c.productId === sug.id && c.unit === sug.baseUnit);
+          const sugStep = Number(sug.baseQuantity) > 1 && ['g','ml','kg','l'].includes((sug.baseUnit||'').toLowerCase()) ? Number(sug.baseQuantity) : 1;
+          const isAmber = accentColor === 'amber';
+          return (
+            <div className="flex-shrink-0 w-20 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm active:scale-95 transition-all cursor-pointer">
+              {/* Image with overlaid controls */}
+              <div className="relative w-full bg-slate-50 overflow-hidden" style={{ paddingBottom: '90%' }}>
+                <div className="absolute inset-0">
+                  {sug.imageUrl
+                    ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    : <div className="w-full h-full flex items-center justify-center"><Package className={isAmber ? 'text-amber-200' : 'text-indigo-200'} size={18} /></div>
+                  }
+                </div>
+                {/* Bottom-right corner: Add pill or stepper */}
+                <div className="absolute bottom-1 right-1" onClick={e => e.stopPropagation()}>
+                  {sugQty > 0 ? (
+                    <div className={`flex items-center rounded-full shadow-md overflow-hidden ${isAmber ? 'bg-amber-500' : 'bg-indigo-600'}`}>
+                      <button onClick={() => { sugCartIdx >= 0 && (sugQty <= sugStep ? removeFromCart(sugCartIdx) : updateCartItem(sugCartIdx, 'quantity', sugQty - sugStep)); }} className="w-5 h-5 flex items-center justify-center text-white font-bold text-xs">−</button>
+                      <span className="text-white font-black text-[10px] px-0.5">{sugQty}</span>
+                      <button onClick={() => updateCartItem(sugCartIdx, 'quantity', sugQty + sugStep)} className="w-5 h-5 flex items-center justify-center text-white font-bold text-xs">+</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => addToCart(sug)}
+                      className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-black shadow-md ${isAmber ? 'bg-amber-500 text-white' : 'bg-indigo-600 text-white'}`}
+                    >
+                      <Plus size={8} strokeWidth={3} />Add
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* Minimal info — name + price only */}
+              <div className="px-1.5 py-1">
+                <p className="text-[9px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                <p className={`text-[10px] font-black mt-0.5 ${isAmber ? 'text-amber-600' : 'text-indigo-600'}`}>₹{(sug.price || 0).toFixed(0)}</p>
+              </div>
+            </div>
+          );
+        };
+
         return (
           <>
             {/* Backdrop */}
             <div
-              className={`fixed inset-0 z-40 bg-black/30 transition-opacity duration-300 ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+              className={`fixed inset-0 z-40 bg-black/25 transition-opacity duration-300 ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
               onClick={() => setActiveSuggestionId(null)}
             />
-            {/* Drawer */}
+            {/* Drawer — anchored to bottom, only as tall as content */}
             <div
-              className={`fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl transition-transform duration-300 ease-out ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
-              style={{ maxHeight: '72vh' }}
+              className={`fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl transition-transform duration-300 ease-out ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
               onTouchStart={e => e.stopPropagation()}
               onTouchMove={e => e.stopPropagation()}
             >
               {/* Drag handle */}
-              <div className="flex justify-center pt-3 pb-1">
-                <div className="w-10 h-1 rounded-full bg-slate-300" />
+              <div className="flex justify-center pt-2.5 pb-1">
+                <div className="w-8 h-1 rounded-full bg-slate-300" />
               </div>
 
               {activeProduct && (
-                <div className="overflow-y-auto" style={{ maxHeight: 'calc(72vh - 28px)' }}>
-                  {/* Header — product info + close */}
-                  <div className="flex items-center gap-3 px-4 pt-2 pb-3 border-b border-slate-100">
-                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
+                <>
+                  {/* Compact header */}
+                  <div className="flex items-center gap-2.5 px-3 pt-1 pb-2 border-b border-slate-100">
+                    <div className="w-9 h-9 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
                       {activeProduct.imageUrl
                         ? <img src={activeProduct.imageUrl} alt={activeProduct.name} className="w-full h-full object-cover" />
-                        : <div className="w-full h-full flex items-center justify-center"><Package size={20} className="text-slate-300" /></div>
+                        : <Package size={16} className="text-slate-300" />
                       }
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-slate-400 font-medium">Similar products</p>
-                      <p className="text-sm font-bold text-slate-900 truncate">{activeProduct.name}</p>
-                      <p className="text-xs font-bold text-indigo-600">₹{(activeProduct.price || 0).toFixed(0)}</p>
+                      <p className="text-[10px] text-slate-400">Similar to</p>
+                      <p className="text-xs font-bold text-slate-900 truncate">{activeProduct.name}</p>
                     </div>
-                    <button
-                      onClick={() => setActiveSuggestionId(null)}
-                      className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition shrink-0"
-                    >
-                      <X size={14} />
+                    <button onClick={() => setActiveSuggestionId(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 text-slate-400 shrink-0">
+                      <X size={13} />
                     </button>
                   </div>
 
-                  {/* Pack Sizes */}
-                  {suggestions.sizeVariants.length > 0 && (
-                    <div className="px-4 pt-4 pb-2">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-3">📦 Pack Sizes</p>
-                      <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
-                        {suggestions.sizeVariants.map((sug: any) => {
-                          const sugCartItem = cart.find((c: any) => c.productId === sug.id && c.unit === sug.baseUnit);
-                          const sugQty = sugCartItem ? sugCartItem.quantity : 0;
-                          return (
-                            <div
-                              key={sug.id}
-                              className="flex-shrink-0 w-28 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm active:scale-95 transition-all cursor-pointer"
-                              onClick={() => { addToCart(sug); setActiveSuggestionId(null); }}
-                            >
-                              <div className="relative w-full bg-slate-50 overflow-hidden" style={{ paddingBottom: '85%' }}>
-                                <div className="absolute inset-0">
-                                  {sug.imageUrl
-                                    ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                                    : <div className="w-full h-full flex items-center justify-center"><Package className="text-amber-200" size={22} /></div>
-                                  }
-                                </div>
-                                {sugQty > 0 && (
-                                  <div className="absolute top-1 right-1 bg-amber-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">{sugQty}</div>
-                                )}
-                              </div>
-                              <div className="p-2">
-                                <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                <p className="text-[10px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
-                                <p className="text-xs font-black text-amber-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
-                                <div className={`mt-1.5 w-full rounded-lg py-1 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-amber-500 text-white' : 'border-2 border-amber-400 text-amber-600'}`}>
-                                  {sugQty > 0 ? <><span>✓</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                  {/* Sections */}
+                  <div className="pb-4">
+                    {suggestions.sizeVariants.length > 0 && (
+                      <div className="px-3 pt-2.5 pb-1">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-amber-500 mb-2">Pack Sizes</p>
+                        <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                          {suggestions.sizeVariants.map((sug: any) => <SugCard key={sug.id} sug={sug} accentColor="amber" />)}
+                        </div>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Other Brands */}
-                  {suggestions.brandVariants.length > 0 && (
-                    <div className="px-4 pt-3 pb-6">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-3">🏷️ Other Brands</p>
-                      <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
-                        {suggestions.brandVariants.map((sug: any) => {
-                          const sugCartItem = cart.find((c: any) => c.productId === sug.id && c.unit === sug.baseUnit);
-                          const sugQty = sugCartItem ? sugCartItem.quantity : 0;
-                          return (
-                            <div
-                              key={sug.id}
-                              className="flex-shrink-0 w-28 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm active:scale-95 transition-all cursor-pointer"
-                              onClick={() => { addToCart(sug); setActiveSuggestionId(null); }}
-                            >
-                              <div className="relative w-full bg-slate-50 overflow-hidden" style={{ paddingBottom: '85%' }}>
-                                <div className="absolute inset-0">
-                                  {sug.imageUrl
-                                    ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                                    : <div className="w-full h-full flex items-center justify-center"><Package className="text-indigo-200" size={22} /></div>
-                                  }
-                                </div>
-                                {sugQty > 0 && (
-                                  <div className="absolute top-1 right-1 bg-indigo-600 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">{sugQty}</div>
-                                )}
-                              </div>
-                              <div className="p-2">
-                                <p className="text-[10px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
-                                <p className="text-[10px] text-slate-400">{sug.baseQuantity === 1 ? '' : sug.baseQuantity}{sug.baseUnit}</p>
-                                <p className="text-xs font-bold text-emerald-600 mt-0.5">₹{(sug.price || 0).toFixed(0)}</p>
-                                <div className={`mt-1.5 w-full rounded-lg py-1 text-[10px] font-bold flex items-center justify-center gap-0.5 transition ${sugQty > 0 ? 'bg-indigo-600 text-white' : 'border-2 border-indigo-400 text-indigo-600'}`}>
-                                  {sugQty > 0 ? <><span>✓</span><span>{sugQty} added</span></> : <><Plus size={9} /><span>Add</span></>}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                    )}
+                    {suggestions.brandVariants.length > 0 && (
+                      <div className="px-3 pt-2 pb-1">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-400 mb-2">Other Brands</p>
+                        <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                          {suggestions.brandVariants.map((sug: any) => <SugCard key={sug.id} sug={sug} accentColor="indigo" />)}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </>
