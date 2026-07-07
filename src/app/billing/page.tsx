@@ -137,6 +137,9 @@ export default function BillingPage() {
   // Cached Fuse index for voice product matching — rebuilt only when catalog changes,
   // not on every speech recognition event.
   const fuseRef = useRef<Fuse<any> | null>(null);
+  // Match result cache: key = "name__unit__quantity__rawText", value = matched item object.
+  // Populated during voice matching; cleared when catalog changes or a new voice session starts.
+  const matchCacheRef = useRef<Map<string, any>>(new Map());
   // Debug timing panel — populated by [PERF] instrumentation, shown during voice input
   const [perfStats, setPerfStats] = useState<{
     items: number; parse: string; fuse: string; enrichment: string;
@@ -512,6 +515,13 @@ export default function BillingPage() {
     const seenItemsMap = new Set();
 
     const matchedItems = normalizedItems.map(item => {
+      // ── MATCH CACHE: skip the entire Fuse + scoring pipeline for items whose
+      // name/unit/quantity/rawText haven't changed since the last speech event.
+      const _cacheKey = `${item.name}__${item.unit}__${item.quantity}__${item.rawText || ''}`;
+      if (matchCacheRef.current.has(_cacheKey)) {
+        return matchCacheRef.current.get(_cacheKey);
+      }
+
       const searchName = item.name.replace(/\d+/g, '').replace(/\b(kg|g|ml|l|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m)\b/gi, '').trim();
       const origRes = fuse.search(searchName);
       const transliterated = transliterateHinglishToHindi(searchName);
@@ -786,7 +796,7 @@ export default function BillingPage() {
 
       // PHASE 5: REJECTION SYSTEM
       if (!bestMatch) {
-        return {
+        const _rejected = {
           name: item.name,
           quantity: item.quantity,
           unit: item.unit,
@@ -800,6 +810,8 @@ export default function BillingPage() {
           parsedQty: item.quantity,
           parsedUnit: item.unit
         };
+        matchCacheRef.current.set(_cacheKey, _rejected);
+        return _rejected;
       }
 
       // PHASE 4: FINAL SAFE OUTPUT
@@ -895,7 +907,7 @@ export default function BillingPage() {
         }
       }
 
-      return {
+      const _matched = {
         productId: match.id,
         name: match.name, // Safely mapped exactly from Database Output
         localName: match.localName,
@@ -916,9 +928,9 @@ export default function BillingPage() {
         parsedQty: item.quantity,
         parsedUnit: item.unit
       };
-    });
-
-    // Deduplicate within the same voice phrase
+      matchCacheRef.current.set(_cacheKey, _matched);
+      return _matched;
+    });    // Deduplicate within the same voice phrase
     const deduplicatedItems: any[] = [];
     const dedupeMap = new Map();
 
@@ -1081,6 +1093,7 @@ export default function BillingPage() {
     currentBreathRef.current = "";
     setFinalTranscript("");
     setSelectedBrandPerItem({});
+    matchCacheRef.current.clear(); // clear stale interim results from any prior voice session
     isListeningRef.current = true;
     setIsListening(true);
     setMode('OCR');
@@ -1292,6 +1305,7 @@ export default function BillingPage() {
 
   // Rebuild the voice Fuse index whenever the catalog changes (page load, background
   // refresh, or inline price edit). This avoids rebuilding it on every speech event.
+  // Also clear the match cache — catalog change means stored match results are stale.
   useEffect(() => {
     if (catalog.length > 0) {
       fuseRef.current = new Fuse(catalog, {
@@ -1301,6 +1315,7 @@ export default function BillingPage() {
         ignoreLocation: true,
         minMatchCharLength: 2
       });
+      matchCacheRef.current.clear();
     }
   }, [catalog]);
 
