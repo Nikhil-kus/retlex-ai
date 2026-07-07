@@ -18,9 +18,10 @@ import { useEffect } from 'react';
 import { shopCache } from '@/lib/session-cache';
 import type { Shop } from '@/types';
 
-// Dynamically import the existing billing page to avoid circular deps
-import dynamic from 'next/dynamic';
-const LegacyBillingPage = dynamic(() => import('@/app/billing/page'), { ssr: false });
+// Direct import — no dynamic() needed. This component is already only rendered
+// after ShopProvider has resolved (loading=false), so there is no circular dep
+// concern: the billing page is a sibling route, not an ancestor.
+import LegacyBillingPage from '@/app/billing/page';
 
 interface Props {
   shop: Shop;

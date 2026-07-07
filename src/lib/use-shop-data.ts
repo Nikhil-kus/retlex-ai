@@ -17,7 +17,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useShop } from '@/lib/shop-context';
-import { catalogCache } from '@/lib/session-cache';
+import { catalogCache, persistentCatalogCache } from '@/lib/session-cache';
 import type { Product, Bill } from '@/types';
 
 // ── useCatalog ────────────────────────────────────────────────────────────────
@@ -39,14 +39,46 @@ export function useCatalog(): UseCatalogResult {
     if (!shopId) return;
 
     if (!bustCache) {
-      const cached = catalogCache.get(shopId);
-      if (cached) {
-        setCatalog(cached as Product[]);
+      // 1. Try sessionStorage first (same-tab hot path — unchanged behaviour)
+      const sessionCached = catalogCache.get(shopId);
+      if (sessionCached) {
+        setCatalog(sessionCached as Product[]);
         setLoading(false);
+        return;
+      }
+
+      // 2. Try localStorage persistent cache (cold-start warm path).
+      //    Serve stale data immediately so the UI is populated at once,
+      //    then kick off a background refresh if the data has expired.
+      const stale = persistentCatalogCache.getStale(shopId);
+      if (stale) {
+        setCatalog(stale as Product[]);
+        setLoading(false);
+
+        // If the persistent cache is still fresh, we're done.
+        if (!persistentCatalogCache.isExpired(shopId)) {
+          // Also populate sessionStorage so subsequent same-tab reads are instant.
+          catalogCache.set(shopId, stale);
+          return;
+        }
+
+        // Data is stale — refresh in the background without showing a loading state.
+        try {
+          const res = await fetch(`/api/products?shopId=${shopId}`);
+          if (res.ok) {
+            const data: Product[] = await res.json();
+            catalogCache.set(shopId, data);
+            persistentCatalogCache.set(shopId, data);
+            setCatalog(data);
+          }
+        } catch {
+          // Background refresh failed — keep showing the stale data. No error shown.
+        }
         return;
       }
     }
 
+    // 3. No cache at all (or bustCache=true) — normal foreground fetch (unchanged).
     setLoading(true);
     setError(null);
     try {
@@ -54,6 +86,7 @@ export function useCatalog(): UseCatalogResult {
       if (!res.ok) throw new Error('Failed to fetch catalog');
       const data: Product[] = await res.json();
       catalogCache.set(shopId, data);
+      persistentCatalogCache.set(shopId, data); // also persist for next cold open
       setCatalog(data);
     } catch (e: any) {
       setError(e.message || 'Failed to load catalog');
@@ -68,6 +101,7 @@ export function useCatalog(): UseCatalogResult {
 
   const refresh = useCallback(async () => {
     catalogCache.clear();
+    persistentCatalogCache.clear();
     await fetchCatalog(true);
   }, [fetchCatalog]);
 

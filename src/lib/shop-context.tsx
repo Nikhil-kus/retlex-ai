@@ -108,19 +108,9 @@ export function ShopProvider({ shopId, children }: ShopProviderProps) {
         localStorage.setItem('lastShopId', shopId);
       } catch {}
 
+      // The GET route backfills qrCodeId in Firestore AND returns the updated
+      // value in the same response, so a second fetch is not needed.
       setShop(data);
-
-      // If qrCodeId was missing, the GET route just backfilled it in Firestore
-      // but the cache may have stale data — re-fetch once to get the new value
-      if (!data.qrCodeId) {
-        shopCache.clear();
-        const res2 = await fetch(`/api/shops/${shopId}`);
-        if (res2.ok) {
-          const fresh: Shop = await res2.json();
-          shopCache.set(fresh);
-          setShop(fresh);
-        }
-      }
     } catch (e) {
       setError('Failed to load shop data');
       setShop(null);
