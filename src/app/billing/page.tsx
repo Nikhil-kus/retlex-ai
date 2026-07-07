@@ -2074,21 +2074,12 @@ export default function BillingPage() {
                                 <div
                                   key={p.id}
                                   className={`transition-all duration-200 ${isActive ? 'scale-105' : 'scale-100'}`}
-                                  onClick={() => {
-                                    // Always count the tap as an add/inc regardless of drawer state
-                                    if (qty > 0) {
-                                      updateCartItem(cartIdx, 'quantity', qty + step);
-                                    } else {
-                                      addToCart(p);
-                                    }
-                                    // Toggle drawer: open if not already open for this product
-                                    setActiveSuggestionId(isActive ? null : p.id);
-                                  }}
                                 >
                                   <ProductCard p={p} qty={qty} mini
-                                    onAdd={() => { addToCart(p); setActiveSuggestionId(p.id); }}
+                                    onAdd={() => addToCart(p)}
                                     onInc={() => updateCartItem(cartIdx, 'quantity', qty + step)}
                                     onDec={() => { cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
+                                    onSuggest={() => setActiveSuggestionId(isActive ? null : p.id)}
                                   />
                                   {/* Active indicator dot */}
                                   {isActive && (
@@ -3218,9 +3209,10 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
   );
 }
 
-function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
+function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest }: {
   p: any; qty: number; mini?: boolean;
   onAdd: () => void; onInc: () => void; onDec: () => void;
+  onSuggest?: () => void;
 }) {
   const [pressed, setPressed] = useState(false);
   const { pName } = useHindi();
@@ -3289,11 +3281,24 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
         )}
       </div>
 
-      {/* Info — name, unit, price */}
+      {/* Info — name, unit, price + optional suggest arrow */}
       <div className="p-2">
         <p className={`font-semibold text-slate-900 line-clamp-2 leading-tight mb-0.5 ${mini ? 'text-[11px]' : 'text-xs'}`}>{pName(p.name, p.localName)}</p>
         <p className="text-[10px] text-slate-400 mb-0.5">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
-        <p className={`font-bold text-slate-900 ${mini ? 'text-xs' : 'text-sm'}`}>₹{(p.price || 0).toFixed(0)}</p>
+        <div className="flex items-center justify-between">
+          <p className={`font-bold text-slate-900 ${mini ? 'text-xs' : 'text-sm'}`}>₹{(p.price || 0).toFixed(0)}</p>
+          {onSuggest && (
+            <button
+              onClick={e => { e.stopPropagation(); onSuggest(); }}
+              className="w-5 h-5 flex items-center justify-center rounded-full bg-slate-100 hover:bg-indigo-100 text-slate-400 hover:text-indigo-500 transition-all active:scale-90"
+              title="See similar products"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
