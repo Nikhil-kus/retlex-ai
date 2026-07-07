@@ -2779,21 +2779,27 @@ export default function BillingPage() {
           const isAmber = accentColor === 'amber';
           return (
             <div className="flex-shrink-0 w-20 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm active:scale-95 transition-all cursor-pointer">
-              {/* Image with overlaid controls */}
-              <div className="relative w-full bg-slate-50 overflow-hidden" style={{ paddingBottom: '90%' }}>
+              {/* Image — tappable to add/increment */}
+              <div
+                className="relative w-full bg-slate-50 overflow-hidden"
+                style={{ paddingBottom: '90%' }}
+                onClick={() => sugQty > 0 ? updateCartItem(sugCartIdx, 'quantity', sugQty + sugStep) : addToCart(sug)}
+              >
                 <div className="absolute inset-0">
                   {sug.imageUrl
                     ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                     : <div className="w-full h-full flex items-center justify-center"><Package className={isAmber ? 'text-amber-200' : 'text-indigo-200'} size={18} /></div>
                   }
+                  {/* subtle tint when in cart */}
+                  {sugQty > 0 && <div className={`absolute inset-0 pointer-events-none ${isAmber ? 'bg-amber-500/10' : 'bg-indigo-600/10'}`} />}
                 </div>
-                {/* Bottom-right corner: Add pill or stepper */}
+                {/* Bottom-right corner: Add pill or bigger stepper when in cart */}
                 <div className="absolute bottom-1 right-1" onClick={e => e.stopPropagation()}>
                   {sugQty > 0 ? (
-                    <div className={`flex items-center rounded-full shadow-md overflow-hidden ${isAmber ? 'bg-amber-500' : 'bg-indigo-600'}`}>
-                      <button onClick={() => { sugCartIdx >= 0 && (sugQty <= sugStep ? removeFromCart(sugCartIdx) : updateCartItem(sugCartIdx, 'quantity', sugQty - sugStep)); }} className="w-5 h-5 flex items-center justify-center text-white font-bold text-xs">−</button>
-                      <span className="text-white font-black text-[10px] px-0.5">{sugQty}</span>
-                      <button onClick={() => updateCartItem(sugCartIdx, 'quantity', sugQty + sugStep)} className="w-5 h-5 flex items-center justify-center text-white font-bold text-xs">+</button>
+                    <div className={`flex items-center rounded-full shadow-md overflow-hidden scale-110 origin-bottom-right ${isAmber ? 'bg-amber-500' : 'bg-indigo-600'}`}>
+                      <button onClick={() => { sugCartIdx >= 0 && (sugQty <= sugStep ? removeFromCart(sugCartIdx) : updateCartItem(sugCartIdx, 'quantity', sugQty - sugStep)); }} className="w-6 h-6 flex items-center justify-center text-white font-bold text-sm">−</button>
+                      <span className="text-white font-black text-[11px] px-0.5">{sugQty}</span>
+                      <button onClick={() => updateCartItem(sugCartIdx, 'quantity', sugQty + sugStep)} className="w-6 h-6 flex items-center justify-center text-white font-bold text-sm">+</button>
                     </div>
                   ) : (
                     <button
@@ -3255,19 +3261,19 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest }: {
 
         {/* ── BigBasket-style corner control ── */}
         {inCart ? (
-          /* Qty stepper pill — bottom-right corner */
+          /* Qty stepper pill — bottom-right corner, bigger when in cart */
           <div
-            className="absolute bottom-1.5 right-1.5 flex items-center bg-indigo-600 rounded-full shadow-lg overflow-hidden"
+            className="absolute bottom-1.5 right-1.5 flex items-center bg-indigo-600 rounded-full shadow-lg overflow-hidden scale-110 origin-bottom-right"
             onClick={e => e.stopPropagation()}
           >
             <button
               onClick={e => { e.stopPropagation(); onDec(); }}
-              className="w-6 h-6 flex items-center justify-center text-white font-bold text-base active:bg-indigo-700 transition"
+              className="w-7 h-7 flex items-center justify-center text-white font-bold text-lg active:bg-indigo-700 transition"
             >−</button>
-            <span className={`text-white font-black px-0.5 ${mini ? 'text-[11px]' : 'text-xs'}`}>{qty}</span>
+            <span className={`text-white font-black px-1 ${mini ? 'text-xs' : 'text-sm'}`}>{qty}</span>
             <button
               onClick={e => { e.stopPropagation(); onInc(); }}
-              className="w-6 h-6 flex items-center justify-center text-white font-bold text-base active:bg-indigo-700 transition"
+              className="w-7 h-7 flex items-center justify-center text-white font-bold text-lg active:bg-indigo-700 transition"
             >+</button>
           </div>
         ) : (
