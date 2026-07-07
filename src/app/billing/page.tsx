@@ -2070,6 +2070,12 @@ export default function BillingPage() {
                               const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
                               const isActive = activeSuggestionId === p.id;
                               const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1;
+                              // Find if any cart item is a suggestion of this product
+                              const sugs = getSuggestions({ productId: p.id, name: p.name, localName: p.localName, category: p.category });
+                              const sugIds = new Set([...sugs.brandVariants, ...sugs.sizeVariants].map((s: any) => s.id));
+                              const sugCartProduct = cart
+                                .map((c: any) => catalog.find((cp: any) => cp.id === c.productId))
+                                .find((cp: any) => cp && sugIds.has(cp.id));
                               return (
                                 <div
                                   key={p.id}
@@ -2080,6 +2086,7 @@ export default function BillingPage() {
                                     onInc={() => updateCartItem(cartIdx, 'quantity', qty + step)}
                                     onDec={() => { cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
                                     onSuggest={() => setActiveSuggestionId(isActive ? null : p.id)}
+                                    suggestedInCart={sugCartProduct || null}
                                   />
                                   {/* Active indicator dot */}
                                   {isActive && (
@@ -3219,10 +3226,11 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
   );
 }
 
-function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest }: {
+function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, suggestedInCart }: {
   p: any; qty: number; mini?: boolean;
   onAdd: () => void; onInc: () => void; onDec: () => void;
   onSuggest?: () => void;
+  suggestedInCart?: any | null;
 }) {
   const [pressed, setPressed] = useState(false);
   const { pName } = useHindi();
@@ -3261,6 +3269,16 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest }: {
         {/* Flash ripple on add */}
         {pressed && (
           <div className="absolute inset-0 bg-indigo-400/20 animate-ping rounded-2xl pointer-events-none" />
+        )}
+
+        {/* Suggested-product badge — top-left, shows which suggestion was added */}
+        {suggestedInCart && (
+          <div className="absolute top-1.5 left-1.5 w-6 h-6 rounded-full border-2 border-white shadow-md overflow-hidden bg-white z-10 pointer-events-none">
+            {suggestedInCart.imageUrl
+              ? <img src={suggestedInCart.imageUrl} alt={suggestedInCart.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              : <div className="w-full h-full bg-indigo-100 flex items-center justify-center"><Package size={10} className="text-indigo-400" /></div>
+            }
+          </div>
         )}
 
         {/* ── BigBasket-style corner control ── */}
