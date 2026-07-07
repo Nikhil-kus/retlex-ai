@@ -3244,57 +3244,57 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
         mini ? 'flex-shrink-0 w-28' : ''
       } ${inCart ? 'border-indigo-400 shadow-indigo-100' : 'border-slate-200'}`}
     >
-      {/* Image area */}
+      {/* Image area — tappable: adds when not in cart, increments when in cart */}
       <div
         className="relative w-full bg-slate-100 overflow-hidden"
         style={{ paddingBottom: '100%' }}
+        onClick={inCart ? onInc : handlePress}
       >
-        {/* Product image — fills entire box */}
+        {/* Product image */}
         {p.imageUrl
           ? <img src={p.imageUrl} alt={p.name} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           : <div className="absolute inset-0 flex items-center justify-center"><Package className="text-slate-300" size={mini ? 22 : 28} /></div>
         }
+
+        {/* Overlay: subtle indigo tint when in cart */}
+        {inCart && (
+          <div className="absolute inset-0 bg-indigo-600/10 transition-all pointer-events-none" />
+        )}
 
         {/* Flash ripple on add */}
         {pressed && (
           <div className="absolute inset-0 bg-indigo-400/20 animate-ping rounded-2xl pointer-events-none" />
         )}
 
-        {/* Qty badge top-right */}
-        {inCart && (
-          <div className="absolute top-1.5 right-1.5 bg-indigo-600 text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow">
-            {qty}
-          </div>
-        )}
-
-        {/* Bottom overlay — Add button or Qty stepper */}
-        <div className="absolute bottom-0 left-0 right-0">
-          {inCart ? (
-            /* Qty stepper — semi-transparent over image */
-            <div className="flex items-center justify-between bg-indigo-600/80 backdrop-blur-sm px-1 py-0.5">
-              <button
-                onClick={e => { e.stopPropagation(); onDec(); }}
-                className={`flex items-center justify-center text-white font-bold ${mini ? 'w-5 h-5 text-sm' : 'w-6 h-6 text-base'}`}
-              >−</button>
-              <span className={`text-white font-bold ${mini ? 'text-[11px]' : 'text-xs'}`}>{qty}</span>
-              <button
-                onClick={e => { e.stopPropagation(); onInc(); }}
-                className={`flex items-center justify-center text-white font-bold ${mini ? 'w-5 h-5 text-sm' : 'w-6 h-6 text-base'}`}
-              >+</button>
-            </div>
-          ) : (
-            /* Add button — semi-transparent over image */
+        {/* ── BigBasket-style corner control ── */}
+        {inCart ? (
+          /* Qty stepper pill — bottom-right corner */
+          <div
+            className="absolute bottom-1.5 right-1.5 flex items-center bg-indigo-600 rounded-full shadow-lg overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
             <button
-              onClick={e => { e.stopPropagation(); handlePress(); }}
-              className={`w-full bg-indigo-600/70 backdrop-blur-sm text-white font-bold hover:bg-indigo-600/90 active:bg-indigo-700/90 transition flex items-center justify-center gap-0.5 ${mini ? 'py-0.5 text-[11px]' : 'py-1 text-xs'}`}
-            >
-              <Plus size={mini ? 11 : 12} /> Add
-            </button>
-          )}
-        </div>
+              onClick={e => { e.stopPropagation(); onDec(); }}
+              className="w-6 h-6 flex items-center justify-center text-white font-bold text-base active:bg-indigo-700 transition"
+            >−</button>
+            <span className={`text-white font-black px-0.5 ${mini ? 'text-[11px]' : 'text-xs'}`}>{qty}</span>
+            <button
+              onClick={e => { e.stopPropagation(); onInc(); }}
+              className="w-6 h-6 flex items-center justify-center text-white font-bold text-base active:bg-indigo-700 transition"
+            >+</button>
+          </div>
+        ) : (
+          /* Add pill — bottom-right corner, BigBasket style */
+          <button
+            onClick={e => { e.stopPropagation(); handlePress(); }}
+            className={`absolute bottom-1.5 right-1.5 bg-white border-2 border-indigo-600 text-indigo-600 rounded-full font-black shadow-md hover:bg-indigo-50 active:scale-90 transition-all flex items-center justify-center gap-0.5 ${mini ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'}`}
+          >
+            <Plus size={mini ? 10 : 11} strokeWidth={3} /> Add
+          </button>
+        )}
       </div>
 
-      {/* Info — name, unit, price only (no button row) */}
+      {/* Info — name, unit, price */}
       <div className="p-2">
         <p className={`font-semibold text-slate-900 line-clamp-2 leading-tight mb-0.5 ${mini ? 'text-[11px]' : 'text-xs'}`}>{pName(p.name, p.localName)}</p>
         <p className="text-[10px] text-slate-400 mb-0.5">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
