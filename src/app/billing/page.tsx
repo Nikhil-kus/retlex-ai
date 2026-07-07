@@ -2056,7 +2056,7 @@ export default function BillingPage() {
                   ) : (
                     /* ── HOME: Top selling + Categories ── */
                     <>
-                      {/* Top Selling — horizontal scroll with suggestions */}
+                      {/* Top Selling — grid layout */}
                       {catalog.length > 0 && (
                         <div className="pt-4 pb-2">
                           <div className="flex items-center justify-between px-4 mb-3">
@@ -2066,15 +2066,9 @@ export default function BillingPage() {
                             )}
                           </div>
 
-                          {/* Product row */}
-                          <div
-                            className="flex gap-3 overflow-x-auto px-4 pb-2"
-                            style={{scrollbarWidth:'none'}}
-                            onTouchStart={e => e.stopPropagation()}
-                            onTouchMove={e => e.stopPropagation()}
-                            onTouchEnd={e => e.stopPropagation()}
-                          >
-                            {catalog.slice(0, 10).map((p: any) => {
+                          {/* Product grid */}
+                          <div className="grid grid-cols-3 gap-3 px-4 pb-2">
+                            {catalog.slice(0, 18).map((p: any) => {
                               const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
                               const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
                               const isActive = activeSuggestionId === p.id;
