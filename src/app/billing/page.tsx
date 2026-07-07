@@ -2776,14 +2776,18 @@ export default function BillingPage() {
       {catalogQtyProduct && (() => {
         const cartIdx = cart.findIndex((c: any) => c.productId === catalogQtyProduct.id && c.unit === catalogQtyProduct.baseUnit);
         const currentQty = cartIdx >= 0 ? cart[cartIdx].quantity : 1;
+        const currentUnit = cartIdx >= 0 ? cart[cartIdx].unit : catalogQtyProduct.baseUnit;
         return (
           <QuantitySelectorSheet
-            item={{ ...catalogQtyProduct, productId: catalogQtyProduct.id, unit: catalogQtyProduct.baseUnit, quantity: currentQty }}
+            item={{ ...catalogQtyProduct, productId: catalogQtyProduct.id, unit: currentUnit, quantity: currentQty }}
             onSelect={(newQty: number, newUnit: string) => {
               if (cartIdx >= 0) {
-                updateCartItem(cartIdx, 'quantity', newQty);
+                // Update both quantity and unit together so weight is correct
+                const newCart = [...cart];
+                newCart[cartIdx] = { ...newCart[cartIdx], quantity: newQty, unit: newUnit };
+                setCart(newCart);
               } else {
-                addToCart({ ...catalogQtyProduct, quantity: newQty });
+                addToCart({ ...catalogQtyProduct, quantity: newQty, unit: newUnit });
               }
               setCatalogQtyProduct(null);
             }}
