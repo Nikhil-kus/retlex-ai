@@ -1330,6 +1330,8 @@ export default function BillingPage() {
   const [searchSuggestions, setSearchSuggestions] = useState<{name: string; imageUrl: string | null; matchField: string}[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
+  // Qty picker for top-selling / catalog product cards
+  const [catalogQtyProduct, setCatalogQtyProduct] = useState<any | null>(null);
 
   // Pending Bills state
   const [pendingBills, setPendingBills] = useState<any[]>([]);
@@ -2087,6 +2089,7 @@ export default function BillingPage() {
                                     onDec={() => { cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
                                     onSuggest={() => setActiveSuggestionId(isActive ? null : p.id)}
                                     suggestedInCart={sugCartProduct || null}
+                                    onQtyPicker={() => setCatalogQtyProduct(p)}
                                   />
                                   {/* Active indicator dot */}
                                   {isActive && (
@@ -2769,6 +2772,26 @@ export default function BillingPage() {
         />
       )}
 
+      {/* Quantity Selector Sheet — opens when user taps qty number on a top-selling product card */}
+      {catalogQtyProduct && (() => {
+        const cartIdx = cart.findIndex((c: any) => c.productId === catalogQtyProduct.id && c.unit === catalogQtyProduct.baseUnit);
+        const currentQty = cartIdx >= 0 ? cart[cartIdx].quantity : 1;
+        return (
+          <QuantitySelectorSheet
+            item={{ ...catalogQtyProduct, productId: catalogQtyProduct.id, unit: catalogQtyProduct.baseUnit, quantity: currentQty }}
+            onSelect={(newQty: number, newUnit: string) => {
+              if (cartIdx >= 0) {
+                updateCartItem(cartIdx, 'quantity', newQty);
+              } else {
+                addToCart({ ...catalogQtyProduct, quantity: newQty });
+              }
+              setCatalogQtyProduct(null);
+            }}
+            onClose={() => setCatalogQtyProduct(null)}
+          />
+        );
+      })()}
+
       {/* ── Suggestions Bottom Drawer ── */}
       {(() => {
         const activeProduct = activeSuggestionId ? catalog.find((p: any) => p.id === activeSuggestionId) : null;
@@ -3239,11 +3262,12 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
   );
 }
 
-function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, suggestedInCart }: {
+function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, suggestedInCart, onQtyPicker }: {
   p: any; qty: number; mini?: boolean;
   onAdd: () => void; onInc: () => void; onDec: () => void;
   onSuggest?: () => void;
   suggestedInCart?: any | null;
+  onQtyPicker?: () => void;
 }) {
   const [pressed, setPressed] = useState(false);
   const { pName } = useHindi();
@@ -3309,7 +3333,10 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, sug
               onClick={e => { e.stopPropagation(); onDec(); }}
               className="w-7 h-7 flex items-center justify-center text-white font-bold text-lg active:bg-indigo-700 transition"
             >−</button>
-            <span className={`text-white font-black px-1 ${mini ? 'text-xs' : 'text-sm'}`}>{qty}</span>
+            <span
+              onClick={e => { e.stopPropagation(); onQtyPicker?.(); }}
+              className={`text-white font-black px-1 ${mini ? 'text-xs' : 'text-sm'} ${onQtyPicker ? 'underline decoration-dotted underline-offset-2 cursor-pointer active:opacity-70' : ''}`}
+            >{qty}</span>
             <button
               onClick={e => { e.stopPropagation(); onInc(); }}
               className="w-7 h-7 flex items-center justify-center text-white font-bold text-lg active:bg-indigo-700 transition"
