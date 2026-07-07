@@ -2640,6 +2640,7 @@ export default function BillingPage() {
       {(showCartSheet || cart.length > 0) && (
         <CartBottomSheet
           cart={cart}
+          catalog={catalog}
           totalAmount={totalAmount}
           customerInfo={customerInfo}
           setCustomerInfo={setCustomerInfo}
@@ -2905,7 +2906,7 @@ function TabButton({ active, onClick, icon, label }: any) {
   );
 }
 
-function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, savingBill, calculateItemTotal, updateCartItem, removeFromCart, handleGenerateBill, expanded, onExpand, onCollapse, onClearCart, onPriceUpdate }: any) {
+function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomerInfo, savingBill, calculateItemTotal, updateCartItem, removeFromCart, handleGenerateBill, expanded, onExpand, onCollapse, onClearCart, onPriceUpdate }: any) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragStartY = useRef(0);
   const dragCurrentY = useRef(0);
@@ -3011,11 +3012,23 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
             onTouchEnd={handleTouchEnd}
             onClick={onExpand}
           >
-            {/* Drag pill */}
             <div className="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full bg-slate-300" />
-            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-              <ShoppingCart size={18} className="text-white" />
-            </div>
+            {(() => {
+              const lastItem = cart.length > 0 ? cart[cart.length - 1] : null;
+              const lastProduct = lastItem && catalog ? catalog.find((cp: any) => cp.id === lastItem.productId) : null;
+              return lastProduct?.imageUrl ? (
+                <div className="w-9 h-9 rounded-xl overflow-hidden border-2 border-indigo-400 shrink-0" style={{overflow:'hidden'}}>
+                  <div className="relative w-full h-full">
+                    <img src={lastProduct.imageUrl} alt={lastProduct.name} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                    <div className="absolute inset-0" style={{background:'rgba(79,70,229,0.12)'}} />
+                  </div>
+                </div>
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+                  <ShoppingCart size={18} className="text-white" />
+                </div>
+              );
+            })()}
             <div className="flex-1 min-w-0">
               <p className="font-bold text-slate-900 text-sm">{cart.length} item{cart.length !== 1 ? 's' : ''} in bill</p>
               <p className="text-xs text-slate-500">Tap or swipe up to view</p>
