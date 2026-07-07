@@ -3280,7 +3280,7 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, sug
                 : <div className="absolute inset-0 bg-indigo-100 flex items-center justify-center"><Package size={14} className="text-indigo-400" /></div>
               }
               {/* Indigo tint overlay — stacked above image */}
-              <div className="absolute inset-0" style={{background:'rgba(79,70,229,0.35)'}} />
+              <div className="absolute inset-0" style={{background:'rgba(79,70,229,0.12)'}} />
             </div>
           </div>
         )}
