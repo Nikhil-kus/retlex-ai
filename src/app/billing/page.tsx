@@ -3273,13 +3273,15 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, sug
 
         {/* Suggested-product badge — top-left, shows which suggestion was added */}
         {suggestedInCart && (
-          <div className="absolute top-1.5 left-1.5 w-9 h-9 rounded-full border-2 border-indigo-400 shadow-lg overflow-hidden bg-white z-10 pointer-events-none">
-            {suggestedInCart.imageUrl
-              ? <img src={suggestedInCart.imageUrl} alt={suggestedInCart.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-              : <div className="w-full h-full bg-indigo-100 flex items-center justify-center"><Package size={14} className="text-indigo-400" /></div>
-            }
-            {/* Indigo tint overlay — same as selected card effect */}
-            <div className="absolute inset-0 bg-indigo-600/20 rounded-full" />
+          <div className="absolute top-1.5 left-1.5 w-9 h-9 rounded-full border-2 border-indigo-400 shadow-lg z-10 pointer-events-none" style={{overflow:'hidden'}}>
+            <div className="relative w-full h-full">
+              {suggestedInCart.imageUrl
+                ? <img src={suggestedInCart.imageUrl} alt={suggestedInCart.name} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                : <div className="absolute inset-0 bg-indigo-100 flex items-center justify-center"><Package size={14} className="text-indigo-400" /></div>
+              }
+              {/* Indigo tint overlay — stacked above image */}
+              <div className="absolute inset-0" style={{background:'rgba(79,70,229,0.35)'}} />
+            </div>
           </div>
         )}
 
