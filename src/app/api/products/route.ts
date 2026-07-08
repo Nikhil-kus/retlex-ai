@@ -25,7 +25,15 @@ export async function GET(request: Request) {
       );
     }
 
-    products.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+    // Products with a sortOrder come first (ascending); the rest sort alphabetically.
+    products.sort((a: any, b: any) => {
+      const aHas = typeof a.sortOrder === 'number';
+      const bHas = typeof b.sortOrder === 'number';
+      if (aHas && bHas) return a.sortOrder - b.sortOrder;
+      if (aHas) return -1;
+      if (bHas) return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
 
     return NextResponse.json(products);
   } catch (error: any) {

@@ -12,6 +12,9 @@ interface HindiContextType {
   /** True when the manual search input is focused or has text — used to hide fixed UI buttons */
   isSearching: boolean;
   setIsSearching: (v: boolean) => void;
+  /** False when user scrolled down — used to hide the fixed menu button in sync with the header */
+  headerVisible: boolean;
+  setHeaderVisible: (v: boolean) => void;
 }
 
 export const CATEGORY_HINDI: Record<string, string> = {
@@ -81,11 +84,14 @@ const HindiContext = createContext<HindiContextType>({
   catName: (cat) => cat,
   isSearching: false,
   setIsSearching: () => {},
+  headerVisible: true,
+  setHeaderVisible: () => {},
 });
 
 export function HindiProvider({ children }: { children: ReactNode }) {
   const [hindiMode, setHindiMode] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [headerVisible, setHeaderVisible] = useState(true);
 
   useEffect(() => {
     const stored = localStorage.getItem('hindiMode');
@@ -110,7 +116,7 @@ export function HindiProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <HindiContext.Provider value={{ hindiMode, toggleHindi, pName, catName, isSearching, setIsSearching }}>
+    <HindiContext.Provider value={{ hindiMode, toggleHindi, pName, catName, isSearching, setIsSearching, headerVisible, setHeaderVisible }}>
       {children}
     </HindiContext.Provider>
   );

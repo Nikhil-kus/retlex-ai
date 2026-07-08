@@ -120,7 +120,7 @@ const unitKeywords = new Set([
 ]);
 
 export default function BillingPage() {
-  const { pName, hindiMode, toggleHindi, catName, setIsSearching } = useHindi();
+  const { pName, hindiMode, toggleHindi, catName, setIsSearching, headerVisible, setHeaderVisible } = useHindi();
   const [isListening, setIsListening] = useState(false);
   const [finalTranscript, setFinalTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
@@ -1419,7 +1419,6 @@ export default function BillingPage() {
   const slide2Ref = useRef<HTMLDivElement>(null);
 
   // ── Hide-on-scroll-down / show-on-scroll-up for the tab bar ──────────────
-  const [headerVisible, setHeaderVisible] = useState(true);
   const lastScrollYRef = useRef(0);
 
   useEffect(() => {

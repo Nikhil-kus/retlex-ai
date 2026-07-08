@@ -26,7 +26,7 @@ interface ShopSidebarProps {
 export default function ShopSidebar({ shopId }: ShopSidebarProps) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const { hindiMode, toggleHindi, isSearching } = useHindi();
+  const { hindiMode, toggleHindi, isSearching, headerVisible } = useHindi();
 
   const base = `/${shopId}`;
 
@@ -51,12 +51,13 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
 
   return (
     <>
-      {/* Shop icon — top-left, replaces hamburger, taps to open sidebar */}
+      {/* Shop icon — top-left, hides with header on scroll-down */}
       {!isSearching && (
         <button
           onClick={() => setIsOpen(!isOpen)}
           aria-label={isOpen ? 'Close menu' : 'Open menu'}
-          className="md:hidden fixed top-3 left-3 z-50 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 active:scale-95 transition-all duration-150"
+          className="md:hidden fixed top-3 left-3 z-50 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 active:scale-95 transition-all duration-300"
+          style={{ opacity: headerVisible ? 1 : 0, pointerEvents: headerVisible ? 'auto' : 'none', transform: headerVisible ? 'translateY(0)' : 'translateY(-56px)' }}
         >
           {isOpen ? <X size={20} strokeWidth={2.5} /> : <Store size={20} />}
         </button>

@@ -8,10 +8,14 @@
  * instantly while a background refresh runs if the data is near/past expiry.
  */
 
-const SHOP_KEY = 'cache_shop';
-const CATALOG_KEY = 'cache_catalog';
-const CATALOG_SHOP_KEY = 'cache_catalog_shopId'; // track which shop the catalog belongs to
-const CATALOG_TS_KEY = 'cache_catalog_ts'; // timestamp for TTL
+// ── Cache version — bump this string whenever the sort order or product schema
+// changes so all existing browser/PWA caches are instantly invalidated.
+const CACHE_VERSION = 'v2';
+
+const SHOP_KEY = `cache_shop_${CACHE_VERSION}`;
+const CATALOG_KEY = `cache_catalog_${CACHE_VERSION}`;
+const CATALOG_SHOP_KEY = `cache_catalog_shopId_${CACHE_VERSION}`; // track which shop the catalog belongs to
+const CATALOG_TS_KEY = `cache_catalog_ts_${CACHE_VERSION}`; // timestamp for TTL
 const CATALOG_TTL_MS = 3 * 60 * 1000; // 3 minutes — ensures fresh baseUnit after product edits
 
 export const shopCache = {
@@ -63,9 +67,9 @@ export const catalogCache = {
 //   2. Kick off a background fetch and call persistentCatalogCache.set() once done.
 // This does NOT replace catalogCache — it is an additional warm-start layer.
 
-const PERSIST_CATALOG_KEY = 'p_cache_catalog';
-const PERSIST_CATALOG_SHOP_KEY = 'p_cache_catalog_shopId';
-const PERSIST_CATALOG_TS_KEY = 'p_cache_catalog_ts';
+const PERSIST_CATALOG_KEY = `p_cache_catalog_${CACHE_VERSION}`;
+const PERSIST_CATALOG_SHOP_KEY = `p_cache_catalog_shopId_${CACHE_VERSION}`;
+const PERSIST_CATALOG_TS_KEY = `p_cache_catalog_ts_${CACHE_VERSION}`;
 const PERSIST_CATALOG_TTL_MS = 3 * 60 * 1000; // 3 minutes — same as session cache
 
 export const persistentCatalogCache = {
