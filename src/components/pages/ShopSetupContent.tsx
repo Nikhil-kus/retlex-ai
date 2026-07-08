@@ -21,9 +21,37 @@ import {
   Camera, Trash2,
 } from 'lucide-react';
 import QRCodeDisplay from '@/components/QRCodeDisplay';
-import { storage } from '@/lib/firebase';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import type { Shop } from '@/types';
+
+// Remove Firebase Storage imports — logo is stored as base64 in Firestore
+// via POST /api/shops/[shopId]/logo to avoid Storage auth issues.
+
+/** Compress an image File to a JPEG data URL ≤ maxSizeKB. */
+async function compressImage(file: File, maxDim = 300, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else       { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 interface Props {
   shop: Shop;
@@ -68,8 +96,8 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
       setLogoError('Please select an image file.');
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setLogoError('Image must be under 2 MB.');
+    if (file.size > 5 * 1024 * 1024) {
+      setLogoError('Image must be under 5 MB.');
       return;
     }
 
@@ -77,33 +105,32 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
     setUploadingLogo(true);
 
     try {
-      // Show local preview immediately
-      const preview = URL.createObjectURL(file);
-      setLogoPreview(preview);
+      // Compress to ≤ 300×300 JPEG — keeps the Firestore payload small
+      const compressed = await compressImage(file);
 
-      // Upload to Firebase Storage
-      const storageRef = ref(storage, `shops/${shopId}/logo`);
-      await uploadBytes(storageRef, file, { contentType: file.type });
-      const downloadUrl = await getDownloadURL(storageRef);
+      // Show preview immediately (local data URL)
+      setLogoPreview(compressed);
 
-      // Persist URL to Firestore via the shop API
-      const res = await fetch(`/api/shops/${shopId}`, {
-        method: 'PUT',
+      // Send to server — stored as base64 in Firestore, no Storage auth needed
+      const res = await fetch(`/api/shops/${shopId}/logo`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, logoUrl: downloadUrl }),
+        body: JSON.stringify({ imageBase64: compressed }),
       });
 
       if (!res.ok) {
-        throw new Error('Failed to save logo URL');
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error ${res.status}`);
       }
 
-      setLogoPreview(downloadUrl);
       await onSaved?.();
     } catch (err: any) {
       setLogoError(err.message || 'Upload failed');
       setLogoPreview(shop.logoUrl || null);
     } finally {
       setUploadingLogo(false);
+      // Reset file input so the same file can be re-selected if needed
+      if (logoInputRef.current) logoInputRef.current.value = '';
     }
   };
 
@@ -113,25 +140,15 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
     setLogoError(null);
 
     try {
-      // Delete from Firebase Storage
-      try {
-        const storageRef = ref(storage, `shops/${shopId}/logo`);
-        await deleteObject(storageRef);
-      } catch {
-        // Ignore if file doesn't exist in storage
+      const res = await fetch(`/api/shops/${shopId}/logo`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error ${res.status}`);
       }
-
-      // Clear from Firestore
-      await fetch(`/api/shops/${shopId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, logoUrl: null }),
-      });
-
       setLogoPreview(null);
       await onSaved?.();
-    } catch {
-      setLogoError('Failed to remove logo');
+    } catch (err: any) {
+      setLogoError(err.message || 'Failed to remove logo');
     } finally {
       setUploadingLogo(false);
     }
