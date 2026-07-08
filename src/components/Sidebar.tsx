@@ -39,29 +39,14 @@ export default function Sidebar() {
       {!isSearching && (
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="menu-toggle-btn md:hidden fixed top-4 right-4 z-50 p-2 bg-indigo-600 text-white rounded-md"
+        aria-label={isOpen ? 'Close menu' : 'Open menu'}
+        className="menu-toggle-btn md:hidden fixed top-3 right-3 z-50 w-10 h-10 flex items-center justify-center bg-white/90 backdrop-blur-sm border border-slate-200/80 text-slate-700 rounded-xl shadow-md hover:bg-white hover:shadow-lg active:scale-95 transition-all duration-150"
       >
-        {isOpen ? <X size={24} /> : <Menu size={24} />}
+        {isOpen ? <X size={20} strokeWidth={2.5} /> : <Menu size={20} strokeWidth={2.5} />}
       </button>
       )}
 
-      {/* Hindi toggle — fixed top-left, hidden during manual search */}
-      {!isSearching && (
-      <button
-        onClick={toggleHindi}
-        className={`hindi-toggle-btn md:hidden fixed top-4 left-4 z-50 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold shadow-md transition-all ${
-          hindiMode
-            ? 'bg-orange-500 text-white'
-            : 'bg-white text-slate-600 border border-slate-200'
-        }`}
-        title={hindiMode ? 'Hindi ON — tap to switch to English' : 'Hindi OFF — tap to switch to Hindi'}
-      >
-        <span>अ</span>
-        <span className={`w-6 h-3.5 rounded-full relative transition-colors ${hindiMode ? 'bg-orange-300' : 'bg-slate-200'}`}>
-          <span className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow transition-all ${hindiMode ? 'left-3' : 'left-0.5'}`} />
-        </span>
-      </button>
-      )}
+
 
       {/* Sidebar navigation */}
       <nav

@@ -2648,29 +2648,34 @@ export default function BillingPage() {
       {!(mode === 'MANUAL' && search.length > 0) && (
       <button
         onClick={isListening ? stopVoiceInput : startVoiceInput}
-        className={`fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-6 py-3.5 rounded-full font-bold text-white shadow-2xl transition-all duration-500 ${
+        className={`fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5 px-5 py-3 rounded-2xl font-semibold text-white shadow-xl transition-all duration-300 ${
           isListening
-            ? 'bg-rose-500 shadow-rose-400/50 scale-105 animate-pulse pr-5'
-            : 'bg-gradient-to-r from-green-500 to-emerald-600 shadow-emerald-500/40 hover:scale-105 hover:shadow-emerald-500/60'
+            ? 'bg-rose-500 shadow-rose-400/40 scale-105'
+            : 'bg-slate-900 shadow-slate-900/30 hover:bg-slate-800 hover:scale-[1.03] active:scale-95'
         }`}
         style={{
-          minWidth: '180px',
+          minWidth: '168px',
           justifyContent: 'center',
           bottom: cart.length > 0 ? '5rem' : '1.5rem',
         }}
       >
         {isListening ? (
           <>
-            <span className="relative flex h-3 w-3 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-60"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
+            {/* Pulsing mic ring */}
+            <span className="relative flex items-center justify-center w-5 h-5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white/50"></span>
+              <svg className="relative" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 1a4 4 0 0 1 4 4v7a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v7a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 9a7 7 0 0 0 14 0h2a9 9 0 0 1-8 8.94V23h-2v-2.06A9 9 0 0 1 3 12h2z"/>
+              </svg>
             </span>
-            Stop Listening
+            <span className="text-sm tracking-wide">Stop</span>
           </>
         ) : (
           <>
-            <span className="text-lg leading-none">🎤</span>
-            Start Speaking
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="shrink-0">
+              <path d="M12 1a4 4 0 0 1 4 4v7a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v7a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 9a7 7 0 0 0 14 0h2a9 9 0 0 1-8 8.94V23h-2v-2.06A9 9 0 0 1 3 12h2z"/>
+            </svg>
+            <span className="text-sm tracking-wide">Start Speaking</span>
           </>
         )}
       </button>
