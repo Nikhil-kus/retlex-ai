@@ -2965,34 +2965,38 @@ export default function BillingPage() {
 }
 
 function CartOutline() {
-  // Cart shape matching hand-drawn reference:
-  // - Open basket: top bar angled, right vertical bar, bottom bar — 3 sides open on left
-  // - 3 speed/motion dashes on the left side
-  // - 2 wheels at the bottom
-  // Icon sits inside the basket area
+  // Trolley shape from reference image:
+  // Handle: top-left horizontal bar → drops down → diagonal slope to basket
+  // Basket: floor going right + short right wall going up
+  // Speed lines: 2 rows of 2 dashes on the left
+  // Wheels: 2 filled circles below basket
   return (
     <svg
-      viewBox="0 0 60 46"
+      viewBox="0 0 64 52"
       fill="none"
       className="absolute inset-0 w-full h-full pointer-events-none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Top bar — angled slightly, going from left-mid to top-right */}
-      <line x1="18" y1="8" x2="52" y2="5" stroke="#3730a3" strokeWidth="2.8" strokeLinecap="round" />
-      {/* Right vertical bar */}
-      <line x1="52" y1="5" x2="52" y2="32" stroke="#3730a3" strokeWidth="2.8" strokeLinecap="round" />
-      {/* Bottom bar */}
-      <line x1="18" y1="32" x2="52" y2="32" stroke="#3730a3" strokeWidth="2.8" strokeLinecap="round" />
-      {/* Speed / motion lines — 3 dashes on the left */}
-      <line x1="4"  y1="13" x2="15" y2="13" stroke="#3730a3" strokeWidth="2.4" strokeLinecap="round" />
-      <line x1="7"  y1="20" x2="17" y2="20" stroke="#3730a3" strokeWidth="2.4" strokeLinecap="round" />
-      <line x1="4"  y1="27" x2="15" y2="27" stroke="#3730a3" strokeWidth="2.4" strokeLinecap="round" />
-      {/* Left connecting stub — short vertical joining speed lines to basket */}
-      <line x1="17" y1="8" x2="17" y2="32" stroke="#3730a3" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3" />
+      {/* Handle — horizontal top bar */}
+      <line x1="20" y1="8" x2="32" y2="8" stroke="#3730a3" strokeWidth="3" strokeLinecap="square" />
+      {/* Handle — drop down */}
+      <line x1="20" y1="8" x2="20" y2="16" stroke="#3730a3" strokeWidth="3" strokeLinecap="square" />
+      {/* Diagonal slope from handle bottom to basket floor-left */}
+      <line x1="20" y1="16" x2="34" y2="32" stroke="#3730a3" strokeWidth="3" strokeLinecap="round" />
+      {/* Basket floor — horizontal */}
+      <line x1="34" y1="32" x2="56" y2="32" stroke="#3730a3" strokeWidth="3" strokeLinecap="square" />
+      {/* Basket right wall — short vertical up */}
+      <line x1="56" y1="32" x2="56" y2="18" stroke="#3730a3" strokeWidth="3" strokeLinecap="square" />
+      {/* Speed lines — row 1 (two dashes) */}
+      <line x1="4"  y1="17" x2="10" y2="17" stroke="#3730a3" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="13" y1="17" x2="19" y2="17" stroke="#3730a3" strokeWidth="2.5" strokeLinecap="round" />
+      {/* Speed lines — row 2 (two dashes) */}
+      <line x1="4"  y1="24" x2="10" y2="24" stroke="#3730a3" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="13" y1="24" x2="19" y2="24" stroke="#3730a3" strokeWidth="2.5" strokeLinecap="round" />
       {/* Left wheel */}
-      <circle cx="27" cy="39.5" r="4" stroke="#3730a3" strokeWidth="2.4" />
+      <circle cx="40" cy="40" r="4.5" fill="#3730a3" />
       {/* Right wheel */}
-      <circle cx="44" cy="39.5" r="4" stroke="#3730a3" strokeWidth="2.4" />
+      <circle cx="53" cy="40" r="4.5" fill="#3730a3" />
     </svg>
   );
 }
@@ -3007,8 +3011,8 @@ function TabButton({ active, onClick, icon, label }: any) {
       style={{ minHeight: '44px' }}
     >
       {active && <CartOutline />}
-      {/* Icon sits in the basket area — nudged right to sit inside the cart */}
-      <span className={`relative z-10 flex items-center justify-center ${active ? 'translate-x-3' : ''}`}>
+      {/* When active, nudge icon into the basket area (right side of cart) */}
+      <span className={`relative z-10 flex items-center justify-center transition-transform duration-200 ${active ? 'translate-x-4 -translate-y-1' : ''}`}>
         {icon}
       </span>
     </button>
