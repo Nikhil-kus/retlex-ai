@@ -2965,26 +2965,34 @@ export default function BillingPage() {
 }
 
 function CartOutline() {
-  // Shopping cart / trolley outline used as the active-tab indicator
+  // Three-part trolley outline: 1) handle+pole 2) basket body 3) wheels
+  // Designed to sit inside the tab button at natural pill height — no fill, pure stroke
   return (
     <svg
-      viewBox="0 0 52 44"
+      viewBox="0 0 56 40"
       fill="none"
       className="absolute inset-0 w-full h-full pointer-events-none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Cart body */}
+      {/* Part 1: Handle + pole */}
       <path
-        d="M4 4h5l5 22h22l4-14H13"
+        d="M3 5 L10 5 L16 26"
         stroke="#4338ca"
-        strokeWidth="2.5"
+        strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      {/* Left wheel */}
-      <circle cx="19" cy="39" r="3" stroke="#4338ca" strokeWidth="2.5" />
-      {/* Right wheel */}
-      <circle cx="33" cy="39" r="3" stroke="#4338ca" strokeWidth="2.5" />
+      {/* Part 2: Basket body */}
+      <path
+        d="M16 26 L40 26 L44 12 L13 12"
+        stroke="#4338ca"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Part 3: Wheels */}
+      <circle cx="21" cy="33" r="3.5" stroke="#4338ca" strokeWidth="2.2" />
+      <circle cx="36" cy="33" r="3.5" stroke="#4338ca" strokeWidth="2.2" />
     </svg>
   );
 }
@@ -2993,17 +3001,11 @@ function TabButton({ active, onClick, icon, label }: any) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold transition-all duration-200 relative ${
+      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold transition-all duration-200 relative ${
         active ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-700'
       }`}
-      style={{ minHeight: '48px' }}
     >
-      {active && (
-        <span className="absolute inset-0 flex items-center justify-center">
-          <CartOutline />
-          <span className="absolute inset-0 rounded-sm bg-indigo-50/80" />
-        </span>
-      )}
+      {active && <CartOutline />}
       <span className="relative z-10 flex items-center gap-1.5">
         {icon}
         <span className="hidden sm:inline text-xs">{label}</span>
