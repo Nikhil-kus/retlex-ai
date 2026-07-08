@@ -2327,6 +2327,15 @@ export default function BillingPage() {
                 /* ── REVIEW STATE: Detected items list ── */
                 <div className="flex flex-col" style={{height: '100%'}}>
 
+                  {/* Floating clear button — fixed bottom-left, only visible during review */}
+                  <button
+                    onClick={() => { setIsReviewing(false); setReviewItems([]); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
+                    className="fixed bottom-6 left-5 z-50 w-10 h-10 flex items-center justify-center rounded-full bg-rose-500 text-white shadow-lg hover:bg-rose-600 active:scale-90 transition-all"
+                    aria-label="Clear items"
+                  >
+                    <X size={16} strokeWidth={2.5} />
+                  </button>
+
                   {/* Live transcript strip */}
                   {isListening && finalTranscript && (
                     <div className="mx-4 mt-3 px-3 py-2 bg-rose-50 border border-rose-100 rounded-xl flex-shrink-0">
@@ -2351,15 +2360,7 @@ export default function BillingPage() {
                   )}
 
                   {/* Items list */}
-                  <div className="relative flex-1 overflow-y-auto px-4 py-3 space-y-2.5" style={{minHeight: 0}}>
-                    {/* Red clear button — top-right corner */}
-                    <button
-                      onClick={() => { setIsReviewing(false); setReviewItems([]); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
-                      className="absolute top-3 right-4 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-rose-500 text-white shadow-md hover:bg-rose-600 active:scale-90 transition-all"
-                      aria-label="Clear items"
-                    >
-                      <X size={14} strokeWidth={3} />
-                    </button>
+                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5" style={{minHeight: 0}}>
                     {reviewItems.map((item, idx) => (
                       <div
                         key={idx}
