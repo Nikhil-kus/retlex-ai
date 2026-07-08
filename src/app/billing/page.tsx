@@ -4,7 +4,7 @@ import Fuse from 'fuse.js';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package, Store } from 'lucide-react';
+import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
 import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
@@ -1874,9 +1874,9 @@ export default function BillingPage() {
             className="flex-shrink-0 flex items-center justify-between px-4 transition-all duration-300 ease-in-out overflow-hidden"
             style={{ maxHeight: headerVisible ? '64px' : '0px', opacity: headerVisible ? 1 : 0, paddingTop: headerVisible ? '10px' : '0', paddingBottom: headerVisible ? '10px' : '0' }}
           >
-            {/* Shop logo — left */}
+            {/* Shop logo — left (shopping cart / trolley) */}
             <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-sm flex-shrink-0">
-              <Store size={20} className="text-white" />
+              <ShoppingCart size={22} className="text-white" />
             </div>
 
             {/* Three-tab pill — fills remaining width */}
