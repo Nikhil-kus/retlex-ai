@@ -149,6 +149,8 @@ export default function BillingPage() {
   const [pinnedProductId, setPinnedProductId] = useState<string | null>(null);
   // Quantity selector sheet: index of the review item whose picker is open (null = closed)
   const [qtyPickerIdx, setQtyPickerIdx] = useState<number | null>(null);
+  // Suggestion panel: index of the review item whose suggestion panel is open (null = closed)
+  const [openSuggestionIdx, setOpenSuggestionIdx] = useState<number | null>(null);
 
   const areWordsSimilar = (w1: string, w2: string): boolean => {
     const val1 = w1.trim().toLowerCase();
@@ -2412,7 +2414,7 @@ export default function BillingPage() {
                             </button>
                           </div>
 
-                          {/* Row 2: rate | total | qty-pill */}
+                          {/* Row 2: rate | total | suggest-arrow | qty-pill */}
                           <div className="flex gap-2 mt-2.5 items-center">
                             {/* 1st: Rate box — fixed width so it doesn't crowd others */}
                             <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-9 w-24 shrink-0">
@@ -2423,7 +2425,37 @@ export default function BillingPage() {
                             <span className="text-xs font-bold text-indigo-600 shrink-0">
                               ₹{calculateItemTotal(item).toFixed(0)}
                             </span>
-                            {/* 3rd: Tappable quantity pill — opens the quantity selector sheet */}
+                            {/* 3rd: Suggestions toggle arrow — only shown when suggestions exist */}
+                            {item.productId && (() => {
+                              const hasSugs = item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0);
+                              // Compute lazily if not yet computed for this item
+                              const computedSugs = hasSugs ? item.suggestions : (item.productId ? getSuggestions(item) : null);
+                              const hasAnySugs = computedSugs && (computedSugs.brandVariants?.length > 0 || computedSugs.sizeVariants?.length > 0);
+                              if (!hasAnySugs) return null;
+                              const isOpen = openSuggestionIdx === idx;
+                              return (
+                                <button
+                                  onClick={() => {
+                                    // Ensure suggestions are stored on the item if not already
+                                    if (!hasSugs && computedSugs) {
+                                      const n = [...reviewItems];
+                                      n[idx] = { ...n[idx], suggestions: computedSugs };
+                                      setReviewItems(n);
+                                    }
+                                    setOpenSuggestionIdx(isOpen ? null : idx);
+                                  }}
+                                  className={`flex items-center justify-center h-9 w-9 rounded-xl shrink-0 border-2 transition-all active:scale-95 ${
+                                    isOpen
+                                      ? 'bg-violet-100 border-violet-400 text-violet-600'
+                                      : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-violet-300 hover:text-violet-500'
+                                  }`}
+                                  title="Show suggested products"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 200ms' }}><path d="M9 18l6-6-6-6"/></svg>
+                                </button>
+                              );
+                            })()}
+                            {/* 4th: Tappable quantity pill — opens the quantity selector sheet */}
                             <button
                               onClick={() => setQtyPickerIdx(idx)}
                               className="flex items-center gap-1.5 bg-indigo-50 border-2 border-indigo-300 rounded-xl h-9 px-3 ml-auto shrink-0 active:bg-indigo-100 active:scale-95 transition-all"
@@ -2436,7 +2468,7 @@ export default function BillingPage() {
                           </div>
 
                           {/* Suggestions — two rows: brands/variants + size/price packs */}
-                          {item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
+                          {openSuggestionIdx === idx && item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
                             const selectedBrand = selectedBrandPerItem[idx] || null;
                             const activeSizeVariants = selectedBrand
                               ? getSizeVariantsForBrand(selectedBrand)
@@ -2501,6 +2533,7 @@ export default function BillingPage() {
                                             const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
                                             setReviewItems(newItems);
                                             setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
+                                            setOpenSuggestionIdx(null);
                                           }}
                                           {...longPressHandlers(sug)}
                                           className={`relative flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border ${
@@ -2552,6 +2585,8 @@ export default function BillingPage() {
                                               suggestions: getSuggestions({ ...newItems[idx], ...overrides })
                                             };
                                             setReviewItems(newItems);
+                                            // Close suggestion panel after selection
+                                            setOpenSuggestionIdx(null);
                                             // If brand has pack sizes, highlight it so Pack Sizes row updates
                                             if (sugSizes.length > 0) {
                                               setSelectedBrandPerItem(prev => ({ ...prev, [idx]: isSelected ? null : sug }));
