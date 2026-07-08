@@ -2327,15 +2327,6 @@ export default function BillingPage() {
                 /* ── REVIEW STATE: Detected items list ── */
                 <div className="flex flex-col" style={{height: '100%'}}>
 
-                  {/* Floating clear button — fixed bottom-left, only visible during review */}
-                  <button
-                    onClick={() => { setIsReviewing(false); setReviewItems([]); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
-                    className="fixed bottom-6 left-5 z-50 w-10 h-10 flex items-center justify-center rounded-full bg-rose-500 text-white shadow-lg hover:bg-rose-600 active:scale-90 transition-all"
-                    aria-label="Clear items"
-                  >
-                    <X size={16} strokeWidth={2.5} />
-                  </button>
-
                   {/* Live transcript strip */}
                   {isListening && finalTranscript && (
                     <div className="mx-4 mt-3 px-3 py-2 bg-rose-50 border border-rose-100 rounded-xl flex-shrink-0">
@@ -2633,10 +2624,18 @@ export default function BillingPage() {
                   </div>
 
                   {/* Add to Bill button */}
-                  <div className="px-4 pb-20 pt-2 flex-shrink-0 border-t border-slate-100 bg-white">
+                  <div className="px-4 pb-20 pt-2 flex-shrink-0 border-t border-slate-100 bg-white flex items-center gap-2">
+                    {/* Red clear button — always visible, left of Add to Bill */}
+                    <button
+                      onClick={() => { setIsReviewing(false); setReviewItems([]); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
+                      className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-2xl bg-rose-50 border border-rose-200 text-rose-500 hover:bg-rose-100 active:scale-95 transition-all"
+                      aria-label="Clear items"
+                    >
+                      <X size={20} strokeWidth={2.5} />
+                    </button>
                     <button
                       onClick={confirmReview}
-                      className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-3.5 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 active:scale-[0.98] transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm"
+                      className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-3.5 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 active:scale-[0.98] transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm"
                     >
                       <CheckCircle size={18} />
                       Add {reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} to Bill
