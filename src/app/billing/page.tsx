@@ -2965,34 +2965,34 @@ export default function BillingPage() {
 }
 
 function CartOutline() {
-  // Three-part trolley outline: 1) handle+pole 2) basket body 3) wheels
-  // Designed to sit inside the tab button at natural pill height — no fill, pure stroke
+  // Cart shape matching hand-drawn reference:
+  // - Open basket: top bar angled, right vertical bar, bottom bar — 3 sides open on left
+  // - 3 speed/motion dashes on the left side
+  // - 2 wheels at the bottom
+  // Icon sits inside the basket area
   return (
     <svg
-      viewBox="0 0 56 40"
+      viewBox="0 0 60 46"
       fill="none"
       className="absolute inset-0 w-full h-full pointer-events-none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Part 1: Handle + pole */}
-      <path
-        d="M3 5 L10 5 L16 26"
-        stroke="#4338ca"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Part 2: Basket body */}
-      <path
-        d="M16 26 L40 26 L44 12 L13 12"
-        stroke="#4338ca"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Part 3: Wheels */}
-      <circle cx="21" cy="33" r="3.5" stroke="#4338ca" strokeWidth="2.2" />
-      <circle cx="36" cy="33" r="3.5" stroke="#4338ca" strokeWidth="2.2" />
+      {/* Top bar — angled slightly, going from left-mid to top-right */}
+      <line x1="18" y1="8" x2="52" y2="5" stroke="#3730a3" strokeWidth="2.8" strokeLinecap="round" />
+      {/* Right vertical bar */}
+      <line x1="52" y1="5" x2="52" y2="32" stroke="#3730a3" strokeWidth="2.8" strokeLinecap="round" />
+      {/* Bottom bar */}
+      <line x1="18" y1="32" x2="52" y2="32" stroke="#3730a3" strokeWidth="2.8" strokeLinecap="round" />
+      {/* Speed / motion lines — 3 dashes on the left */}
+      <line x1="4"  y1="13" x2="15" y2="13" stroke="#3730a3" strokeWidth="2.4" strokeLinecap="round" />
+      <line x1="7"  y1="20" x2="17" y2="20" stroke="#3730a3" strokeWidth="2.4" strokeLinecap="round" />
+      <line x1="4"  y1="27" x2="15" y2="27" stroke="#3730a3" strokeWidth="2.4" strokeLinecap="round" />
+      {/* Left connecting stub — short vertical joining speed lines to basket */}
+      <line x1="17" y1="8" x2="17" y2="32" stroke="#3730a3" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3" />
+      {/* Left wheel */}
+      <circle cx="27" cy="39.5" r="4" stroke="#3730a3" strokeWidth="2.4" />
+      {/* Right wheel */}
+      <circle cx="44" cy="39.5" r="4" stroke="#3730a3" strokeWidth="2.4" />
     </svg>
   );
 }
@@ -3001,14 +3001,15 @@ function TabButton({ active, onClick, icon, label }: any) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold transition-all duration-200 relative ${
-        active ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-700'
+      className={`flex-1 flex items-center justify-center text-sm font-semibold transition-all duration-200 relative ${
+        active ? 'text-indigo-800' : 'text-slate-500 hover:text-slate-700'
       }`}
+      style={{ minHeight: '44px' }}
     >
       {active && <CartOutline />}
-      <span className="relative z-10 flex items-center gap-1.5">
+      {/* Icon sits in the basket area — nudged right to sit inside the cart */}
+      <span className={`relative z-10 flex items-center justify-center ${active ? 'translate-x-3' : ''}`}>
         {icon}
-        <span className="hidden sm:inline text-xs">{label}</span>
       </span>
     </button>
   );
