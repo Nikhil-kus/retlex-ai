@@ -2656,9 +2656,9 @@ export default function BillingPage() {
           removeFromCart={removeFromCart}
           handleGenerateBill={handleGenerateBill}
           expanded={showCartSheet}
-          onExpand={() => setShowCartSheet(true)}
-          onCollapse={() => setShowCartSheet(false)}
-          onClearCart={() => { setCart([]); setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' }); setShowCartSheet(false); }}
+          onExpand={() => { setShowCartSheet(true); setIsSearching(true); }}
+          onCollapse={() => { setShowCartSheet(false); setIsSearching(false); }}
+          onClearCart={() => { setCart([]); setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' }); setShowCartSheet(false); setIsSearching(false); }}
           onPriceUpdate={handlePriceUpdate}
         />
       )}
@@ -2968,9 +2968,9 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
     setEditingPriceIdx(null);
   };
 
-  // Full sheet height (85vh) vs mini bar height (~64px)
+  // Full sheet height vs mini bar height (~64px)
   const MINI_HEIGHT = 64;
-  const FULL_HEIGHT_VH = 88;
+  const FULL_HEIGHT_VH = 96;
 
   const handleTouchStart = (e: React.TouchEvent) => {
     dragStartY.current = e.touches[0].clientY;
@@ -3081,7 +3081,7 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
           <>
             {/* Drag handle + down arrow button */}
             <div
-              className="flex flex-col items-center pt-3 pb-2 flex-shrink-0 cursor-grab gap-1.5"
+              className="flex flex-col items-center pt-2 pb-1 flex-shrink-0 cursor-grab gap-1"
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
@@ -3089,15 +3089,15 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
               <div className="w-10 h-1.5 rounded-full bg-slate-300" />
               <button
                 onClick={onCollapse}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 transition"
+                className="w-7 h-7 flex items-center justify-center rounded-full bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 transition"
                 title="Collapse"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
               </button>
             </div>
 
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 flex-shrink-0">
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <ShoppingCart size={18} className="text-indigo-500" /> Current Bill
                 <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2 py-0.5 rounded-full">{cart.length}</span>
@@ -3112,7 +3112,7 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
             </div>
 
             {/* Cart items */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
               {cart.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
                   <ShoppingCart size={40} className="opacity-20" />
@@ -3120,15 +3120,15 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
                 </div>
               ) : (
                 cart.map((item: any, idx: number) => (
-                  <div key={idx} className="flex gap-3 items-center bg-slate-50 rounded-xl p-3 border border-slate-100">
+                  <div key={idx} className="flex gap-2 items-center bg-slate-50 rounded-xl p-2 border border-slate-100">
                     {/* Tappable left section — opens price editor */}
                     <button
-                      className="flex items-center gap-3 flex-1 min-w-0 text-left active:opacity-70 transition-opacity"
+                      className="flex items-center gap-2 flex-1 min-w-0 text-left active:opacity-70 transition-opacity"
                       onClick={() => openPriceEdit(idx)}
                       title="Tap to edit selling price"
                     >
-                      <div className="w-10 h-10 rounded-lg bg-white overflow-hidden shrink-0 flex items-center justify-center border border-slate-200">
-                        {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-400" size={16} />}
+                      <div className="w-9 h-9 rounded-lg bg-white overflow-hidden shrink-0 flex items-center justify-center border border-slate-200">
+                        {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-400" size={14} />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-slate-900 text-sm truncate">{pName(item.name, item.localName)}</p>
@@ -3161,7 +3161,7 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
 
             {/* Footer */}
             {cart.length > 0 && (
-              <div className="px-4 pb-6 pt-3 border-t border-slate-100 space-y-3 flex-shrink-0">
+              <div className="px-4 pb-4 pt-2 border-t border-slate-100 space-y-2 flex-shrink-0">
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 text-sm">Total</span>
                   <span className="text-xl font-bold text-emerald-600">₹{totalAmount.toFixed(2)}</span>
@@ -3180,14 +3180,14 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
                       setCustomerInfo(newInfo);
                       if (val.length === 10) { handleGenerateBill(newInfo); onCollapse(); }
                     }}
-                    className="w-full bg-white border-2 border-indigo-200 rounded-xl px-4 py-3 text-base font-semibold focus:outline-none focus:border-indigo-500 placeholder:text-slate-400 placeholder:font-normal tracking-wider"
+                    className="w-full bg-white border-2 border-indigo-200 rounded-xl px-4 py-2.5 text-base font-semibold focus:outline-none focus:border-indigo-500 placeholder:text-slate-400 placeholder:font-normal tracking-wider"
                   />
                   <input
                     type="text"
                     placeholder="Customer Name (optional)"
                     value={customerInfo.name}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomerInfo({ ...customerInfo, name: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-400"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -3197,7 +3197,7 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
                 <button
                   disabled={savingBill}
                   onClick={() => { handleGenerateBill(); onCollapse(); }}
-                  className="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-2xl hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                  className="w-full bg-indigo-600 text-white font-bold py-3 rounded-2xl hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50"
                 >
                   <CheckCircle size={18} />
                   {savingBill ? 'Saving…' : 'Generate Bill'}
