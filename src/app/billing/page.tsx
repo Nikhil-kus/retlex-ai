@@ -2425,8 +2425,8 @@ export default function BillingPage() {
                             <span className="text-xs font-bold text-indigo-600 shrink-0">
                               ₹{calculateItemTotal(item).toFixed(0)}
                             </span>
-                            {/* 3rd: Suggestions toggle arrow — only shown when suggestions exist */}
-                            {item.productId && (() => {
+                            {/* 3rd: Suggestions toggle arrow — only shown for non-last items that have suggestions */}
+                            {item.productId && idx !== reviewItems.length - 1 && (() => {
                               const hasSugs = item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0);
                               // Compute lazily if not yet computed for this item
                               const computedSugs = hasSugs ? item.suggestions : (item.productId ? getSuggestions(item) : null);
@@ -2468,7 +2468,7 @@ export default function BillingPage() {
                           </div>
 
                           {/* Suggestions — two rows: brands/variants + size/price packs */}
-                          {openSuggestionIdx === idx && item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
+                          {(openSuggestionIdx === idx || idx === reviewItems.length - 1) && item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
                             const selectedBrand = selectedBrandPerItem[idx] || null;
                             const activeSizeVariants = selectedBrand
                               ? getSizeVariantsForBrand(selectedBrand)
