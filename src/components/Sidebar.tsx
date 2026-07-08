@@ -42,7 +42,7 @@ export default function Sidebar() {
         aria-label={isOpen ? 'Close menu' : 'Open menu'}
         className="menu-toggle-btn md:hidden fixed top-3 left-3 z-50 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 active:scale-95 transition-all duration-150"
       >
-        {isOpen ? <X size={20} strokeWidth={2.5} /> : <ShoppingCart size={20} />}
+        {isOpen ? <X size={20} strokeWidth={2.5} /> : <Store size={20} />}
       </button>
       )}
 
