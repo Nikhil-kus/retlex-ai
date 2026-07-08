@@ -2964,46 +2964,17 @@ export default function BillingPage() {
   );
 }
 
-function CartOutline() {
-  // Clean, beautiful open-top shopping trolley — purely decorative overlay
-  // viewBox sized so the cart fills the space naturally without distorting the button
-  return (
-    <svg
-      viewBox="0 0 48 38"
-      fill="none"
-      className="absolute inset-0 w-full h-full pointer-events-none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      {/* Handle arm — curves from top-left down to basket */}
-      <path
-        d="M5 7 Q5 14 12 18"
-        stroke="#3730a3" strokeWidth="2.2" strokeLinecap="round" fill="none"
-      />
-      {/* Basket — open top, 3 sides: left, bottom, right */}
-      <path
-        d="M12 18 L12 28 L38 28 L38 16"
-        stroke="#3730a3" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none"
-      />
-      {/* Left wheel */}
-      <circle cx="18" cy="33.5" r="3" stroke="#3730a3" strokeWidth="2" />
-      {/* Right wheel */}
-      <circle cx="32" cy="33.5" r="3" stroke="#3730a3" strokeWidth="2" />
-    </svg>
-  );
-}
-
 function TabButton({ active, onClick, icon, label }: any) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold transition-all duration-200 relative ${
-        active ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-700'
+      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
+        active
+          ? 'bg-indigo-100 text-indigo-700 border border-indigo-500 shadow-sm'
+          : 'text-slate-500 hover:text-slate-700'
       }`}
     >
-      {active && <CartOutline />}
-      <span className="relative z-10 flex items-center gap-1.5">
-        {icon}
-      </span>
+      {icon}
     </button>
   );
 }
