@@ -2646,39 +2646,45 @@ export default function BillingPage() {
 
       {/* Floating Voice Button - fixed bottom center, hidden during manual search */}
       {!(mode === 'MANUAL' && search.length > 0) && (
-      <button
-        onClick={isListening ? stopVoiceInput : startVoiceInput}
-        className={`fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5 px-5 py-3 rounded-2xl font-semibold text-white shadow-xl transition-all duration-300 ${
-          isListening
-            ? 'bg-rose-500 shadow-rose-400/40 scale-105'
-            : 'bg-slate-900 shadow-slate-900/30 hover:bg-slate-800 hover:scale-[1.03] active:scale-95'
-        }`}
-        style={{
-          minWidth: '168px',
-          justifyContent: 'center',
-          bottom: cart.length > 0 ? '5rem' : '1.5rem',
-        }}
+      <div
+        className="fixed left-1/2 -translate-x-1/2 z-40"
+        style={{ bottom: cart.length > 0 ? '5rem' : '1.5rem' }}
       >
-        {isListening ? (
-          <>
-            {/* Pulsing mic ring */}
-            <span className="relative flex items-center justify-center w-5 h-5 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white/50"></span>
-              <svg className="relative" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        {/* Expanding pulse ring — only when listening */}
+        {isListening && <span className="voice-ring" />}
+
+        <button
+          onClick={isListening ? stopVoiceInput : startVoiceInput}
+          className={`relative flex items-center gap-3 px-6 py-3.5 rounded-full font-semibold text-white transition-all duration-300 active:scale-95 ${
+            isListening
+              ? 'bg-rose-500 shadow-[0_8px_32px_rgba(239,68,68,0.45)] scale-105'
+              : 'bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-600 shadow-[0_8px_32px_rgba(99,102,241,0.4)] voice-btn-idle hover:scale-105'
+          }`}
+          style={{ minWidth: '172px', justifyContent: 'center' }}
+        >
+          {isListening ? (
+            <>
+              {/* Sound wave bars */}
+              <span className="flex items-center gap-[3px] h-5">
+                <span className="voice-bar bar1" />
+                <span className="voice-bar bar2" />
+                <span className="voice-bar bar3" />
+                <span className="voice-bar bar4" />
+                <span className="voice-bar bar5" />
+              </span>
+              <span className="text-[13px] font-bold tracking-widest uppercase">Listening…</span>
+            </>
+          ) : (
+            <>
+              {/* Static mic icon */}
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 opacity-90">
                 <path d="M12 1a4 4 0 0 1 4 4v7a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v7a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 9a7 7 0 0 0 14 0h2a9 9 0 0 1-8 8.94V23h-2v-2.06A9 9 0 0 1 3 12h2z"/>
               </svg>
-            </span>
-            <span className="text-sm tracking-wide">Stop</span>
-          </>
-        ) : (
-          <>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="shrink-0">
-              <path d="M12 1a4 4 0 0 1 4 4v7a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v7a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 9a7 7 0 0 0 14 0h2a9 9 0 0 1-8 8.94V23h-2v-2.06A9 9 0 0 1 3 12h2z"/>
-            </svg>
-            <span className="text-sm tracking-wide">Start Speaking</span>
-          </>
-        )}
-      </button>
+              <span className="text-[13px] font-bold tracking-wide">Speak Order</span>
+            </>
+          )}
+        </button>
+      </div>
       )}
 
       {/* Cart Bottom Sheet — shown after "Add items to Bill" on mobile */}
