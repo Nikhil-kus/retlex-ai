@@ -2968,6 +2968,16 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
     setEditingPriceIdx(null);
   };
 
+  // Bill-only: updates cart price without touching the product catalog
+  const confirmPriceEditBillOnly = () => {
+    if (editingPriceIdx === null) return;
+    const newPrice = parseFloat(editingPriceValue);
+    if (!isNaN(newPrice) && newPrice >= 0) {
+      updateCartItem(editingPriceIdx, 'price', newPrice);
+    }
+    setEditingPriceIdx(null);
+  };
+
   // Full sheet height vs mini bar height (~64px)
   const MINI_HEIGHT = 64;
   const FULL_HEIGHT_VH = 96;
@@ -3237,27 +3247,33 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
                 className="flex-1 bg-transparent text-2xl font-bold text-slate-900 focus:outline-none"
                 value={editingPriceValue}
                 onChange={e => setEditingPriceValue(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') confirmPriceEdit(); if (e.key === 'Escape') setEditingPriceIdx(null); }}
+                onKeyDown={e => { if (e.key === 'Enter') confirmPriceEditBillOnly(); if (e.key === 'Escape') setEditingPriceIdx(null); }}
                 autoFocus
               />
               <span className="text-sm text-slate-400 font-medium">/ {cart[editingPriceIdx]?.baseUnit}</span>
             </div>
 
             <p className="text-xs text-slate-400 mt-2 mb-5">
-              Original price: ₹{(cart[editingPriceIdx]?.price || 0).toFixed(2)} — change will update the product catalog
+              Original price: ₹{(cart[editingPriceIdx]?.price || 0).toFixed(2)} — "This Bill Only" keeps catalog unchanged
             </p>
 
             {/* Actions */}
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <button
                 onClick={() => setEditingPriceIdx(null)}
-                className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition"
+                className="py-3 px-4 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition"
               >
                 Cancel
               </button>
               <button
+                onClick={confirmPriceEditBillOnly}
+                className="flex-1 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 ring-2 ring-indigo-400 ring-offset-1"
+              >
+                This Bill Only
+              </button>
+              <button
                 onClick={confirmPriceEdit}
-                className="flex-1 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200"
+                className="py-3 px-4 rounded-2xl bg-slate-700 text-white font-bold text-sm hover:bg-slate-600 active:scale-[0.98] transition-all"
               >
                 Update Price
               </button>
