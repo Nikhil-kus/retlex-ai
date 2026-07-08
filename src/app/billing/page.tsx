@@ -2326,35 +2326,6 @@ export default function BillingPage() {
               ) : (
                 /* ── REVIEW STATE: Detected items list ── */
                 <div className="flex flex-col" style={{height: '100%'}}>
-                  {/* Header */}
-                  <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 flex-shrink-0">
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
-                        <CheckCircle size={14} className="text-emerald-600" />
-                      </span>
-                      <div>
-                        <p className="text-sm font-bold text-slate-900 leading-none">Detected Items</p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">{reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} found</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {isListening && (
-                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-rose-500 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-                          </span>
-                          Live
-                        </span>
-                      )}
-                      <button
-                        onClick={() => { setIsReviewing(false); setReviewItems([]); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
-                        className="text-xs text-slate-400 hover:text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition font-medium"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
 
                   {/* Live transcript strip */}
                   {isListening && finalTranscript && (
@@ -2380,7 +2351,15 @@ export default function BillingPage() {
                   )}
 
                   {/* Items list */}
-                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5" style={{minHeight: 0}}>
+                  <div className="relative flex-1 overflow-y-auto px-4 py-3 space-y-2.5" style={{minHeight: 0}}>
+                    {/* Red clear button — top-right corner */}
+                    <button
+                      onClick={() => { setIsReviewing(false); setReviewItems([]); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
+                      className="absolute top-3 right-4 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-rose-500 text-white shadow-md hover:bg-rose-600 active:scale-90 transition-all"
+                      aria-label="Clear items"
+                    >
+                      <X size={14} strokeWidth={3} />
+                    </button>
                     {reviewItems.map((item, idx) => (
                       <div
                         key={idx}
