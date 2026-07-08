@@ -1428,23 +1428,13 @@ export default function BillingPage() {
     lastScrollYRef.current = 0;
   }, [modeIndex]);
 
-  useEffect(() => {
-    const THRESHOLD = 6; // px — ignore tiny jitter
-    const handleScroll = (e: Event) => {
-      const el = e.currentTarget as HTMLDivElement;
-      const current = el.scrollTop;
-      const diff = current - lastScrollYRef.current;
-      if (Math.abs(diff) < THRESHOLD) return;
-      setHeaderVisible(diff < 0 || current < 10);
-      lastScrollYRef.current = current;
-    };
-
-    const refs = [slide0Ref, slide1Ref, slide2Ref];
-    refs.forEach(r => r.current?.addEventListener('scroll', handleScroll, { passive: true }));
-    return () => {
-      refs.forEach(r => r.current?.removeEventListener('scroll', handleScroll));
-    };
-  }, []);
+  const handleScrollDirection = (scrollTop: number) => {
+    const THRESHOLD = 6;
+    const diff = scrollTop - lastScrollYRef.current;
+    if (Math.abs(diff) < THRESHOLD) return;
+    setHeaderVisible(diff < 0 || scrollTop < 10);
+    lastScrollYRef.current = scrollTop;
+  };
   // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -1931,7 +1921,7 @@ export default function BillingPage() {
             {/* Slide 0 - Manual Search */}
             <div ref={slide0Ref} className="w-full shrink-0 overflow-y-auto flex flex-col"
               onTouchStart={() => { if (search.length > 0) searchInputRef.current?.blur(); }}
-              onScroll={() => { if (search.length > 0) searchInputRef.current?.blur(); setActiveSuggestionId(null); }}
+              onScroll={(e) => { const t = (e.currentTarget as HTMLDivElement).scrollTop; if (search.length > 0) searchInputRef.current?.blur(); setActiveSuggestionId(null); handleScrollDirection(t); }}
             >
 
               {/* ── Category full-page view ── */}
@@ -2188,7 +2178,9 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 1 - Pending Bills */}
-            <div ref={slide1Ref} className="w-full shrink-0 p-6 space-y-8 overflow-y-auto">
+            <div ref={slide1Ref} className="w-full shrink-0 p-6 space-y-8 overflow-y-auto"
+              onScroll={(e) => handleScrollDirection((e.currentTarget as HTMLDivElement).scrollTop)}
+            >
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Pending</h3></div>
@@ -2260,7 +2252,9 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 2 - Scan Slip / Review */}
-            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}>
+            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}
+              onScroll={(e) => handleScrollDirection((e.currentTarget as HTMLDivElement).scrollTop)}
+            >
               {!isReviewing ? (
                 /* ── IDLE STATE: Upload / Voice prompt ── */
                 <div className="flex flex-col gap-4 p-5">
