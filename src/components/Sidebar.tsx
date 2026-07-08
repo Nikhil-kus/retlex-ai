@@ -35,14 +35,14 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile Toggle Button — hidden during manual search */}
+      {/* Shop icon — top-left, replaces hamburger, taps to open sidebar */}
       {!isSearching && (
       <button
         onClick={() => setIsOpen(!isOpen)}
         aria-label={isOpen ? 'Close menu' : 'Open menu'}
-        className="menu-toggle-btn md:hidden fixed top-3 right-3 z-50 w-10 h-10 flex items-center justify-center bg-white/90 backdrop-blur-sm border border-slate-200/80 text-slate-700 rounded-xl shadow-md hover:bg-white hover:shadow-lg active:scale-95 transition-all duration-150"
+        className="menu-toggle-btn md:hidden fixed top-3 left-3 z-50 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 active:scale-95 transition-all duration-150"
       >
-        {isOpen ? <X size={20} strokeWidth={2.5} /> : <Menu size={20} strokeWidth={2.5} />}
+        {isOpen ? <X size={20} strokeWidth={2.5} /> : <Store size={20} />}
       </button>
       )}
 

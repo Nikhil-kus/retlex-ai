@@ -4,7 +4,7 @@ import Fuse from 'fuse.js';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
+import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package, Store } from 'lucide-react';
 import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
@@ -1867,16 +1867,24 @@ export default function BillingPage() {
 
       {/* Main Panel — fills full height, voice button floats over the bottom */}
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="bg-white shadow-sm border-b border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
-          {/* Tab bar — hides on scroll-down, reveals on scroll-up */}
+        <div className="bg-white overflow-hidden flex flex-col flex-1 min-h-0">
+          {/* Tab bar — pill style, hides on scroll-down, reveals on scroll-up */}
           {!(mode === 'MANUAL' && search.length > 0) && (
           <div
-            className="flex border-b border-slate-100 flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden"
-            style={{ maxHeight: headerVisible ? '56px' : '0px', opacity: headerVisible ? 1 : 0 }}
+            className="flex-shrink-0 flex items-center justify-between px-4 transition-all duration-300 ease-in-out overflow-hidden"
+            style={{ maxHeight: headerVisible ? '64px' : '0px', opacity: headerVisible ? 1 : 0, paddingTop: headerVisible ? '10px' : '0', paddingBottom: headerVisible ? '10px' : '0' }}
           >
-            <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
-            <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
-            <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan Slip" />
+            {/* Shop logo — left */}
+            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-sm flex-shrink-0">
+              <Store size={20} className="text-white" />
+            </div>
+
+            {/* Three-tab pill — center/right */}
+            <div className="flex items-center bg-slate-100 rounded-full p-1 gap-0.5">
+              <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Search" />
+              <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Bills" />
+              <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan" />
+            </div>
           </div>
           )}
 
@@ -2958,10 +2966,14 @@ function TabButton({ active, onClick, icon, label }: any) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 py-4 flex items-center justify-center gap-2 font-medium transition-colors border-b-2 ${active ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}
+      className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
+        active
+          ? 'bg-white text-indigo-600 shadow-sm'
+          : 'text-slate-500 hover:text-slate-700'
+      }`}
     >
       {icon}
-      <span className="hidden sm:inline">{label}</span>
+      <span className="hidden sm:inline text-xs">{label}</span>
     </button>
   );
 }
