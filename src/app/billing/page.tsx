@@ -1418,6 +1418,35 @@ export default function BillingPage() {
   const slide1Ref = useRef<HTMLDivElement>(null);
   const slide2Ref = useRef<HTMLDivElement>(null);
 
+  // ── Hide-on-scroll-down / show-on-scroll-up for the tab bar ──────────────
+  const [headerVisible, setHeaderVisible] = useState(true);
+  const lastScrollYRef = useRef(0);
+
+  useEffect(() => {
+    // Reset header visibility whenever the tab changes
+    setHeaderVisible(true);
+    lastScrollYRef.current = 0;
+  }, [modeIndex]);
+
+  useEffect(() => {
+    const THRESHOLD = 6; // px — ignore tiny jitter
+    const handleScroll = (e: Event) => {
+      const el = e.currentTarget as HTMLDivElement;
+      const current = el.scrollTop;
+      const diff = current - lastScrollYRef.current;
+      if (Math.abs(diff) < THRESHOLD) return;
+      setHeaderVisible(diff < 0 || current < 10);
+      lastScrollYRef.current = current;
+    };
+
+    const refs = [slide0Ref, slide1Ref, slide2Ref];
+    refs.forEach(r => r.current?.addEventListener('scroll', handleScroll, { passive: true }));
+    return () => {
+      refs.forEach(r => r.current?.removeEventListener('scroll', handleScroll));
+    };
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (sliderRef.current) {
       sliderRef.current.style.transform = `translateX(-${modeIndex * 100}%)`;
@@ -1849,9 +1878,12 @@ export default function BillingPage() {
       {/* Main Panel — fills full height, voice button floats over the bottom */}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="bg-white shadow-sm border-b border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
-          {/* Tab bar — hidden when manual search is active */}
+          {/* Tab bar — hides on scroll-down, reveals on scroll-up */}
           {!(mode === 'MANUAL' && search.length > 0) && (
-          <div className="flex border-b border-slate-100 flex-shrink-0">
+          <div
+            className="flex border-b border-slate-100 flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden"
+            style={{ maxHeight: headerVisible ? '56px' : '0px', opacity: headerVisible ? 1 : 0 }}
+          >
             <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Manual Search" />
             <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Pending Bills" />
             <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan Slip" />
