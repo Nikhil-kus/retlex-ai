@@ -1879,8 +1879,8 @@ export default function BillingPage() {
               <Store size={20} className="text-white" />
             </div>
 
-            {/* Three-tab pill — center/right */}
-            <div className="flex items-center bg-slate-100 rounded-full p-1 gap-0.5">
+            {/* Three-tab pill — fills remaining width */}
+            <div className="flex items-center bg-slate-100 rounded-full p-1 gap-0.5 flex-1 ml-3">
               <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Search" />
               <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Bills" />
               <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan" />
@@ -2966,7 +2966,7 @@ function TabButton({ active, onClick, icon, label }: any) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
+      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
         active
           ? 'bg-white text-indigo-600 shadow-sm'
           : 'text-slate-500 hover:text-slate-700'
