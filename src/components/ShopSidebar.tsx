@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useHindi } from '@/lib/hindi-context';
+import { useShop } from '@/lib/shop-context';
 
 interface ShopSidebarProps {
   shopId: string;
@@ -27,6 +28,7 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const { hindiMode, toggleHindi, isSearching, headerVisible } = useHindi();
+  const { shop } = useShop();
 
   const base = `/${shopId}`;
 
@@ -56,10 +58,21 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
         <button
           onClick={() => setIsOpen(!isOpen)}
           aria-label={isOpen ? 'Close menu' : 'Open menu'}
-          className="md:hidden fixed top-3 left-3 z-50 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 active:scale-95 transition-all duration-300"
+          className="md:hidden fixed top-3 left-3 z-50 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 active:scale-95 transition-all duration-300 overflow-hidden"
           style={{ opacity: headerVisible ? 1 : 0, pointerEvents: headerVisible ? 'auto' : 'none', transform: headerVisible ? 'translateY(0)' : 'translateY(-56px)' }}
         >
-          {isOpen ? <X size={20} strokeWidth={2.5} /> : <Store size={20} />}
+          {isOpen ? (
+            <X size={20} strokeWidth={2.5} />
+          ) : shop?.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={shop.logoUrl}
+              alt={shop.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <Store size={20} />
+          )}
         </button>
       )}
 
@@ -74,7 +87,16 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
         {/* Logo + Hindi toggle */}
         <div className="p-6 flex items-center justify-between">
           <Link href={`${base}/billing`} className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-            <Store className="text-indigo-400" />
+            {shop?.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={shop.logoUrl}
+                alt={shop.name}
+                className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+              />
+            ) : (
+              <Store className="text-indigo-400" />
+            )}
             Retlex<span className="text-indigo-400">AI</span>
           </Link>
           <button

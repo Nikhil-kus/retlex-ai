@@ -80,12 +80,17 @@ export async function PUT(request: Request, { params }: Params) {
       existing.qrCodeId ||
       Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
 
-    const updateData = {
+    const updateData: Partial<Omit<Shop, 'id'>> & { qrCodeId: string } = {
       name: data.name,
       mobile: data.mobile,
       address: data.address,
       qrCodeId,
     };
+
+    // Persist logoUrl if provided (Firebase Storage URL)
+    if (typeof data.logoUrl === 'string' || data.logoUrl === null) {
+      updateData.logoUrl = data.logoUrl;
+    }
 
     await updateDoc(doc(db, 'shops', shopId), updateData);
     const updated: Shop = { id: shopId, ...existing, ...updateData };

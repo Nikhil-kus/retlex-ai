@@ -6,7 +6,7 @@
  * Full shop management page with:
  *   1. Shop picker  — switch between existing shops
  *   2. Create shop  — create a brand-new shop
- *   3. Edit profile — update name / mobile / address
+ *   3. Edit profile — update name / mobile / address / logo
  *   4. Worker QR    — printable/downloadable QR that opens /[shopId]/worker
  *   5. Customer QR  — printable/downloadable QR that opens /qr/[qrCodeId]
  *                     (customer orders page, no auth needed)
@@ -18,8 +18,11 @@ import { useRouter } from 'next/navigation';
 import {
   Store, Save, Plus, ChevronDown, Check,
   Users, ShoppingBag, Package, Loader2, X, Printer, ExternalLink,
+  Camera, Trash2,
 } from 'lucide-react';
 import QRCodeDisplay from '@/components/QRCodeDisplay';
+import { storage } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import type { Shop } from '@/types';
 
 interface Props {
@@ -47,6 +50,92 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
   useEffect(() => {
     setFormData({ name: shop.name || '', mobile: shop.mobile || '', address: shop.address || '' });
   }, [shop]);
+
+  // ── logo upload ────────────────────────────────────────────────────────────
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(shop.logoUrl || null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+
+  // keep logo preview in sync when shop refreshes
+  useEffect(() => {
+    setLogoPreview(shop.logoUrl || null);
+  }, [shop.logoUrl]);
+
+  const handleLogoSelect = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setLogoError('Please select an image file.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setLogoError('Image must be under 2 MB.');
+      return;
+    }
+
+    setLogoError(null);
+    setUploadingLogo(true);
+
+    try {
+      // Show local preview immediately
+      const preview = URL.createObjectURL(file);
+      setLogoPreview(preview);
+
+      // Upload to Firebase Storage
+      const storageRef = ref(storage, `shops/${shopId}/logo`);
+      await uploadBytes(storageRef, file, { contentType: file.type });
+      const downloadUrl = await getDownloadURL(storageRef);
+
+      // Persist URL to Firestore via the shop API
+      const res = await fetch(`/api/shops/${shopId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, logoUrl: downloadUrl }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to save logo URL');
+      }
+
+      setLogoPreview(downloadUrl);
+      await onSaved?.();
+    } catch (err: any) {
+      setLogoError(err.message || 'Upload failed');
+      setLogoPreview(shop.logoUrl || null);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!confirm('Remove the shop logo?')) return;
+    setUploadingLogo(true);
+    setLogoError(null);
+
+    try {
+      // Delete from Firebase Storage
+      try {
+        const storageRef = ref(storage, `shops/${shopId}/logo`);
+        await deleteObject(storageRef);
+      } catch {
+        // Ignore if file doesn't exist in storage
+      }
+
+      // Clear from Firestore
+      await fetch(`/api/shops/${shopId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, logoUrl: null }),
+      });
+
+      setLogoPreview(null);
+      await onSaved?.();
+    } catch {
+      setLogoError('Failed to remove logo');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -322,6 +411,68 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
                 onChange={e => setFormData({ ...formData, address: e.target.value })}
                 placeholder="Full shop address…"
               />
+            </div>
+
+            {/* ── Shop Logo ─────────────────────────────────────────────── */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Shop Logo
+                <span className="ml-1.5 text-xs font-normal text-slate-400">(shown in the menu icon)</span>
+              </label>
+
+              <div className="flex items-center gap-4">
+                {/* Preview circle */}
+                <div className="relative w-16 h-16 rounded-xl overflow-hidden border-2 border-slate-200 bg-slate-50 flex-shrink-0 flex items-center justify-center">
+                  {uploadingLogo ? (
+                    <Loader2 size={20} className="text-indigo-400 animate-spin" />
+                  ) : logoPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={logoPreview} alt="Shop logo" className="w-full h-full object-cover" />
+                  ) : (
+                    <Store size={24} className="text-slate-300" />
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col gap-2 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={uploadingLogo}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:border-indigo-400 hover:text-indigo-600 transition disabled:opacity-50"
+                  >
+                    <Camera size={15} />
+                    {logoPreview ? 'Change Logo' : 'Upload Logo'}
+                  </button>
+                  {logoPreview && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      disabled={uploadingLogo}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl border border-rose-200 bg-white text-rose-500 text-sm font-medium hover:bg-rose-50 transition disabled:opacity-50"
+                    >
+                      <Trash2 size={15} />
+                      Remove Logo
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Hidden file input */}
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => handleLogoSelect(e.target.files?.[0] ?? null)}
+              />
+
+              {logoError && (
+                <p className="mt-2 text-xs text-rose-500">{logoError}</p>
+              )}
+              <p className="mt-1.5 text-xs text-slate-400">
+                JPG, PNG or WEBP · max 2 MB · recommended 200×200 px
+              </p>
             </div>
 
             <button

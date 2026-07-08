@@ -26,6 +26,8 @@ export interface Shop {
   businessType?: { name: string } | null;
   /** ISO timestamp of creation */
   createdAt?: string;
+  /** Firebase Storage URL for the shop logo (shown in sidebar menu icon) */
+  logoUrl?: string | null;
 }
 
 // ── Product ───────────────────────────────────────────────────────────────────
