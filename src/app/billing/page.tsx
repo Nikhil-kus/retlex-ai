@@ -2094,13 +2094,13 @@ export default function BillingPage() {
                     <>
                       {/* Top Selling — grid layout */}
                       {catalog.length > 0 && (
-                        <div className="pt-4 pb-2">
+                        <div className="pt-4 pb-2 bg-gradient-to-b from-amber-50 via-orange-50/50 to-yellow-50/30 rounded-2xl mx-2 mb-1">
                           <div className="flex items-center px-4 mb-3">
                             <h2 className="text-sm font-bold text-slate-900">⚡ Top Selling</h2>
                           </div>
 
                           {/* Product grid */}
-                          <div className="grid grid-cols-3 gap-3 px-4 pb-2">
+                          <div className="grid grid-cols-3 gap-2 px-3 pb-3">
                             {catalog.slice(0, 18).map((p: any) => {
                               // Match by productId only — unit may differ after qty picker changes it
                               const cartIdx = cart.findIndex((c: any) => c.productId === p.id);
@@ -2118,7 +2118,7 @@ export default function BillingPage() {
                               return (
                                 <div
                                   key={p.id}
-                                  className={`transition-all duration-200 ${isActive ? 'scale-105' : 'scale-100'}`}
+                                  className={`transition-all duration-200 scale-[0.93] origin-top ${isActive ? 'scale-[0.98]' : ''}`}
                                 >
                                   <ProductCard p={p} qty={qty} mini
                                     onAdd={() => addToCart(p)}

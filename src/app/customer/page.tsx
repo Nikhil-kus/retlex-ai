@@ -1814,7 +1814,7 @@ export default function CustomerPage() {
                     <>
                       {/* Top Selling — horizontal scroll with suggestions */}
                       {catalog.length > 0 && (
-                        <div className="pt-4 pb-2">
+                        <div className="pt-4 pb-2 bg-gradient-to-b from-amber-50 via-orange-50/50 to-yellow-50/30 rounded-2xl mx-2 mb-1">
                           <div className="flex items-center justify-between px-4 mb-3">
                             <h2 className="text-sm font-bold text-slate-900">⚡ Top Selling</h2>
                             {activeSuggestionId && (
@@ -1824,7 +1824,7 @@ export default function CustomerPage() {
 
                           {/* Product row */}
                           <div
-                            className="flex gap-3 overflow-x-auto px-4 pb-2"
+                            className="flex gap-2 overflow-x-auto px-3 pb-3"
                             style={{scrollbarWidth:'none'}}
                             onTouchStart={e => e.stopPropagation()}
                             onTouchMove={e => e.stopPropagation()}
@@ -1838,7 +1838,7 @@ export default function CustomerPage() {
                               return (
                                 <div
                                   key={p.id}
-                                  className={`transition-all duration-200 ${isActive ? 'scale-105' : 'scale-100'}`}
+                                  className={`transition-all duration-200 scale-[0.93] origin-top shrink-0 ${isActive ? 'scale-[0.98]' : ''}`}
                                   onClick={() => setActiveSuggestionId(isActive ? null : p.id)}
                                 >
                                   <ProductCard p={p} qty={qty} mini
