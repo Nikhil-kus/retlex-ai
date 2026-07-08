@@ -2068,10 +2068,13 @@ export default function BillingPage() {
                           {/* Product grid */}
                           <div className="grid grid-cols-3 gap-3 px-4 pb-2">
                             {catalog.slice(0, 18).map((p: any) => {
-                              const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
-                              const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
+                              // Match by productId only — unit may differ after qty picker changes it
+                              const cartIdx = cart.findIndex((c: any) => c.productId === p.id);
+                              const cartItem = cartIdx >= 0 ? cart[cartIdx] : null;
+                              const qty = cartItem ? cartItem.quantity : 0;
+                              const cartUnit = cartItem ? cartItem.unit : p.baseUnit;
                               const isActive = activeSuggestionId === p.id;
-                              const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1;
+                              const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((cartUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1;
                               // Find if any cart item is a suggestion of this product
                               const sugs = getSuggestions({ productId: p.id, name: p.name, localName: p.localName, category: p.category });
                               const sugIds = new Set([...sugs.brandVariants, ...sugs.sizeVariants].map((s: any) => s.id));
@@ -2774,15 +2777,15 @@ export default function BillingPage() {
 
       {/* Quantity Selector Sheet — opens when user taps qty number on a top-selling product card */}
       {catalogQtyProduct && (() => {
-        const cartIdx = cart.findIndex((c: any) => c.productId === catalogQtyProduct.id && c.unit === catalogQtyProduct.baseUnit);
-        const currentQty = cartIdx >= 0 ? cart[cartIdx].quantity : 1;
-        const currentUnit = cartIdx >= 0 ? cart[cartIdx].unit : catalogQtyProduct.baseUnit;
+        const cartIdx = cart.findIndex((c: any) => c.productId === catalogQtyProduct.id);
+        const cartItem = cartIdx >= 0 ? cart[cartIdx] : null;
+        const currentQty = cartItem ? cartItem.quantity : 1;
+        const currentUnit = cartItem ? cartItem.unit : catalogQtyProduct.baseUnit;
         return (
           <QuantitySelectorSheet
             item={{ ...catalogQtyProduct, productId: catalogQtyProduct.id, unit: currentUnit, quantity: currentQty }}
             onSelect={(newQty: number, newUnit: string) => {
               if (cartIdx >= 0) {
-                // Update both quantity and unit together so weight is correct
                 const newCart = [...cart];
                 newCart[cartIdx] = { ...newCart[cartIdx], quantity: newQty, unit: newUnit };
                 setCart(newCart);
