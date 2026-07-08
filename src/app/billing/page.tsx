@@ -2964,18 +2964,50 @@ export default function BillingPage() {
   );
 }
 
+function CartOutline() {
+  // Shopping cart / trolley outline used as the active-tab indicator
+  return (
+    <svg
+      viewBox="0 0 52 44"
+      fill="none"
+      className="absolute inset-0 w-full h-full pointer-events-none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* Cart body */}
+      <path
+        d="M4 4h5l5 22h22l4-14H13"
+        stroke="#4338ca"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Left wheel */}
+      <circle cx="19" cy="39" r="3" stroke="#4338ca" strokeWidth="2.5" />
+      {/* Right wheel */}
+      <circle cx="33" cy="39" r="3" stroke="#4338ca" strokeWidth="2.5" />
+    </svg>
+  );
+}
+
 function TabButton({ active, onClick, icon, label }: any) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
-        active
-          ? 'bg-indigo-100 text-indigo-700 shadow-sm border border-indigo-400'
-          : 'text-slate-500 hover:text-slate-700'
+      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold transition-all duration-200 relative ${
+        active ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-700'
       }`}
+      style={{ minHeight: '48px' }}
     >
-      {icon}
-      <span className="hidden sm:inline text-xs">{label}</span>
+      {active && (
+        <span className="absolute inset-0 flex items-center justify-center">
+          <CartOutline />
+          <span className="absolute inset-0 rounded-sm bg-indigo-50/80" />
+        </span>
+      )}
+      <span className="relative z-10 flex items-center gap-1.5">
+        {icon}
+        <span className="hidden sm:inline text-xs">{label}</span>
+      </span>
     </button>
   );
 }
