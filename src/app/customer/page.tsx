@@ -1991,7 +1991,7 @@ export default function CustomerPage() {
                       <div className="h-2 bg-slate-100 my-1" />
 
                       {/* Categories grid */}
-                      <div className="px-4 pt-4 pb-6">
+                      <div className="px-4 pt-4 pb-6 bg-gradient-to-b from-indigo-50 via-violet-50 to-slate-50 rounded-2xl mx-2 mt-1">
                         <h2 className="text-sm font-bold text-slate-900 mb-3">🛒 Shop by Category</h2>
                         {(() => {
                           const cats = Array.from(new Set(catalog.map(p => p.category || 'Uncategorized'))).sort();
@@ -2002,22 +2002,22 @@ export default function CustomerPage() {
                             return { cat, count: products.length, img: CATEGORY_IMAGES[cat] || imgProduct?.imageUrl || null };
                           });
                           return (
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-3 gap-4">
                               {catData.map(({ cat, count, img }) => (
                                 <button
                                   key={cat}
                                   onClick={() => setSelectedCategory(cat)}
-                                  className="flex flex-col items-center bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:border-indigo-200 active:scale-95 transition-all"
+                                  className="flex flex-col items-center gap-2 py-3 px-1 bg-white/70 rounded-2xl hover:bg-white hover:shadow-md active:scale-95 transition-all"
                                 >
-                                  <div className="w-full bg-gradient-to-br from-indigo-50 to-slate-100 overflow-hidden" style={{paddingBottom:'75%', position:'relative'}}>
-                                    <div className="absolute inset-0">
-                                      {img
-                                        ? <img src={img} alt={cat} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
-                                        : <div className="w-full h-full flex items-center justify-center"><Package className="text-indigo-300" size={28} /></div>
-                                      }
-                                    </div>
+                                  {/* Circular image */}
+                                  <div className="w-16 h-16 rounded-full overflow-hidden ring-2 ring-indigo-100 bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center shadow-sm">
+                                    {img
+                                      ? <img src={img} alt={cat} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                      : <Package className="text-indigo-400" size={26} />
+                                    }
                                   </div>
-                                  <div className="p-2 text-center w-full">
+                                  {/* Label */}
+                                  <div className="text-center">
                                     <p className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight">{hindiMode ? (CATEGORY_HINDI[cat] || cat) : cat}</p>
                                     <p className="text-[10px] text-slate-400 mt-0.5">{count} items</p>
                                   </div>
