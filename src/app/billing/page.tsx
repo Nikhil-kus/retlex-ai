@@ -10,6 +10,7 @@ import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
 import { transliterateHinglishToHindi, transliterateHindiToHinglish } from '@/lib/transliterate';
+import DebugPanel, { makeEmptyDebugData, type DebugData } from '@/components/DebugPanel';
 
 const cleanProductName = (name: string) => {
   return name
@@ -145,6 +146,10 @@ export default function BillingPage() {
     items: number; parse: string; fuse: string; enrichment: string;
     suggestions: string; setState: string; total: string;
   } | null>(null);
+  // ── Developer debug panel data (only used when NEXT_PUBLIC_DEBUG=true) ───
+  const debugDataRef = useRef<DebugData>(makeEmptyDebugData());
+  const [debugTick, setDebugTick] = useState(0);
+  const _isDebug = process.env.NEXT_PUBLIC_DEBUG === 'true';
   // Toast: id of the product just pinned as default (auto-clears after 1.5s)
   const [pinnedProductId, setPinnedProductId] = useState<string | null>(null);
   // Quantity selector sheet: index of the review item whose picker is open (null = closed)
@@ -521,12 +526,57 @@ export default function BillingPage() {
       // name/unit/quantity/rawText haven't changed since the last speech event.
       const _cacheKey = `${item.name}__${item.unit}__${item.quantity}__${item.rawText || ''}`;
       if (matchCacheRef.current.has(_cacheKey)) {
+        // ── [TRACE] ──────────────────────────────────────────────────────────
+        if (/धनिया/i.test(item.name) || /dhaniya/i.test(item.name)) {
+          const cached = matchCacheRef.current.get(_cacheKey);
+          console.log('%c[TRACE] 🔁 CACHE HIT for "' + item.name + '" — returning:', 'color:#cc0000;font-weight:bold', {
+            name: cached?.name, localName: cached?.localName, productId: cached?.productId, cacheKey: _cacheKey
+          });
+        }
+        // ── [/TRACE] ─────────────────────────────────────────────────────────
+        // ── [DEBUG PANEL] record cache hit ───────────────────────────────────
+        if (_isDebug) {
+          const cached = matchCacheRef.current.get(_cacheKey);
+          debugDataRef.current.cacheEntries.push({ key: _cacheKey, hit: true, result: cached });
+        }
+        // ── [/DEBUG PANEL] ───────────────────────────────────────────────────
         return matchCacheRef.current.get(_cacheKey);
       }
 
       const searchName = item.name.replace(/\d+/g, '').replace(/\b(kg|g|ml|l|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m)\b/gi, '').trim();
       const origRes = fuse.search(searchName);
       const transliterated = transliterateHinglishToHindi(searchName);
+
+      // ── [TRACE] ──────────────────────────────────────────────────────────────
+      const _isTracedQuery = /धनिया/i.test(searchName) || /dhaniya/i.test(searchName);
+
+      // Helper: format one Fuse result into a table row for a given stage/search label
+      const _fuseRowsForSearch = (results: any[], searchLabel: string): any[] =>
+        results.map((r: any) => {
+          // Pick the best match entry (lowest refIndex = first match found by Fuse)
+          const bestMatch_ = (r.matches || []).reduce((best: any, m: any) => {
+            if (!best) return m;
+            // prefer the match with the smallest start index in its first indice pair
+            const bestStart = (best.indices?.[0]?.[0] ?? Infinity);
+            const mStart    = (m.indices?.[0]?.[0] ?? Infinity);
+            return mStart < bestStart ? m : best;
+          }, null);
+          return {
+            'Product Name':    r.item.name,
+            'Product ID':      r.item.id || '(no id)',
+            'Search':          searchLabel,
+            'Matched Field':   bestMatch_?.key ?? '—',
+            'Matched Value':   bestMatch_?.value ?? '—',
+            'Match Indices':   bestMatch_ ? JSON.stringify(bestMatch_.indices) : '—',
+            'Raw Fuse Score':  r.score?.toFixed(4) ?? '—',
+          };
+        });
+
+      if (_isTracedQuery) {
+        console.group(`%c[TRACE] ══════ FULL DECISION PIPELINE for query="${searchName}" ══════`, 'color:#ff6600;font-weight:bold;font-size:13px');
+        console.log('[TRACE] item.name (original):', item.name, '| searchName:', searchName, '| transliterated:', transliterated);
+      }
+      // ── [/TRACE] ─────────────────────────────────────────────────────────────
       
       let combined = [...origRes];
       // Helper to merge a new Fuse result list into combined, keeping the best score per product
@@ -552,8 +602,36 @@ export default function BillingPage() {
       // If query is already Hindi (Devanagari), also search its Hinglish/English equivalent
       // so that English-named catalog products (e.g. "Kali Til") can be found
       const isQueryHindiScript = /[\u0900-\u097F]/.test(searchName);
+      // ── [TRACE] Stage 1 — raw results from fuse.search(Hindi query) ──────────
+      if (_isTracedQuery) {
+        console.log('%c[TRACE] ── STAGE 1: fuse.search("' + searchName + '") raw results ──', 'color:#0055cc;font-weight:bold');
+        console.table(_fuseRowsForSearch(origRes, `fuse.search("${searchName}")`));
+      }
+      // ── [DEBUG PANEL] Stage 1 + spoken text ──────────────────────────────────
+      if (_isDebug) {
+        debugDataRef.current.spokenText     = searchName;
+        debugDataRef.current.language       = 'hi-IN';
+        debugDataRef.current.stage1         = _fuseRowsForSearch(origRes, `fuse.search("${searchName}")`);
+      }
+      // ── [/TRACE] ─────────────────────────────────────────────────────────────
+      let _hinglishRes: any[] = [];
       if (isQueryHindiScript) {
         const hinglish = transliterateHindiToHinglish(searchName);
+        // ── [TRACE] Stage 2 — raw results from fuse.search(Hinglish query) ──────
+        if (_isTracedQuery) {
+          _hinglishRes = fuse.search(hinglish);
+          console.log('%c[TRACE] ── STAGE 2: Hindi→Hinglish "' + searchName + '" → "' + hinglish + '" — fuse.search("' + hinglish + '") raw results ──', 'color:#0055cc;font-weight:bold');
+          console.table(_fuseRowsForSearch(_hinglishRes, `fuse.search("${hinglish}")`));
+        }
+        // ── [DEBUG PANEL] Stage 2 ─────────────────────────────────────────────
+        if (_isDebug && !_isTracedQuery) {
+          _hinglishRes = fuse.search(hinglish);
+        }
+        if (_isDebug) {
+          debugDataRef.current.normalizedText = hinglish;
+          debugDataRef.current.stage2         = _fuseRowsForSearch(_hinglishRes, `fuse.search("${hinglish}")`);
+        }
+        // ── [/TRACE] ─────────────────────────────────────────────────────────────
         if (hinglish !== searchName) {
           mergeResults(fuse.search(hinglish));
         }
@@ -585,19 +663,123 @@ export default function BillingPage() {
         .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
         .slice(0, TOP_N);
 
+      // ── [TRACE] Stage 3 — merged candidates before any scoring ──────────────
+      if (_isTracedQuery) {
+        // Determine which search(es) found each candidate
+        const _hindiIds   = new Set(origRes.map((r: any) => r.item.id || r.item.name));
+        const _hinglishIds = new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name));
+        const _mergedRows = combined
+          .slice()
+          .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
+          .map((r: any, i: number) => {
+            const id = r.item.id || r.item.name;
+            const inHindi    = _hindiIds.has(id);
+            const inHinglish = _hinglishIds.has(id);
+            const foundBy = inHindi && inHinglish ? 'Both' : inHindi ? 'Hindi("धनिया")' : 'Hinglish("dhaniya")';
+            const bestM = (r.matches || []).reduce((b: any, m: any) => {
+              if (!b) return m;
+              return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
+            }, null);
+            return {
+              'Rank':           i + 1,
+              'Product Name':   r.item.name,
+              'Found By':       foundBy,
+              'Matched Field':  bestM?.key ?? '—',
+              'Matched Value':  bestM?.value ?? '—',
+              'Match Indices':  bestM ? JSON.stringify(bestM.indices) : '—',
+              'Raw Fuse Score': r.score?.toFixed(4) ?? '—',
+            };
+          });
+        console.log('%c[TRACE] ── STAGE 3: Merged candidates before scoring ──', 'color:#0055cc;font-weight:bold');
+        console.table(_mergedRows);
+        console.log('[TRACE] isPacketRequested:', isPacketRequested, '| isKhulaRequested:', isKhulaRequested, '| requestedWeightGrams:', requestedWeightGrams, '| TOP_N:', TOP_N);
+      }
+      // ── [DEBUG PANEL] Stage 3 ─────────────────────────────────────────────
+      if (_isDebug) {
+        const _hIds = new Set(origRes.map((r: any) => r.item.id || r.item.name));
+        const _gIds = new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name));
+        debugDataRef.current.stage3 = combined
+          .slice()
+          .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
+          .map((r: any, i: number) => {
+            const id = r.item.id || r.item.name;
+            const inH = _hIds.has(id); const inG = _gIds.has(id);
+            const bM = (r.matches || []).reduce((b: any, m: any) => {
+              if (!b) return m;
+              return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
+            }, null);
+            return {
+              'Rank': i + 1,
+              'Product Name': r.item.name,
+              'Found By': inH && inG ? 'Both' : inH ? 'Hindi' : 'Hinglish',
+              'Matched Field': bM?.key ?? '—',
+              'Matched Value': String(bM?.value ?? '—').slice(0, 40),
+              'Match Indices': bM ? JSON.stringify(bM.indices) : '—',
+              'Raw Fuse Score': r.score?.toFixed(4) ?? '—',
+            };
+          });
+      }
+      // ── [/DEBUG PANEL] ───────────────────────────────────────────────────────
+      // ── [/TRACE] ─────────────────────────────────────────────────────────────
+
       // Step 1: compute a name-quality score (with syllable penalty) for each candidate,
       // before any weight adjustments. This is used later to gate weight bonuses so that
       // a wrong-named product can never win purely because its packet weight matches.
+
+      // ── [TRACE] accumulated Stage-4 rows — one entry per candidate ───────────
+      const _traceRows: any[] = [];
+      const _hindiIds4   = _isTracedQuery ? new Set(origRes.map((r: any) => r.item.id || r.item.name)) : new Set();
+      const _hinglishIds4 = _isTracedQuery ? new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name)) : new Set();
+      // ── [/TRACE] ─────────────────────────────────────────────────────────────
+
       const nameQualityResults = topCombined.map((r: any) => {
         let score = r.score ?? 1;
         const cand = r.item;
         const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
         const querySyllables = countSyllables(isQueryHindi ? searchName : transliterated);
         const matchSyllables = getClosestWordSyllableCount(searchName, cand, isQueryHindi);
+        const syllablePenaltyRaw = (querySyllables > 0 && matchSyllables > 0)
+          ? Math.abs(querySyllables - matchSyllables) / Math.max(querySyllables, matchSyllables)
+          : 0;
+        const syllablePenaltyAdded = syllablePenaltyRaw * 0.8;
         if (querySyllables > 0 && matchSyllables > 0) {
-          const syllablePenalty = Math.abs(querySyllables - matchSyllables) / Math.max(querySyllables, matchSyllables);
-          score += syllablePenalty * 0.8;
+          score += syllablePenaltyAdded;
         }
+        // ── [TRACE] stash per-candidate syllable data for Stage-4 row ────────
+        if (_isTracedQuery) {
+          const id4 = cand.id || cand.name;
+          const inHindi4    = (_hindiIds4 as Set<string>).has(id4);
+          const inHinglish4 = (_hinglishIds4 as Set<string>).has(id4);
+          const foundBy4 = inHindi4 && inHinglish4 ? 'Both' : inHindi4 ? 'Hindi("धनिया")' : 'Hinglish("dhaniya")';
+          const bestM4 = (r.matches || []).reduce((b: any, m: any) => {
+            if (!b) return m;
+            return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
+          }, null);
+          _traceRows.push({
+            _id: id4,
+            'Product Name':   cand.name,
+            'Product ID':     id4,
+            'Found By':       foundBy4,
+            'Matched Field':  bestM4?.key ?? '—',
+            'Matched Value':  String(bestM4?.value ?? '—').slice(0, 40),
+            'Match Indices':  bestM4 ? JSON.stringify(bestM4.indices) : '—',
+            'Raw Fuse Score': r.score?.toFixed(4) ?? '—',
+            'querySyl':       querySyllables,
+            'matchSyl':       matchSyllables,
+            'Syllable Penalty': syllablePenaltyAdded.toFixed(4),
+            // weight/packet filled in next pass
+            'isCandLoose':    '?',
+            'isNameComp':     '?',
+            'Weight Adj':     '—',
+            'Adj Reason':     '—',
+            'Final Score':    '?',
+            'Final Rank':     '?',
+            'bestMatch?':     'No',
+            'Removed?':       'No',
+            'Removal Reason': '—',
+          });
+        }
+        // ── [/TRACE] ───────────────────────────────────────────────────────────
         return { item: cand, nameScore: score };
       });
       // Best (lowest) name score across all candidates
@@ -621,48 +803,201 @@ export default function BillingPage() {
         // This ensures a poorly-named product never wins just because its weight matches.
         const isNameCompetitive = (nameScore - bestNameScore) <= 0.15;
 
+        let adjustment = 0;
+        let adjustReason = 'none';
+
         if (isPacketRequested) {
           if (isCandLoose) {
-            score += 2.0;
+            adjustment = +2.0; adjustReason = 'isPacketRequested+loose→+2.0';
           } else if (requestedWeightGrams !== null && isNameCompetitive) {
             const candWeight = cand.packetWeight || cand.baseQuantity || 0;
             if (candWeight === requestedWeightGrams) {
-              score -= 0.45;
+              adjustment = -0.45; adjustReason = 'weightMatch→-0.45';
             }
           }
         } else if (isKhulaRequested) {
           if (!isCandLoose) {
-            score += 2.0;
+            adjustment = +2.0; adjustReason = 'isKhulaRequested+packed→+2.0';
           }
         } else {
-          // No explicit preference spoken
           if (requestedWeightGrams !== null) {
             if (!isCandLoose) {
               const candWeight = cand.packetWeight || cand.baseQuantity || 0;
               if (candWeight === requestedWeightGrams) {
-                // Only boost products that are already competitive on name match.
-                // This prevents e.g. "Tata Salt 500g" from beating "Aashirvaad Atta 500g"
-                // when the user asked for "aata 500g".
                 if (isNameCompetitive) {
-                  score -= 0.45;
+                  adjustment = -0.45; adjustReason = 'weightMatch+nameCompetitive→-0.45';
                 }
               } else {
-                score += 0.25; // wrong weight packet gets penalized
+                adjustment = +0.25; adjustReason = 'wrongWeight→+0.25';
               }
             }
           }
         }
+        score += adjustment;
+        // ── [TRACE] fill weight/packet columns into Stage-4 row ───────────────
+        if (_isTracedQuery) {
+          const row4 = _traceRows.find((rx: any) => rx._id === (cand.id || cand.name));
+          if (row4) {
+            row4['isCandLoose']  = isCandLoose;
+            row4['isNameComp']   = isNameCompetitive;
+            row4['Weight Adj']   = adjustment !== 0 ? adjustment.toFixed(4) : '0';
+            row4['Adj Reason']   = adjustReason;
+            row4['Final Score']  = score.toFixed(4);
+          }
+        }
+        // ── [/TRACE] ───────────────────────────────────────────────────────────
         return { item: cand, score };
       });
 
       scoredResults.sort((a: any, b: any) => a.score - b.score);
 
+      // ── [TRACE] Stage 4 — final ranked table after all adjustments ───────────
+      if (_isTracedQuery) {
+        // Fill Final Rank and bestMatch column for candidates that passed TOP_N
+        scoredResults.forEach((r: any, i: number) => {
+          const row4 = _traceRows.find((rx: any) => rx._id === (r.item.id || r.item.name));
+          if (row4) row4['Final Rank'] = i + 1;
+        });
+
+        // Mark the winner
+        if (scoredResults.length && scoredResults[0].score <= 0.6) {
+          const winnerRow = _traceRows.find((rx: any) => rx._id === (scoredResults[0].item.id || scoredResults[0].item.name));
+          if (winnerRow) winnerRow['bestMatch?'] = '✅ YES';
+        }
+
+        // Mark candidates that scored > 0.6 (passed TOP_N but rejected by threshold)
+        _traceRows.forEach((row4: any) => {
+          if (row4['Final Score'] !== '?' && Number(row4['Final Score']) > 0.6) {
+            row4['Removed?']       = 'Yes';
+            row4['Removal Reason'] = `score ${row4['Final Score']} > 0.6 threshold`;
+          }
+        });
+
+        // Append rows for candidates cut by TOP_N (in merged list but never scored)
+        const _scoredIds = new Set(_traceRows.map((rx: any) => rx._id));
+        combined
+          .slice()
+          .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
+          .forEach((r: any, mergedRank: number) => {
+            const id = r.item.id || r.item.name;
+            if (_scoredIds.has(id)) return;   // already in _traceRows
+            const inHindi4    = (_hindiIds4 as Set<string>).has(id);
+            const inHinglish4 = (_hinglishIds4 as Set<string>).has(id);
+            const foundBy4    = inHindi4 && inHinglish4 ? 'Both' : inHindi4 ? 'Hindi("धनिया")' : 'Hinglish("dhaniya")';
+            const bestMcut = (r.matches || []).reduce((b: any, m: any) => {
+              if (!b) return m;
+              return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
+            }, null);
+            _traceRows.push({
+              _id:              id,
+              'Product Name':   r.item.name,
+              'Product ID':     id,
+              'Found By':       foundBy4,
+              'Matched Field':  bestMcut?.key ?? '—',
+              'Matched Value':  String(bestMcut?.value ?? '—').slice(0, 40),
+              'Match Indices':  bestMcut ? JSON.stringify(bestMcut.indices) : '—',
+              'Raw Fuse Score': r.score?.toFixed(4) ?? '—',
+              'querySyl':       '—',
+              'matchSyl':       '—',
+              'Syllable Penalty': '—',
+              'isCandLoose':    '—',
+              'isNameComp':     '—',
+              'Weight Adj':     '—',
+              'Adj Reason':     '—',
+              'Final Score':    '—',
+              'Final Rank':     '—',
+              'bestMatch?':     'No',
+              'Removed?':       'Yes',
+              'Removal Reason': `cut by TOP_N=${TOP_N} (merged rank ${mergedRank + 1})`,
+            });
+          });
+
+        // Remove internal _id key before printing
+        const _printRows = _traceRows.map((rx: any) => { const { _id, ...rest } = rx; return rest; });
+        // Sort: scored candidates by Final Rank first, then removed/cut candidates at the bottom
+        _printRows.sort((a: any, b: any) => {
+          const aRank = Number(a['Final Rank']);
+          const bRank = Number(b['Final Rank']);
+          if (!isNaN(aRank) && !isNaN(bRank)) return aRank - bRank;
+          if (!isNaN(aRank)) return -1;
+          if (!isNaN(bRank)) return 1;
+          return Number(a['Raw Fuse Score'] ?? 1) - Number(b['Raw Fuse Score'] ?? 1);
+        });
+        console.log('%c[TRACE] ── STAGE 4: Final ranked table after ALL scoring adjustments ──', 'color:#0055cc;font-weight:bold');
+        console.log('[TRACE] bestNameScore (used to gate weight bonus):', bestNameScore.toFixed(4));
+        console.log('[TRACE] acceptance threshold: score ≤ 0.6  |  TOP_N cut:', TOP_N);
+        console.table(_printRows);
+        const winner = scoredResults.length && scoredResults[0].score <= 0.6 ? scoredResults[0] : null;
+        if (winner) {
+          console.log('%c[TRACE] ✅ PRIMARY PATH bestMatch → "' + winner.item.name + '" (score=' + winner.score.toFixed(4) + ')', 'color:green;font-weight:bold');
+        } else {
+          console.log('%c[TRACE] ❌ Primary path: no candidate scored ≤ 0.6 — falling through to multi-word fallback', 'color:#cc0000;font-weight:bold');
+        }
+      }
+      // ── [DEBUG PANEL] Stage 4 ────────────────────────────────────────────────
+      if (_isDebug) {
+        // Build same _printRows but outside the _isTracedQuery gate
+        const _hIds4b  = new Set(origRes.map((r: any) => r.item.id || r.item.name));
+        const _gIds4b  = new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name));
+        const _scoredIds4 = new Set(_traceRows.map((rx: any) => rx._id));
+        // Append TOP_N-cut rows if not already in _traceRows
+        combined
+          .slice()
+          .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
+          .forEach((r: any, mergedRank: number) => {
+            const id = r.item.id || r.item.name;
+            if (_scoredIds4.has(id)) return;
+            const inH4 = _hIds4b.has(id); const inG4 = _gIds4b.has(id);
+            const bMcut = (r.matches || []).reduce((b: any, m: any) => {
+              if (!b) return m;
+              return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
+            }, null);
+            _traceRows.push({
+              _id: id,
+              'Product Name': r.item.name, 'Product ID': id,
+              'Found By': inH4 && inG4 ? 'Both' : inH4 ? 'Hindi("धनिया")' : 'Hinglish("dhaniya")',
+              'Matched Field': bMcut?.key ?? '—', 'Matched Value': String(bMcut?.value ?? '—').slice(0, 40),
+              'Match Indices': bMcut ? JSON.stringify(bMcut.indices) : '—',
+              'Raw Fuse Score': r.score?.toFixed(4) ?? '—',
+              'querySyl': '—', 'matchSyl': '—', 'Syllable Penalty': '—',
+              'isCandLoose': '—', 'isNameComp': '—',
+              'Weight Adj': '—', 'Adj Reason': '—', 'Final Score': '—', 'Final Rank': '—',
+              'bestMatch?': 'No', 'Removed?': 'Yes',
+              'Removal Reason': `cut by TOP_N=${TOP_N} (merged rank ${mergedRank + 1})`,
+            });
+          });
+        const _dbgPrint = _traceRows
+          .map((rx: any) => { const { _id, ...rest } = rx; return rest; })
+          .sort((a: any, b: any) => {
+            const ar = Number(a['Final Rank']); const br = Number(b['Final Rank']);
+            if (!isNaN(ar) && !isNaN(br)) return ar - br;
+            if (!isNaN(ar)) return -1; if (!isNaN(br)) return 1;
+            return Number(a['Raw Fuse Score'] ?? 1) - Number(b['Raw Fuse Score'] ?? 1);
+          });
+        debugDataRef.current.stage4 = _dbgPrint;
+        const _winner = scoredResults.length && scoredResults[0].score <= 0.6 ? scoredResults[0] : null;
+        debugDataRef.current.bestMatchName = _winner ? _winner.item.name : '—';
+        debugDataRef.current.bestMatchPath = _winner ? 'primary' : 'none';
+      }
+      // ── [/DEBUG PANEL] ───────────────────────────────────────────────────────
+      // ── [/TRACE] ─────────────────────────────────────────────────────────────
+
       if (scoredResults.length && scoredResults[0].score <= 0.6) {
         bestMatch = scoredResults[0].item;
+        // ── [TRACE] ──────────────────────────────────────────────────────────
+        if (_isTracedQuery) {
+          console.groupEnd();
+        }
+        // ── [/TRACE] ─────────────────────────────────────────────────────────
       }
 
       // Enhanced multi-word fallback:
       if (!bestMatch) {
+        // ── [TRACE] ────────────────────────────────────────────────────────────
+        if (_isTracedQuery) {
+          console.log('[TRACE] primary path found no bestMatch — entering multi-word fallback...');
+        }
+        // ── [/TRACE] ───────────────────────────────────────────────────────────
         const words = searchName.split(/\s+/).filter((w: string) => w.length > 2);
         if (words.length > 0) {
           // For each word, find catalog products it matches well (score ≤ 0.45)
@@ -780,9 +1115,25 @@ export default function BillingPage() {
               b.hitCount !== a.hitCount ? b.hitCount - a.hitCount : a.score - b.score
             );
 
-            // Verify if the best hit has an acceptable score after adjustments
             if (weightAdjustedCandidates.length && weightAdjustedCandidates[0].score <= 0.6) {
               bestMatch = weightAdjustedCandidates[0].item;
+              // ── [TRACE] ──────────────────────────────────────────────────────
+              if (_isTracedQuery) {
+                console.log('%c[TRACE] ✅ bestMatch selected (multi-word fallback):', 'color:green;font-weight:bold', {
+                  name: bestMatch.name,
+                  localName: bestMatch.localName,
+                  score: weightAdjustedCandidates[0].score.toFixed(4),
+                  hitCount: weightAdjustedCandidates[0].hitCount
+                });
+                console.log('[TRACE] full fallback ranking:', weightAdjustedCandidates.map((c: any) => ({
+                  name: c.item.name, score: c.score.toFixed(4), hitCount: c.hitCount
+                })));
+                console.groupEnd();
+              }
+              // ── [/TRACE] ─────────────────────────────────────────────────────
+            } else if (_isTracedQuery) {
+              console.log('[TRACE] ❌ fallback also found no match (all scores > 0.6)');
+              console.groupEnd();
             }
           }
         }
@@ -930,6 +1281,12 @@ export default function BillingPage() {
         parsedQty: item.quantity,
         parsedUnit: item.unit
       };
+      // ── [TRACE] ────────────────────────────────────────────────────────────
+      if (_isTracedQuery) {
+        console.log('%c[TRACE] 📦 writing to matchCacheRef — cacheKey:', 'color:#aa00ff;font-weight:bold', _cacheKey);
+        console.log('[TRACE] cached result:', { name: _matched.name, localName: _matched.localName, productId: _matched.productId });
+      }
+      // ── [/TRACE] ───────────────────────────────────────────────────────────
       matchCacheRef.current.set(_cacheKey, _matched);
       return _matched;
     });    // Deduplicate within the same voice phrase
@@ -1259,6 +1616,19 @@ export default function BillingPage() {
                   setState:    (_tSetStateEnd - _tSetState).toFixed(1),
                   total:       (_tSetStateEnd - _tEvent   ).toFixed(1),
                 });
+                // ── [DEBUG PANEL] sync perf + trigger re-render ───────────────
+                if (_isDebug) {
+                  debugDataRef.current.perfItems       = allItems.length;
+                  debugDataRef.current.perfParse       = _pvTiming.parse;
+                  debugDataRef.current.perfFuse        = _pvTiming.fuse;
+                  debugDataRef.current.perfEnrichment  = (_tEnrichEnd - _tEnrichStart).toFixed(1);
+                  debugDataRef.current.perfSuggestions = (_tSugEnd - _tSugStart).toFixed(1);
+                  debugDataRef.current.perfSetState    = (_tSetStateEnd - _tSetState).toFixed(1);
+                  debugDataRef.current.perfTotal       = (_tSetStateEnd - _tEvent).toFixed(1);
+                  debugDataRef.current.processingTimeMs = (_tSetStateEnd - _tEvent).toFixed(1);
+                  setDebugTick(t => t + 1);
+                }
+                // ── [/DEBUG PANEL] ────────────────────────────────────────────
             }
         }
     };
@@ -1314,6 +1684,7 @@ export default function BillingPage() {
         keys: ['name', 'localName', 'localAliases'],
         threshold: 0.6,
         includeScore: true,
+        includeMatches: true,
         ignoreLocation: true,
         minMatchCharLength: 2
       });
@@ -1862,6 +2233,7 @@ export default function BillingPage() {
   );
 
   return (
+    <>
     <div className="flex flex-col max-w-7xl mx-auto h-full bg-white" data-searching={search.length > 0 ? 'true' : undefined}>
 
       {/* Main Panel — fills full height, voice button floats over the bottom */}
@@ -2960,6 +3332,11 @@ export default function BillingPage() {
         );
       })()}
     </div>
+    {/* ── Developer Debug Panel (NEXT_PUBLIC_DEBUG=true only) ─────────── */}
+    {_isDebug && (
+      <DebugPanel dataRef={debugDataRef} updateTick={debugTick} />
+    )}
+    </>
   );
 }
 
