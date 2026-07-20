@@ -727,9 +727,11 @@ export default function BillingPage() {
       // a wrong-named product can never win purely because its packet weight matches.
 
       // ── [TRACE] accumulated Stage-4 rows — one entry per candidate ───────────
+      // Always populated when _isDebug=true, regardless of _isTracedQuery.
+      // _isTracedQuery only gates the console.group/console.table output.
       const _traceRows: any[] = [];
-      const _hindiIds4   = _isTracedQuery ? new Set(origRes.map((r: any) => r.item.id || r.item.name)) : new Set();
-      const _hinglishIds4 = _isTracedQuery ? new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name)) : new Set();
+      const _hindiIds4   = _isDebug ? new Set(origRes.map((r: any) => r.item.id || r.item.name)) : new Set<string>();
+      const _hinglishIds4 = _isDebug ? new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name)) : new Set<string>();
       // ── [/TRACE] ─────────────────────────────────────────────────────────────
 
       const nameQualityResults = topCombined.map((r: any) => {
@@ -747,36 +749,40 @@ export default function BillingPage() {
         }
         // ── [TRACE] stash per-candidate syllable data for Stage-4 row ────────
         if (_isTracedQuery) {
+          console.log(`[TRACE] syllable — "${cand.name}": rawFuse=${r.score?.toFixed(4)} querySyl=${querySyllables} matchSyl=${matchSyllables} penalty=${syllablePenaltyAdded.toFixed(4)} → nameScore=${score.toFixed(4)}`);
+        }
+        // ── [DEBUG PANEL] always record when debug is on ───────────────────────
+        if (_isDebug) {
           const id4 = cand.id || cand.name;
           const inHindi4    = (_hindiIds4 as Set<string>).has(id4);
           const inHinglish4 = (_hinglishIds4 as Set<string>).has(id4);
-          const foundBy4 = inHindi4 && inHinglish4 ? 'Both' : inHindi4 ? 'Hindi("धनिया")' : 'Hinglish("dhaniya")';
+          const foundBy4 = inHindi4 && inHinglish4 ? 'Both' : inHindi4 ? `Hindi("${searchName}")` : `Hinglish("${transliterateHindiToHinglish(searchName)}")`;
           const bestM4 = (r.matches || []).reduce((b: any, m: any) => {
             if (!b) return m;
             return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
           }, null);
           _traceRows.push({
             _id: id4,
-            'Product Name':   cand.name,
-            'Product ID':     id4,
-            'Found By':       foundBy4,
-            'Matched Field':  bestM4?.key ?? '—',
-            'Matched Value':  String(bestM4?.value ?? '—').slice(0, 40),
-            'Match Indices':  bestM4 ? JSON.stringify(bestM4.indices) : '—',
-            'Raw Fuse Score': r.score?.toFixed(4) ?? '—',
-            'querySyl':       querySyllables,
-            'matchSyl':       matchSyllables,
+            'Product Name':     cand.name,
+            'Product ID':       id4,
+            'Found By':         foundBy4,
+            'Matched Field':    bestM4?.key ?? '—',
+            'Matched Value':    String(bestM4?.value ?? '—').slice(0, 40),
+            'Match Indices':    bestM4 ? JSON.stringify(bestM4.indices) : '—',
+            'Raw Fuse Score':   r.score?.toFixed(4) ?? '—',
+            'querySyl':         querySyllables,
+            'matchSyl':         matchSyllables,
             'Syllable Penalty': syllablePenaltyAdded.toFixed(4),
-            // weight/packet filled in next pass
-            'isCandLoose':    '?',
-            'isNameComp':     '?',
-            'Weight Adj':     '—',
-            'Adj Reason':     '—',
-            'Final Score':    '?',
-            'Final Rank':     '?',
-            'bestMatch?':     'No',
-            'Removed?':       'No',
-            'Removal Reason': '—',
+            // weight/packet columns filled in next pass
+            'isCandLoose':      '?',
+            'isNameComp':       '?',
+            'Weight Adj':       '—',
+            'Adj Reason':       '—',
+            'Final Score':      '?',
+            'Final Rank':       '?',
+            'bestMatch?':       'No',
+            'Removed?':         'No',
+            'Removal Reason':   '—',
           });
         }
         // ── [/TRACE] ───────────────────────────────────────────────────────────
@@ -834,8 +840,12 @@ export default function BillingPage() {
           }
         }
         score += adjustment;
-        // ── [TRACE] fill weight/packet columns into Stage-4 row ───────────────
+        // ── [TRACE] console log ────────────────────────────────────────────────
         if (_isTracedQuery) {
+          console.log(`[TRACE] weight adj — "${cand.name}": nameScore=${nameScore.toFixed(4)} loose=${isCandLoose} nameComp=${isNameCompetitive} adj=${adjustment} (${adjustReason}) → final=${score.toFixed(4)}`);
+        }
+        // ── [DEBUG PANEL] always fill weight columns when debug is on ─────────
+        if (_isDebug) {
           const row4 = _traceRows.find((rx: any) => rx._id === (cand.id || cand.name));
           if (row4) {
             row4['isCandLoose']  = isCandLoose;
@@ -936,33 +946,53 @@ export default function BillingPage() {
       }
       // ── [DEBUG PANEL] Stage 4 ────────────────────────────────────────────────
       if (_isDebug) {
-        // Build same _printRows but outside the _isTracedQuery gate
-        const _hIds4b  = new Set(origRes.map((r: any) => r.item.id || r.item.name));
-        const _gIds4b  = new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name));
+        // Fill Final Rank, bestMatch?, and Removed? for all scored rows
+        scoredResults.forEach((r: any, i: number) => {
+          const row4 = _traceRows.find((rx: any) => rx._id === (r.item.id || r.item.name));
+          if (row4) {
+            row4['Final Rank'] = i + 1;
+            if (r.score > 0.6) {
+              row4['Removed?']       = 'Yes';
+              row4['Removal Reason'] = `score ${r.score.toFixed(4)} > 0.6 threshold`;
+            }
+          }
+        });
+        // Mark the winner
+        if (scoredResults.length && scoredResults[0].score <= 0.6) {
+          const winnerRow = _traceRows.find((rx: any) => rx._id === (scoredResults[0].item.id || scoredResults[0].item.name));
+          if (winnerRow) winnerRow['bestMatch?'] = '✅ YES';
+        }
+        // Append rows for candidates cut by TOP_N
+        const _hIds4b   = new Set(origRes.map((r: any) => r.item.id || r.item.name));
+        const _gIds4b   = new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name));
         const _scoredIds4 = new Set(_traceRows.map((rx: any) => rx._id));
-        // Append TOP_N-cut rows if not already in _traceRows
         combined
           .slice()
           .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
           .forEach((r: any, mergedRank: number) => {
             const id = r.item.id || r.item.name;
             if (_scoredIds4.has(id)) return;
-            const inH4 = _hIds4b.has(id); const inG4 = _gIds4b.has(id);
+            const inH4 = (_hIds4b as Set<string>).has(id);
+            const inG4 = (_gIds4b as Set<string>).has(id);
             const bMcut = (r.matches || []).reduce((b: any, m: any) => {
               if (!b) return m;
               return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
             }, null);
             _traceRows.push({
-              _id: id,
-              'Product Name': r.item.name, 'Product ID': id,
-              'Found By': inH4 && inG4 ? 'Both' : inH4 ? 'Hindi("धनिया")' : 'Hinglish("dhaniya")',
-              'Matched Field': bMcut?.key ?? '—', 'Matched Value': String(bMcut?.value ?? '—').slice(0, 40),
-              'Match Indices': bMcut ? JSON.stringify(bMcut.indices) : '—',
+              _id:              id,
+              'Product Name':   r.item.name,
+              'Product ID':     id,
+              'Found By':       inH4 && inG4 ? 'Both' : inH4 ? `Hindi("${searchName}")` : `Hinglish("${transliterateHindiToHinglish(searchName)}")`,
+              'Matched Field':  bMcut?.key ?? '—',
+              'Matched Value':  String(bMcut?.value ?? '—').slice(0, 40),
+              'Match Indices':  bMcut ? JSON.stringify(bMcut.indices) : '—',
               'Raw Fuse Score': r.score?.toFixed(4) ?? '—',
-              'querySyl': '—', 'matchSyl': '—', 'Syllable Penalty': '—',
-              'isCandLoose': '—', 'isNameComp': '—',
-              'Weight Adj': '—', 'Adj Reason': '—', 'Final Score': '—', 'Final Rank': '—',
-              'bestMatch?': 'No', 'Removed?': 'Yes',
+              'querySyl':       '—', 'matchSyl': '—', 'Syllable Penalty': '—',
+              'isCandLoose':    '—', 'isNameComp': '—',
+              'Weight Adj':     '—', 'Adj Reason': '—',
+              'Final Score':    '—', 'Final Rank': '—',
+              'bestMatch?':     'No',
+              'Removed?':       'Yes',
               'Removal Reason': `cut by TOP_N=${TOP_N} (merged rank ${mergedRank + 1})`,
             });
           });
