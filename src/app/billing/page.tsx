@@ -228,6 +228,22 @@ export default function BillingPage() {
         }
     }
     
+    // ── [PROVE] log every merge that involves a suspected partial word ────────
+    const _probeWords = /[\u0900-\u097F]/;  // any Devanagari
+    if (_isDebug && _probeWords.test(s1 + s2)) {
+      const result = maxOverlap > 0
+        ? words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ")
+        : s1.trim() + " | " + s2.trim();
+      console.log(
+        `%c[MERGE] s1="${s1.trim()}" + s2="${s2.trim()}"` +
+        ` → overlap=${maxOverlap} → result="${result}"`,
+        maxOverlap > 0 && s1.trim().length > result.length
+          ? 'color:#cc0000;font-weight:bold'   // ← s1 got SHORTER — truncation!
+          : 'color:#888'
+      );
+    }
+    // ── [/PROVE] ─────────────────────────────────────────────────────────────
+    
     if (maxOverlap > 0) {
         return words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ");
     }
@@ -1498,6 +1514,18 @@ export default function BillingPage() {
         // ── TIMING: total onresult event ─────────────────────────────────────
         const _tEvent = performance.now();
 
+        // ── [PROVE] log every raw segment before any merge ───────────────────
+        if (_isDebug) {
+          const _segs = Array.from({ length: event.results.length }, (_, i) => ({
+            idx: i,
+            isFinal: event.results[i].isFinal,
+            text: event.results[i][0].transcript,
+          }));
+          console.log('%c[ONRESULT] raw segments:', 'color:#0066cc;font-weight:bold', _segs);
+          console.log('%c[ONRESULT] globalTranscriptRef BEFORE merge:', 'color:#0066cc', `"${globalTranscriptRef.current}"`);
+        }
+        // ── [/PROVE] ─────────────────────────────────────────────────────────
+
         let merged = "";
         for (let i = 0; i < event.results.length; ++i) {
             const text = event.results[i][0].transcript.trim();
@@ -1507,6 +1535,19 @@ export default function BillingPage() {
 
         currentBreathRef.current = merged;
         const fullText = mergeOverlappingStrings(globalTranscriptRef.current, merged);
+
+        // ── [PROVE] log the final fullText fed into processing ────────────────
+        if (_isDebug) {
+          console.log('%c[ONRESULT] merged(segments):', 'color:#0066cc', `"${merged}"`);
+          console.log(
+            `%c[ONRESULT] fullText = merge("${globalTranscriptRef.current}", "${merged}") = "${fullText}"`,
+            fullText.length < (globalTranscriptRef.current + merged).length / 2
+              ? 'color:#cc0000;font-weight:bold'  // ← suspiciously short
+              : 'color:#006600'
+          );
+        }
+        // ── [/PROVE] ─────────────────────────────────────────────────────────
+
         setFinalTranscript(fullText);
 
         if (fullText.length > 1) {
@@ -1679,7 +1720,23 @@ export default function BillingPage() {
         if (isListeningRef.current) {
             try { recognition.start(); } catch(_) {}
         }
+        // ── [PROVE] log the onend commit ──────────────────────────────────────
+        if (_isDebug) {
+          console.log(
+            `%c[ONEND] committing globalTranscript: "${globalTranscriptRef.current}" + currentBreath: "${currentBreathRef.current}"`,
+            'color:#884400;font-weight:bold'
+          );
+        }
+        // ── [/PROVE] ─────────────────────────────────────────────────────────
         globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
+        // ── [PROVE] log result after commit ──────────────────────────────────
+        if (_isDebug) {
+          console.log(
+            `%c[ONEND] globalTranscriptRef AFTER commit: "${globalTranscriptRef.current}"`,
+            'color:#884400;font-weight:bold'
+          );
+        }
+        // ── [/PROVE] ─────────────────────────────────────────────────────────
         currentBreathRef.current = "";
     };
 
