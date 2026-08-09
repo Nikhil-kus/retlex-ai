@@ -10,7 +10,7 @@ import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
 import { transliterateHinglishToHindi, transliterateHindiToHinglish } from '@/lib/transliterate';
-import DebugPanel, { makeEmptyDebugData, type DebugData } from '@/components/DebugPanel';
+import DebugPanel, { makeEmptyDebugData, type DebugData, type TraceEntry } from '@/components/DebugPanel';
 
 const cleanProductName = (name: string) => {
   return name
@@ -150,6 +150,28 @@ export default function BillingPage() {
   const debugDataRef = useRef<DebugData>(makeEmptyDebugData());
   const [debugTick, setDebugTick] = useState(0);
   const _isDebug = process.env.NEXT_PUBLIC_DEBUG === 'true';
+
+  // ── Trace helpers (debug only) ────────────────────────────────────────────
+  // Tag the current merge call site so the probe inside mergeOverlappingStrings
+  // can label which part of the pipeline produced each merge.
+  const _mergeCallSiteRef = useRef<string>('unknown');
+  const _onresultIndexRef  = useRef(0);
+
+  const _countGraphemes = (s: string): number => {
+    try { return [...new Intl.Segmenter('hi', { granularity: 'grapheme' }).segment(s)].filter(x => x.segment.trim()).length; }
+    catch { return s.length; }
+  };
+
+  const _addTrace = (entry: Omit<TraceEntry, 'seq' | 'ts'>) => {
+    if (!_isDebug) return;
+    const seq = ++debugDataRef.current.traceSeq;
+    debugDataRef.current.traceEntries.push({ seq, ts: performance.now(), ...entry } as TraceEntry);
+    // Check if any merge entry is a truncation and set the top-level flag
+    if (entry.kind === 'merge' && entry.merge?.truncation) debugDataRef.current.truncationDetected = true;
+    if (entry.kind === 'onresult' && entry.onresult?.truncation) debugDataRef.current.truncationDetected = true;
+    if (entry.kind === 'onend' && entry.onend?.truncation) debugDataRef.current.truncationDetected = true;
+  };
+  // ── [/Trace helpers] ─────────────────────────────────────────────────────
   // Toast: id of the product just pinned as default (auto-clears after 1.5s)
   const [pinnedProductId, setPinnedProductId] = useState<string | null>(null);
   // Quantity selector sheet: index of the review item whose picker is open (null = closed)
@@ -228,22 +250,30 @@ export default function BillingPage() {
         }
     }
     
-    // ── [PROVE] log every merge that involves a suspected partial word ────────
-    const _probeWords = /[\u0900-\u097F]/;  // any Devanagari
-    if (_isDebug && _probeWords.test(s1 + s2)) {
-      const result = maxOverlap > 0
+    // ── [PROVE] write merge trace entry to debugDataRef ────────────────────
+    if (_isDebug && (/[\u0900-\u097F]/.test(s1 + s2))) {
+      const _mergeResult = maxOverlap > 0
         ? words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ")
         : s1.trim() + " | " + s2.trim();
-      console.log(
-        `%c[MERGE] s1="${s1.trim()}" + s2="${s2.trim()}"` +
-        ` → overlap=${maxOverlap} → result="${result}"`,
-        maxOverlap > 0 && s1.trim().length > result.length
-          ? 'color:#cc0000;font-weight:bold'   // ← s1 got SHORTER — truncation!
-          : 'color:#888'
-      );
+      const _s1t = s1.trim(), _s2t = s2.trim();
+      const _longerIn = Math.max(_s1t.length, _s2t.length);
+      const _truncation = maxOverlap > 0 && _mergeResult.length < _s1t.length;
+      const _detail = _truncation
+        ? `s1 "${_s1t}" (${_countGraphemes(_s1t)} graphemes) → result "${_mergeResult}" (${_countGraphemes(_mergeResult)} graphemes) — ${_s1t.length - _mergeResult.length} chars lost`
+        : '';
+      _addTrace({
+        kind: 'merge',
+        merge: {
+          callSite: _mergeCallSiteRef.current,
+          s1: _s1t, s2: _s2t,
+          s1Len: _countGraphemes(_s1t), s2Len: _countGraphemes(_s2t),
+          maxOverlap,
+          result: _mergeResult, resultLen: _countGraphemes(_mergeResult),
+          truncation: _truncation, truncationDetail: _detail,
+        }
+      });
     }
     // ── [/PROVE] ─────────────────────────────────────────────────────────────
-    
     if (maxOverlap > 0) {
         return words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ");
     }
@@ -1499,6 +1529,18 @@ export default function BillingPage() {
     setFinalTranscript("");
     setSelectedBrandPerItem({});
     matchCacheRef.current.clear(); // clear stale interim results from any prior voice session
+    // ── [PROVE] reset transcript trace for new session ───────────────────────
+    if (_isDebug) {
+      debugDataRef.current.traceEntries    = [];
+      debugDataRef.current.traceSeq        = 0;
+      debugDataRef.current.truncationDetected = false;
+      debugDataRef.current.displayedTranscript = '';
+      debugDataRef.current.processedQuery  = '';
+      debugDataRef.current.globalTranscript = '';
+      debugDataRef.current.currentBreath   = '';
+      _onresultIndexRef.current = 0;
+    }
+    // ── [/PROVE] ─────────────────────────────────────────────────────────────
     isListeningRef.current = true;
     setIsListening(true);
     setMode('OCR');
@@ -1514,43 +1556,67 @@ export default function BillingPage() {
         // ── TIMING: total onresult event ─────────────────────────────────────
         const _tEvent = performance.now();
 
-        // ── [PROVE] log every raw segment before any merge ───────────────────
-        if (_isDebug) {
-          const _segs = Array.from({ length: event.results.length }, (_, i) => ({
-            idx: i,
-            isFinal: event.results[i].isFinal,
-            text: event.results[i][0].transcript,
-          }));
-          console.log('%c[ONRESULT] raw segments:', 'color:#0066cc;font-weight:bold', _segs);
-          console.log('%c[ONRESULT] globalTranscriptRef BEFORE merge:', 'color:#0066cc', `"${globalTranscriptRef.current}"`);
-        }
+        // ── [PROVE] capture raw segments for trace ────────────────────────────
+        const _eventIdx = _isDebug ? ++_onresultIndexRef.current : 0;
+        const _segs = _isDebug
+          ? Array.from({ length: event.results.length }, (_, i) => ({
+              idx: i, isFinal: event.results[i].isFinal,
+              text: event.results[i][0].transcript,
+            }))
+          : [];
+        const _globalBefore = _isDebug ? globalTranscriptRef.current : '';
         // ── [/PROVE] ─────────────────────────────────────────────────────────
 
         let merged = "";
         for (let i = 0; i < event.results.length; ++i) {
             const text = event.results[i][0].transcript.trim();
             if (!text) continue;
+            if (_isDebug) _mergeCallSiteRef.current = `onresult-inner[${i}]`;
             merged = mergeOverlappingStrings(merged, text);
         }
 
         currentBreathRef.current = merged;
+        if (_isDebug) _mergeCallSiteRef.current = 'onresult-global';
         const fullText = mergeOverlappingStrings(globalTranscriptRef.current, merged);
 
-        // ── [PROVE] log the final fullText fed into processing ────────────────
+        // ── [PROVE] write onresult trace entry ────────────────────────────────
         if (_isDebug) {
-          console.log('%c[ONRESULT] merged(segments):', 'color:#0066cc', `"${merged}"`);
-          console.log(
-            `%c[ONRESULT] fullText = merge("${globalTranscriptRef.current}", "${merged}") = "${fullText}"`,
-            fullText.length < (globalTranscriptRef.current + merged).length / 2
-              ? 'color:#cc0000;font-weight:bold'  // ← suspiciously short
-              : 'color:#006600'
-          );
+          const _truncation = fullText.length < _globalBefore.length && _globalBefore.length > 0;
+          const _detail = _truncation
+            ? `fullText "${fullText}" (${_countGraphemes(fullText)} graphemes) < globalBefore "${_globalBefore}" (${_countGraphemes(_globalBefore)} graphemes)`
+            : '';
+          _addTrace({
+            kind: 'onresult',
+            onresult: {
+              eventIndex: _eventIdx,
+              segments: _segs,
+              mergedSegments: merged,
+              globalBefore: _globalBefore,
+              fullText,
+              processedQuery: fullText,   // updated to actual query below after parse
+              truncation: _truncation,
+              truncationDetail: _detail,
+            }
+          });
+          // Keep live summary fields up to date
+          debugDataRef.current.displayedTranscript = fullText;
+          debugDataRef.current.globalTranscript    = globalTranscriptRef.current;
+          debugDataRef.current.currentBreath       = merged;
         }
         // ── [/PROVE] ─────────────────────────────────────────────────────────
 
         setFinalTranscript(fullText);
 
         if (fullText.length > 1) {
+            // ── [PROVE] record the exact query passed into processing ─────────
+            if (_isDebug) {
+              _addTrace({ kind: 'process', process: { query: fullText } });
+              debugDataRef.current.processedQuery = fullText;
+              // Patch the processedQuery on the last onresult entry too
+              const _lastOR = [...debugDataRef.current.traceEntries].reverse().find(e => e.kind === 'onresult');
+              if (_lastOR?.onresult) _lastOR.onresult.processedQuery = fullText;
+            }
+            // ── [/PROVE] ─────────────────────────────────────────────────────
             // ── TIMING: processVoiceTextToItems (logged internally) ───────────
             const _pvResult = processVoiceTextToItems(fullText);
             const newParsedItems = _pvResult.items;
@@ -1720,21 +1786,31 @@ export default function BillingPage() {
         if (isListeningRef.current) {
             try { recognition.start(); } catch(_) {}
         }
-        // ── [PROVE] log the onend commit ──────────────────────────────────────
-        if (_isDebug) {
-          console.log(
-            `%c[ONEND] committing globalTranscript: "${globalTranscriptRef.current}" + currentBreath: "${currentBreathRef.current}"`,
-            'color:#884400;font-weight:bold'
-          );
-        }
+        // ── [PROVE] capture state before commit ───────────────────────────────
+        const _endGlobalBefore = _isDebug ? globalTranscriptRef.current : '';
+        const _endBreath       = _isDebug ? currentBreathRef.current   : '';
         // ── [/PROVE] ─────────────────────────────────────────────────────────
+        if (_isDebug) _mergeCallSiteRef.current = 'onend';
         globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
-        // ── [PROVE] log result after commit ──────────────────────────────────
+        // ── [PROVE] write onend trace entry ───────────────────────────────────
         if (_isDebug) {
-          console.log(
-            `%c[ONEND] globalTranscriptRef AFTER commit: "${globalTranscriptRef.current}"`,
-            'color:#884400;font-weight:bold'
-          );
+          const _endAfter = globalTranscriptRef.current;
+          const _truncation = _endAfter.length < _endGlobalBefore.length && _endGlobalBefore.length > 0;
+          const _detail = _truncation
+            ? `globalBefore "${_endGlobalBefore}" (${_countGraphemes(_endGlobalBefore)} graphemes) → globalAfter "${_endAfter}" (${_countGraphemes(_endAfter)} graphemes)`
+            : '';
+          _addTrace({
+            kind: 'onend',
+            onend: {
+              globalBefore: _endGlobalBefore,
+              currentBreath: _endBreath,
+              globalAfter: _endAfter,
+              truncation: _truncation,
+              truncationDetail: _detail,
+            }
+          });
+          debugDataRef.current.globalTranscript = _endAfter;
+          debugDataRef.current.currentBreath    = '';
         }
         // ── [/PROVE] ─────────────────────────────────────────────────────────
         currentBreathRef.current = "";
