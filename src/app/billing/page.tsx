@@ -288,7 +288,7 @@ export default function BillingPage() {
       .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' ')
       // Use | as a separator for conjunctions and commas
       .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(and|plus)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' | ')
-      .replace(/और|तथा|भी|या/g, ' | ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(और|तथा|भी|या)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/g, ' | ')
       .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(aur|tatha|bhi|ya)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' | ')
       .replace(/,/g, ' | ')
       // Fix misheard numbers (phonetic matching)
