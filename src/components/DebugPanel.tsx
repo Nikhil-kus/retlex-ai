@@ -234,6 +234,19 @@ export default function DebugPanel({ dataRef, updateTick }: Props) {
     });
   }, [dataRef]);
 
+  const downloadReport = useCallback(() => {
+    const json = JSON.stringify(dataRef.current, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `debug-report-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [dataRef]);
+
   const sectionTitle = (t: string) => (
     <p style={{ color: '#7c3aed', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', marginTop: 14, marginBottom: 6, letterSpacing: 1 }}>{t}</p>
   );
@@ -275,6 +288,7 @@ export default function DebugPanel({ dataRef, updateTick }: Props) {
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={clear} style={{ fontSize: 11, padding: '3px 8px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer' }}>Clear</button>
             <button onClick={copyReport} style={{ fontSize: 11, padding: '3px 8px', background: copied ? '#15803d' : '#1e293b', color: copied ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer' }}>{copied ? '✓ Copied' : 'Copy Report'}</button>
+            <button onClick={downloadReport} style={{ fontSize: 11, padding: '3px 8px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer' }}>⬇ Download</button>
             <button onClick={() => setOpen(false)} style={{ fontSize: 14, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', lineHeight: 1 }}>✕</button>
           </div>
         </div>
