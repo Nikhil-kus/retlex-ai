@@ -90,7 +90,15 @@ const getClosestWordSyllableCount = (query: string, cand: any, isHindi: boolean)
   let bestSyllables = 0;
   let minDistance = Infinity;
 
-  const queryWords = compareQuery.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+  // Normalise hyphens/punctuation symmetrically on BOTH query and candidate so
+  // that "पारले-जी" (query) and "पारले-जी बिस्किट" (candWords, 3 tokens after
+  // the existing strip) produce the same token count.  Without this, the query
+  // kept "पारले-जी" as one token (windowSize=2) while the candidate produced 3
+  // tokens, so the best 2-word window was "जी बिस्किट" (4 graphemes) instead
+  // of "पारले जी बिस्किट" → 7 graphemes, generating a spurious +0.34 penalty.
+  const normalisedQuery = compareQuery.toLowerCase()
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ");
+  const queryWords = normalisedQuery.split(/\s+/).filter(w => w.length > 0);
 
   for (const option of options) {
     const candWords = option.toLowerCase()
@@ -101,7 +109,7 @@ const getClosestWordSyllableCount = (query: string, cand: any, isHindi: boolean)
     const windowSize = queryWords.length;
     for (let start = 0; start <= candWords.length - windowSize; start++) {
       const subSeq = candWords.slice(start, start + windowSize).join(" ");
-      const dist = getLevenshteinDistance(compareQuery.toLowerCase(), subSeq);
+      const dist = getLevenshteinDistance(normalisedQuery, subSeq);
       if (dist < minDistance) {
         minDistance = dist;
         bestSyllables = countSyllables(subSeq);
