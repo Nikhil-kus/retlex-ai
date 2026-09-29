@@ -8,6 +8,9 @@ Object.assign(numbers, { पांच: 5, पन्द्रह: 15, बाइ�
   twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 });
 const number = `(?:\\d+(?:\\.\\d+)?|${Object.keys(numbers).join('|')}|सौ|sau|hundred|हजार|हज़ार|thousand)`;
 const amount = `${number}(?:[ -]+${number})*`;
+// Currency-first speech such as "₹55 तीन पैकेट" must stop at 55. A later
+// number describes quantity, even when speech recognition inserts a space.
+const prefixedAmount = number;
 const currency = '(?:रुपये|रुपए|रूपये|रूपए|रुपया|रुपए|रुपैये|rupees?|rupaye|rupya|rs\\.?|₹)';
 const boundary = '[\\p{L}\\p{M}\\p{N}]';
 function value(phrase: string) {
@@ -22,5 +25,5 @@ function value(phrase: string) {
 export function markVoicePrices(text: string) {
   return text.toLowerCase().replace(/[०-९]/g, d => String(d.charCodeAt(0) - 0x966))
     .replace(new RegExp(`(?<!${boundary})(${amount})\\s*${currency}(?!${boundary})(?:\\s+(?:का|की|के|वाला|वाली|वाले|wala|wali|wale))?`, 'gu'), (_, n) => ` price:${value(n)} `)
-    .replace(new RegExp(`(?<!${boundary})${currency}\\s*(${amount})(?!${boundary})`, 'gu'), (_, n) => ` price:${value(n)} `);
+    .replace(new RegExp(`(?<!${boundary})${currency}\\s*(${prefixedAmount})(?!${boundary})`, 'gu'), (_, n) => ` price:${value(n)} `);
 }

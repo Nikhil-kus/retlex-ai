@@ -25,6 +25,7 @@ const pricedProducts = [
   { id: 'sugar', name: 'Sugar Loose', localName: 'चीनी', price: 45, baseUnit: 'kg', baseQuantity: 1 },
   { id: 'small-colgate', name: 'Colgate Toothpaste 50g', localName: 'कोलगेट', price: 30, baseUnit: 'pc' },
   { id: 'large-colgate', name: 'Colgate Toothpaste 100g', localName: 'कोलगेट', price: 60, baseUnit: 'pc' },
+  { id: 'silk', name: 'Dairy Milk Silk', localName: 'डेरी मिल्क सिल्क', localAliases: ['डेरी मिल्क'], price: 55, baseUnit: 'pc' },
 ];
 
 test('screenshot: exact shop alias and price select Cool over a fuzzy same-price Skincare match', () => {
@@ -83,6 +84,22 @@ test('prices stay separate from quantities across multiple spoken products', () 
   assert.equal(trailing[0].quantity, 2);
   assert.equal(parseVoiceItems('चाय एक सौ पैंतालीस रुपये')[0].requestedPrice, 145);
   assert.equal(parseVoiceItems('tea forty five rupees')[0].requestedPrice, 45);
+});
+
+test('currency-first price leaves a following quantity on the same product', () => {
+  for (const spoken of [
+    'डेरी मिल्क ₹55 तीन पैकेट', 'डेरी मिल्क ₹55 3 पैकेट',
+    'डेरी मिल्क ₹ ५५ तीन पैकेट', '₹55 डेरी मिल्क तीन पैकेट',
+    'डेरी मिल्क पचपन रुपये तीन पैकेट', 'डेरी मिल्क तीन पैकेट ₹55',
+  ]) {
+    const parsed = parseVoiceItems(spoken);
+    assert.equal(parsed.length, 1, spoken);
+    assert.equal(parsed[0].name, 'डेरी मिल्क', spoken);
+    assert.equal(parsed[0].requestedPrice, 55, spoken);
+    assert.equal(parsed[0].quantity, 3, spoken);
+    assert.equal(parsed[0].unit, 'pc', spoken);
+    assert.equal(parsed[0].hasExplicitQty, true, spoken);
+  }
 });
 
 test('reported sentence resolves the correct identity with quantity and packet intent intact', () => {
@@ -231,6 +248,12 @@ test('actual billing pipeline preserves quantity, rejects unknown names, and upd
     assert.equal(result[0].quantity, 1);
     assert.equal(result[0].needsMatchReview, false);
   }
+  const silk = processVoiceText('डेरी मिल्क ₹55 तीन पैकेट').items;
+  assert.equal(silk.length, 1);
+  assert.equal(silk[0].productId, 'silk');
+  assert.equal(silk[0].price, 55);
+  assert.equal(silk[0].quantity, 3);
+  assert.equal(silk[0].needsMatchReview, false);
 });
 
 test('exact catalogue names never automatically switch to a different product', () => {
