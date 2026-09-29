@@ -1,6 +1,8 @@
 
 'use client';
 import Fuse from 'fuse.js';
+import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct } from '@/lib/voice-product-matcher';
+import { parseVoiceItems } from '@/lib/voice-parser';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -9,7 +11,7 @@ import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
-import { transliterateHinglishToHindi, transliterateHindiToHinglish } from '@/lib/transliterate';
+import { transliterateHinglishToHindi } from '@/lib/transliterate';
 import DebugPanel, { makeEmptyDebugData, type DebugData, type TraceEntry } from '@/components/DebugPanel';
 
 const cleanProductName = (name: string) => {
@@ -46,82 +48,6 @@ const getLevenshteinDistance = (a: string, b: string): number => {
   return matrix[b.length][a.length];
 };
 
-const countSyllables = (text: string): number => {
-  const clean = text.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").trim();
-  if (!clean) return 0;
-
-  if (/[\u0900-\u097F]/.test(clean)) {
-    try {
-      const segmenter = new Intl.Segmenter('hi', { granularity: 'grapheme' });
-      const segments = [...segmenter.segment(clean)];
-      return segments.filter(s => s.segment.trim().length > 0).length;
-    } catch (e) {
-      const devanagariSyllables = clean.match(/[\u0905-\u0914]|[\u0915-\u0939\u0958-\u095f](?!\u094d)/g);
-      return devanagariSyllables ? devanagariSyllables.length : clean.length;
-    }
-  } else {
-    return clean.replace(/\s+/g, '').length;
-  }
-};
-
-const getClosestWordSyllableCount = (query: string, cand: any, isHindi: boolean): number => {
-  const isQueryHindi = /[\u0900-\u097F]/.test(query);
-  const compareQuery = isQueryHindi ? query : transliterateHinglishToHindi(query);
-
-  const options: string[] = [];
-  
-  if (cand.localName) options.push(cand.localName);
-  if (cand.name) {
-    options.push(cand.name);
-    const transName = transliterateHinglishToHindi(cand.name);
-    if (transName !== cand.name.toLowerCase()) options.push(transName);
-  }
-  
-  if (Array.isArray(cand.localAliases)) {
-    cand.localAliases.forEach((alias: any) => {
-      if (typeof alias === 'string') {
-        options.push(alias);
-        if (!/[\u0900-\u097F]/.test(alias)) {
-          const transAlias = transliterateHinglishToHindi(alias);
-          if (transAlias !== alias.toLowerCase()) options.push(transAlias);
-        }
-      }
-    });
-  }
-
-  let bestSyllables = 0;
-  let minDistance = Infinity;
-
-  // Normalise hyphens/punctuation symmetrically on BOTH query and candidate so
-  // that "पारले-जी" (query) and "पारले-जी बिस्किट" (candWords, 3 tokens after
-  // the existing strip) produce the same token count.  Without this, the query
-  // kept "पारले-जी" as one token (windowSize=2) while the candidate produced 3
-  // tokens, so the best 2-word window was "जी बिस्किट" (4 graphemes) instead
-  // of "पारले जी बिस्किट" → 7 graphemes, generating a spurious +0.34 penalty.
-  const normalisedQuery = compareQuery.toLowerCase()
-    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ");
-  const queryWords = normalisedQuery.split(/\s+/).filter(w => w.length > 0);
-
-  for (const option of options) {
-    const candWords = option.toLowerCase()
-      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ")
-      .split(/\s+/)
-      .filter(w => w.length > 0);
-    
-    const windowSize = queryWords.length;
-    for (let start = 0; start <= candWords.length - windowSize; start++) {
-      const subSeq = candWords.slice(start, start + windowSize).join(" ");
-      const dist = getLevenshteinDistance(normalisedQuery, subSeq);
-      if (dist < minDistance) {
-        minDistance = dist;
-        bestSyllables = countSyllables(subSeq);
-      }
-    }
-  }
-
-  return bestSyllables;
-};
-
 const unitKeywords = new Set([
   'kg', 'g', 'gram', 'grams', 'kilo', 'kilos', 'ml', 'l', 'ltr', 'liter', 'liters',
   'pkt', 'packet', 'packets', 'pc', 'pcs', 'piece', 'pieces', 'box', 'sachet', 'sachets',
@@ -143,9 +69,9 @@ export default function BillingPage() {
   const [selectedBrandPerItem, setSelectedBrandPerItem] = useState<Record<number, any>>({});
   // Long-press timer for pinning a suggestion as default
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Cached Fuse index for voice product matching — rebuilt only when catalog changes,
+  // Cached product identity index for voice matching — rebuilt only when catalog changes,
   // not on every speech recognition event.
-  const fuseRef = useRef<Fuse<any> | null>(null);
+  const voiceMatcherRef = useRef<ReturnType<typeof createVoiceProductMatcher<any>> | null>(null);
   // Match result cache: key = "name__unit__quantity__rawText", value = matched item object.
   // Populated during voice matching; cleared when catalog changes or a new voice session starts.
   const matchCacheRef = useRef<Map<string, any>>(new Map());
@@ -288,256 +214,7 @@ export default function BillingPage() {
     return s1.trim() + " | " + s2.trim();
   };
 
-  const parseVoiceItems = (text: string) => {
-    // PRE-PROCESSING: Normalization for robust parsing
-    text = text.toLowerCase().trim()
-      // Remove prices so they aren't parsed as quantities (e.g. "50 wala namak" -> "namak")
-      .replace(/(\d+(?:\.\d+)?)\s*(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)/gi, ' ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' ')
-      // Use | as a separator for conjunctions and commas
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(and|plus)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' | ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(और|तथा|भी|या)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/g, ' | ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(aur|tatha|bhi|ya)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' | ')
-      .replace(/,/g, ' | ')
-      // Fix misheard numbers (phonetic matching)
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(to|too|tu|two|तो|टो|do|दो)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 2 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(for|four|फ़ॉर|फॉर|फोर)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 4 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(won|one|वन|on|un|an)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 1 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(at|eight|एट|it)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 8 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(teen|three|थ्री|तीन|tin)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 3 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(five|फाइव|पाइप|पांच|panch)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 5 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(six|सिक्स|छह|che|chhe)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 6 ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(ten|टेन|दस|das)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' 10 ')
-      // Convert compound weights (2 kg 500 g -> 2.5 kg)
-      .replace(/(\d+(?:\.\d+)?)\s*(kg|kilo|kilos|किलो)\s+(\d+(?:\.\d+)?)\s*(g|gram|grams|ग्राम)/gi, (match, kg, kgUnit, g, gUnit) => {
-        return (parseFloat(kg) + parseFloat(g) / 1000).toString() + " kg";
-      })
-      .replace(/(\d+(?:\.\d+)?)\s*(l|liter|litre|litres|लीटर)\s+(\d+(?:\.\d+)?)\s*(ml|mili|मिली)/gi, (match, l, lUnit, ml, mlUnit) => {
-        return (parseFloat(l) + parseFloat(ml) / 1000).toString() + " l";
-      })
-      // Hindi weight phrasing
-      .replace(/ढाई\s*सौ/g, '250').replace(/dhai\s*sau/g, '250')
-      .replace(/डेढ़\s*सौ/g, '150').replace(/dedh\s*sau/g, '150')
-      .replace(/एक\s*सौ\s*पचास/g, '150').replace(/ek\s*sau\s*pachas/g, '150')
-      .replace(/दो\s*सौ\s*पचास/g, '250').replace(/do\s*sau\s*pachas/g, '250')
-      .replace(/एक\s*सौ/g, '100').replace(/ek\s*sau/g, '100')
-      .replace(/दो\s*सौ/g, '200').replace(/do\s*sau/g, '200')
-      .replace(/तीन\s*सौ/g, '300').replace(/teen\s*sau/g, '300')
-      .replace(/चार\s*सौ/g, '400').replace(/char\s*sau/g, '400')
-      .replace(/पांच\s*सौ/g, '500').replace(/paanch\s*sau/g, '500')
-      .replace(/छह\s*सौ/g, '600').replace(/che\s*sau/g, '600')
-      .replace(/सात\s*सौ/g, '700').replace(/saat\s*sau/g, '700')
-      .replace(/आठ\s*सौ/g, '800').replace(/aath\s*sau/g, '800')
-      .replace(/नौ\s*सौ/g, '900').replace(/nau\s*sau/g, '900')
-      // Hindi fractions
-      .replace(/आधा/g, '0.5').replace(/aadha/g, '0.5')
-      .replace(/पाव/g, '0.25').replace(/paav/g, '0.25')
-      .replace(/सवा/g, '1.25').replace(/sawa/g, '1.25')
-      .replace(/डेढ़/g, '1.5').replace(/dedh/g, '1.5')
-      .replace(/ढाई/g, '2.5').replace(/dhai/g, '2.5');
-
-    const words = text.split(/\s+/).filter(w => w.length > 0);
-    const items: any[] = [];
-
-    const unitMap: any = {
-      kg: "kg", kilo: "kg", kilos: "kg", 'किलो': "kg",
-      g: "g", gram: "g", grams: "g", 'ग्राम': "g",
-      l: "l", liter: "l", litre: "l", litres: "l", 'लीटर': "l",
-      ml: "ml", mili: "ml", 'मिली': "ml",
-      pc: "pc", pcs: "pc", piece: "pc", packet: "pc", pkt: "pc", pack: "pc", 'पैकेट': "pc", 'पीस': "pc"
-    };
-
-    const numMap: any = {
-      'एक': 1, 'do': 2, 'दो': 2, 'dui': 2, 'दुई': 2, 'teen': 3, 'तीन': 3, 'char': 4, 'चार': 4, 'paanch': 5, 'पांच': 5,
-      'che': 6, 'छह': 6, 'chhe': 6, 'chay': 6, 'छय': 6, 'saat': 7, 'सात': 7, 'aath': 8, 'आठ': 8, 'nau': 9, 'नौ': 9, 'das': 10, 'दस': 10,
-      'gyarah': 11, 'ग्यारह': 11, 'barah': 12, 'बारह': 12, 'bara': 12, 'बारा': 12,
-      'tera': 13, 'तेरा': 13, 'तेरह': 13, 'chauda': 14, 'चौदह': 14, 'चौदा': 14,
-      'pandrah': 15, 'पंद्रह': 15, 
-      'bees': 20, 'बीस': 20, 'ikkis': 21, 'इक्कीस': 21, 'ikais': 21, 'इकाईस': 21,
-      'bais': 22, 'बाइस': 22, 'teis': 23, 'तेइस': 23, 'chaubis': 24, 'चौबीस': 24,
-      'pachees': 25, 'पच्चीस': 25, 'tees': 30, 'तीस': 30,
-      'aadha': 0.5, 'आधा': 0.5, 'paav': 0.25, 'पाव': 0.25, 'sawa': 1.25, 'सवा': 1.25,
-      'dedh': 1.5, 'डेढ़': 1.5, 'dhai': 2.5, 'ढाई': 2.5,
-      'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'half': 0.5, 'quarter': 0.25
-    };
-
-    let pendingName: string[] = [];
-    let pendingQty = 1;
-    let pendingUnit = "pc";
-    let hasLeadingNumber = false;
-    let itemWords: string[] = [];
-
-    const commitItem = (overrideQty?: number, overrideUnit?: string) => {
-      if (pendingName.length > 0) {
-        items.push({
-          name: pendingName.join(" "),
-          quantity: overrideQty !== undefined ? overrideQty : pendingQty,
-          unit: overrideUnit !== undefined ? overrideUnit : pendingUnit,
-          hasExplicitQty: overrideQty !== undefined || pendingQty !== 1 || pendingUnit !== "pc" || hasLeadingNumber,
-          rawText: itemWords.join(" ")
-        });
-      }
-      pendingName = [];
-      pendingQty = 1;
-      pendingUnit = "pc";
-      hasLeadingNumber = false;
-      itemWords = [];
-    };
-
-    const hasNameAhead = (startIndex: number) => {
-      for (let j = startIndex; j < words.length; j++) {
-        const w = words[j];
-        if (w === '|') {
-            // Check if what follows the separator is a number
-            const nextW = words[j+1];
-            if (nextW) {
-                let nextIsNum = false;
-                if (!isNaN(Number(nextW))) nextIsNum = true;
-                else if (numMap[nextW] !== undefined) nextIsNum = true;
-                else {
-                    const match = nextW.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
-                    if (match) nextIsNum = true;
-                }
-                if (nextIsNum) continue; // skip the separator, it's followed by a number
-            }
-            return false; // Stop looking ahead, there's a hard boundary
-        }
-        if (unitMap[w]) continue;
-        let isNum = false;
-        if (!isNaN(Number(w))) isNum = true;
-        else if (numMap[w] !== undefined) isNum = true;
-        else {
-          const match = w.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
-          if (match) isNum = true;
-        }
-        if (!isNum) return true;
-      }
-      return false;
-    };
-
-    let i = 0;
-    while (i < words.length) {
-      const word = words[i];
-      const nextWord = words[i + 1] || "";
-
-      if (word === '|') {
-          let nextIsNum = false;
-          if (nextWord) {
-              if (!isNaN(Number(nextWord))) nextIsNum = true;
-              else if (numMap[nextWord] !== undefined) nextIsNum = true;
-              else {
-                  const match = nextWord.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
-                  if (match) nextIsNum = true;
-              }
-          }
-          if (nextIsNum) {
-              // The next word is a quantity! Ignore this separator so the quantity attaches to current item.
-              i++;
-              continue;
-          } else {
-              // The next word is a product name. Commit current item.
-              commitItem();
-              i++;
-              continue;
-          }
-      }
-
-      itemWords.push(word);
-
-      let isNumber = false;
-      let parsedNum = NaN;
-      let isCombined = false;
-      let parsedUnitStr = "";
-
-      if (!isNaN(Number(word))) {
-          isNumber = true;
-          parsedNum = parseFloat(word);
-      } else if (numMap[word] !== undefined) {
-          isNumber = true;
-          parsedNum = numMap[word];
-      }
-
-      if (isNumber) {
-        parsedUnitStr = unitMap[nextWord] || "";
-      } else {
-        const match = word.match(/^([\d\.]+)([a-zA-Z]+|किलो|ग्राम|लीटर|पैकेट|पीस)$/i);
-        if (match) {
-           parsedNum = parseFloat(match[1]);
-           if (unitMap[match[2]]) {
-               parsedUnitStr = unitMap[match[2]];
-               isNumber = true;
-               isCombined = true;
-           }
-        }
-      }
-
-      if (isNumber && !isNaN(parsedNum)) {
-        let finalUnit = parsedUnitStr || "pc";
-        
-        if (pendingName.length > 0) {
-          if (hasLeadingNumber) {
-            const nextWordIndex = i + (isCombined ? 1 : (parsedUnitStr ? 2 : 1));
-            if (hasNameAhead(nextWordIndex)) {
-              commitItem();
-              pendingQty = parsedNum;
-              pendingUnit = finalUnit;
-              hasLeadingNumber = true;
-            } else {
-              pendingQty = parsedNum;
-              pendingUnit = finalUnit;
-              commitItem();
-            }
-          } else {
-            commitItem(parsedNum, finalUnit);
-          }
-        } else {
-          pendingQty = parsedNum;
-          pendingUnit = finalUnit;
-          hasLeadingNumber = true;
-        }
-
-        if (parsedUnitStr && !isCombined) {
-           itemWords.push(words[i + 1]);
-           i++; 
-        }
-      } else {
-        if (unitMap[word] && pendingName.length === 0) {
-           pendingUnit = unitMap[word];
-        } else {
-           pendingName.push(word);
-        }
-      }
-      i++;
-    }
-
-    commitItem();
-    return items;
-  };
-
-  const recalculateQtyAndUnit = (parsedQty: number, parsedUnit: string, sug: any) => {
-    const normalizedUnit = (parsedUnit || '').toLowerCase();
-    const isWeightUnit = ['kg', 'g', 'l', 'ml'].includes(normalizedUnit);
-
-    if (isWeightUnit) {
-      let requestedAmt = parsedQty;
-      if (normalizedUnit === 'kg' || normalizedUnit === 'l') {
-        requestedAmt = parsedQty * 1000;
-      }
-
-      const sugBaseUnit = sug.baseUnit || 'pc';
-      if (['pc', 'pkt'].includes(sugBaseUnit)) {
-        const packWeight = sug.packetWeight || sug.baseQuantity || 1;
-        const qty = Math.max(1, Math.round(requestedAmt / packWeight));
-        return { quantity: qty, unit: sugBaseUnit };
-      } else if (['kg', 'l'].includes(sugBaseUnit)) {
-        return { quantity: requestedAmt / 1000, unit: sugBaseUnit };
-      } else if (['g', 'ml'].includes(sugBaseUnit)) {
-        return { quantity: requestedAmt, unit: sugBaseUnit };
-      }
-    }
-
-    return { quantity: parsedQty, unit: sug.baseUnit || 'pc' };
-  };
+  const recalculateQtyAndUnit = voiceQuantityForProduct;
 
   const processVoiceTextToItems = (text: string) => {
     if (!text || text.trim().length === 0) return { items: [], _timing: { parse: '0.0', fuse: '0.0' } };
@@ -566,12 +243,12 @@ export default function BillingPage() {
       };
     });
 
-    // PHASE 3: CONNECT WITH EXISTING CATALOG (FORGIVING MODE)
-    // Use the cached Fuse index (rebuilt only when catalog changes, not on every speech event).
+    // Match identity across the catalogue; ambiguous choices require review.
+    // The index is rebuilt only when the catalogue changes.
     // ── TIMING: Phase 3 start (Fuse search + scoring) ────────────────────────
     const _tFuseStart = performance.now();
-    const fuse = fuseRef.current;
-    if (!fuse) return { items: [], _timing: { parse: '0.0', fuse: '0.0' } };
+    const matcher = voiceMatcherRef.current;
+    if (!matcher) return { items: [], _timing: { parse: '0.0', fuse: '0.0' } };
 
     const seenItemsMap = new Set();
 
@@ -592,637 +269,37 @@ export default function BillingPage() {
         if (_isDebug) {
           const cached = matchCacheRef.current.get(_cacheKey);
           debugDataRef.current.cacheEntries.push({ key: _cacheKey, hit: true, result: cached });
+          debugDataRef.current.spokenText = item.name;
+          debugDataRef.current.normalizedText = normalizeVoiceName(item.name);
+          debugDataRef.current.bestMatchName = cached?.productId ? cached.name : '—';
+          debugDataRef.current.bestMatchPath = cached?.productId ? 'identity matcher (cached)' : 'needs review (cached)';
+          debugDataRef.current.matchDecision = cached?._matchDecision;
         }
         // ── [/DEBUG PANEL] ───────────────────────────────────────────────────
         return matchCacheRef.current.get(_cacheKey);
       }
 
-      const searchName = item.name.replace(/\d+/g, '').replace(/\b(kg|g|ml|l|ltr|pcs?|pieces?|pkt|pack|packet|day|meter|m)\b/gi, '').trim();
-      const origRes = fuse.search(searchName);
-      const transliterated = transliterateHinglishToHindi(searchName);
-
-      // ── [TRACE] ──────────────────────────────────────────────────────────────
-      const _isTracedQuery = /धनिया/i.test(searchName) || /dhaniya/i.test(searchName);
-
-      // Helper: format one Fuse result into a table row for a given stage/search label
-      const _fuseRowsForSearch = (results: any[], searchLabel: string): any[] =>
-        results.map((r: any) => {
-          // Pick the best match entry (lowest refIndex = first match found by Fuse)
-          const bestMatch_ = (r.matches || []).reduce((best: any, m: any) => {
-            if (!best) return m;
-            // prefer the match with the smallest start index in its first indice pair
-            const bestStart = (best.indices?.[0]?.[0] ?? Infinity);
-            const mStart    = (m.indices?.[0]?.[0] ?? Infinity);
-            return mStart < bestStart ? m : best;
-          }, null);
-          return {
-            'Product Name':    r.item.name,
-            'Product ID':      r.item.id || '(no id)',
-            'Search':          searchLabel,
-            'Matched Field':   bestMatch_?.key ?? '—',
-            'Matched Value':   bestMatch_?.value ?? '—',
-            'Match Indices':   bestMatch_ ? JSON.stringify(bestMatch_.indices) : '—',
-            'Raw Fuse Score':  r.score?.toFixed(4) ?? '—',
-          };
-        });
-
-      if (_isTracedQuery) {
-        console.group(`%c[TRACE] ══════ FULL DECISION PIPELINE for query="${searchName}" ══════`, 'color:#ff6600;font-weight:bold;font-size:13px');
-        console.log('[TRACE] item.name (original):', item.name, '| searchName:', searchName, '| transliterated:', transliterated);
-      }
-      // ── [/TRACE] ─────────────────────────────────────────────────────────────
-      
-      let combined = [...origRes];
-      // Helper to merge a new Fuse result list into combined, keeping the best score per product
-      const mergeResults = (newResults: any[]) => {
-        const seen = new Map<string, any>(combined.map(r => [r.item.id || r.item.name, r]));
-        for (const r of newResults) {
-          const key = r.item.id || r.item.name;
-          const existing = seen.get(key);
-          if (!existing) {
-            combined.push(r);
-            seen.set(key, r);
-          } else if ((r.score ?? 1) < (existing.score ?? 1)) {
-            existing.score = r.score;
-          }
-        }
-      };
-
-      // If query is Hinglish/Latin, also search its Hindi transliteration
-      if (transliterated !== searchName.toLowerCase()) {
-        mergeResults(fuse.search(transliterated));
-      }
-
-      // If query is already Hindi (Devanagari), also search its Hinglish/English equivalent
-      // so that English-named catalog products (e.g. "Kali Til") can be found
-      const isQueryHindiScript = /[\u0900-\u097F]/.test(searchName);
-      // ── [TRACE] Stage 1 — raw results from fuse.search(Hindi query) ──────────
-      if (_isTracedQuery) {
-        console.log('%c[TRACE] ── STAGE 1: fuse.search("' + searchName + '") raw results ──', 'color:#0055cc;font-weight:bold');
-        console.table(_fuseRowsForSearch(origRes, `fuse.search("${searchName}")`));
-      }
-      // ── [DEBUG PANEL] Stage 1 + spoken text ──────────────────────────────────
+      const decision = matcher.match(item);
+      const bestMatch = decision.product;
       if (_isDebug) {
-        debugDataRef.current.spokenText     = searchName;
-        debugDataRef.current.language       = 'hi-IN';
-        debugDataRef.current.stage1         = _fuseRowsForSearch(origRes, `fuse.search("${searchName}")`);
+        debugDataRef.current.spokenText = item.name;
+        debugDataRef.current.normalizedText = normalizeVoiceName(item.name);
+        debugDataRef.current.bestMatchName = bestMatch?.name || '—';
+        debugDataRef.current.bestMatchPath = bestMatch ? 'identity matcher' : 'needs review';
+        debugDataRef.current.matchDecision = {
+          reason: decision.reason,
+          candidates: decision.candidates.map(candidate => ({
+            name: candidate.product.name, id: candidate.product.id,
+            score: candidate.score, coverage: candidate.coverage,
+            field: candidate.matchedField, missing: candidate.missingTokens.join(', '),
+            eligible: candidate.eligible, reason: candidate.reason,
+          })),
+        };
+        debugDataRef.current.stage1 = [];
+        debugDataRef.current.stage2 = [];
+        debugDataRef.current.stage3 = [];
+        debugDataRef.current.stage4 = [];
       }
-      // ── [/TRACE] ─────────────────────────────────────────────────────────────
-      let _hinglishRes: any[] = [];
-      if (isQueryHindiScript) {
-        const hinglish = transliterateHindiToHinglish(searchName);
-        // ── [TRACE] Stage 2 — raw results from fuse.search(Hinglish query) ──────
-        if (_isTracedQuery) {
-          _hinglishRes = fuse.search(hinglish);
-          console.log('%c[TRACE] ── STAGE 2: Hindi→Hinglish "' + searchName + '" → "' + hinglish + '" — fuse.search("' + hinglish + '") raw results ──', 'color:#0055cc;font-weight:bold');
-          console.table(_fuseRowsForSearch(_hinglishRes, `fuse.search("${hinglish}")`));
-        }
-        // ── [DEBUG PANEL] Stage 2 ─────────────────────────────────────────────
-        if (_isDebug && !_isTracedQuery) {
-          _hinglishRes = fuse.search(hinglish);
-        }
-        if (_isDebug) {
-          debugDataRef.current.normalizedText = hinglish;
-          debugDataRef.current.stage2         = _fuseRowsForSearch(_hinglishRes, `fuse.search("${hinglish}")`);
-        }
-        // ── [/TRACE] ─────────────────────────────────────────────────────────────
-        if (hinglish !== searchName) {
-          mergeResults(fuse.search(hinglish));
-        }
-      }
-
-      let bestMatch: any = null;
-
-      const rawTextLower = (item.rawText || '').toLowerCase();
-      const isPacketRequested = /(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(packet|pack|pkt|packt|पैकेट|पीस|pc|pcs|piece|pieces|box|bottles?|can)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/i.test(rawTextLower);
-      const isKhulaRequested = /(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(khula|loose|khulla|खुला)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/i.test(rawTextLower);
-      
-      let requestedWeightGrams: number | null = null;
-      if (item.unit === 'kg' || item.unit === 'l') {
-        requestedWeightGrams = item.quantity * 1000;
-      } else if (item.unit === 'g' || item.unit === 'ml') {
-        requestedWeightGrams = item.quantity;
-      }
-
-      // Score and sort candidates
-      // Limit to top 20 by raw Fuse score before running the expensive
-      // syllable-penalty (Levenshtein) pass. Candidates beyond position 20
-      // are already weak fuzzy matches and the weight/syllable adjustments
-      // (max delta ±0.45 / ±0.8) cannot realistically promote them over the
-      // genuinely close matches already in the top 20. This is the primary
-      // fix for voice-search slowdown when weight+quantity is spoken.
-      const TOP_N = 15;
-      const topCombined = combined
-        .slice()
-        .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
-        .slice(0, TOP_N);
-
-      // ── [TRACE] Stage 3 — merged candidates before any scoring ──────────────
-      if (_isTracedQuery) {
-        // Determine which search(es) found each candidate
-        const _hindiIds   = new Set(origRes.map((r: any) => r.item.id || r.item.name));
-        const _hinglishIds = new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name));
-        const _mergedRows = combined
-          .slice()
-          .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
-          .map((r: any, i: number) => {
-            const id = r.item.id || r.item.name;
-            const inHindi    = _hindiIds.has(id);
-            const inHinglish = _hinglishIds.has(id);
-            const foundBy = inHindi && inHinglish ? 'Both' : inHindi ? 'Hindi("धनिया")' : 'Hinglish("dhaniya")';
-            const bestM = (r.matches || []).reduce((b: any, m: any) => {
-              if (!b) return m;
-              return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
-            }, null);
-            return {
-              'Rank':           i + 1,
-              'Product Name':   r.item.name,
-              'Found By':       foundBy,
-              'Matched Field':  bestM?.key ?? '—',
-              'Matched Value':  bestM?.value ?? '—',
-              'Match Indices':  bestM ? JSON.stringify(bestM.indices) : '—',
-              'Raw Fuse Score': r.score?.toFixed(4) ?? '—',
-            };
-          });
-        console.log('%c[TRACE] ── STAGE 3: Merged candidates before scoring ──', 'color:#0055cc;font-weight:bold');
-        console.table(_mergedRows);
-        console.log('[TRACE] isPacketRequested:', isPacketRequested, '| isKhulaRequested:', isKhulaRequested, '| requestedWeightGrams:', requestedWeightGrams, '| TOP_N:', TOP_N);
-      }
-      // ── [DEBUG PANEL] Stage 3 ─────────────────────────────────────────────
-      if (_isDebug) {
-        const _hIds = new Set(origRes.map((r: any) => r.item.id || r.item.name));
-        const _gIds = new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name));
-        debugDataRef.current.stage3 = combined
-          .slice()
-          .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
-          .map((r: any, i: number) => {
-            const id = r.item.id || r.item.name;
-            const inH = _hIds.has(id); const inG = _gIds.has(id);
-            const bM = (r.matches || []).reduce((b: any, m: any) => {
-              if (!b) return m;
-              return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
-            }, null);
-            return {
-              'Rank': i + 1,
-              'Product Name': r.item.name,
-              'Found By': inH && inG ? 'Both' : inH ? 'Hindi' : 'Hinglish',
-              'Matched Field': bM?.key ?? '—',
-              'Matched Value': String(bM?.value ?? '—').slice(0, 40),
-              'Match Indices': bM ? JSON.stringify(bM.indices) : '—',
-              'Raw Fuse Score': r.score?.toFixed(4) ?? '—',
-            };
-          });
-      }
-      // ── [/DEBUG PANEL] ───────────────────────────────────────────────────────
-      // ── [/TRACE] ─────────────────────────────────────────────────────────────
-
-      // Step 1: compute a name-quality score (with syllable penalty) for each candidate,
-      // before any weight adjustments. This is used later to gate weight bonuses so that
-      // a wrong-named product can never win purely because its packet weight matches.
-
-      // ── [TRACE] accumulated Stage-4 rows — one entry per candidate ───────────
-      // Always populated when _isDebug=true, regardless of _isTracedQuery.
-      // _isTracedQuery only gates the console.group/console.table output.
-      const _traceRows: any[] = [];
-      const _hindiIds4   = _isDebug ? new Set(origRes.map((r: any) => r.item.id || r.item.name)) : new Set<string>();
-      const _hinglishIds4 = _isDebug ? new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name)) : new Set<string>();
-      // ── [/TRACE] ─────────────────────────────────────────────────────────────
-
-      const nameQualityResults = topCombined.map((r: any) => {
-        let score = r.score ?? 1;
-        const cand = r.item;
-        const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
-        const querySyllables = countSyllables(isQueryHindi ? searchName : transliterated);
-        const matchSyllables = getClosestWordSyllableCount(searchName, cand, isQueryHindi);
-        const syllablePenaltyRaw = (querySyllables > 0 && matchSyllables > 0)
-          ? Math.abs(querySyllables - matchSyllables) / Math.max(querySyllables, matchSyllables)
-          : 0;
-        const syllablePenaltyAdded = syllablePenaltyRaw * 0.8;
-        if (querySyllables > 0 && matchSyllables > 0) {
-          score += syllablePenaltyAdded;
-        }
-        // ── [TRACE] stash per-candidate syllable data for Stage-4 row ────────
-        if (_isTracedQuery) {
-          console.log(`[TRACE] syllable — "${cand.name}": rawFuse=${r.score?.toFixed(4)} querySyl=${querySyllables} matchSyl=${matchSyllables} penalty=${syllablePenaltyAdded.toFixed(4)} → nameScore=${score.toFixed(4)}`);
-        }
-        // ── [DEBUG PANEL] always record when debug is on ───────────────────────
-        if (_isDebug) {
-          const id4 = cand.id || cand.name;
-          const inHindi4    = (_hindiIds4 as Set<string>).has(id4);
-          const inHinglish4 = (_hinglishIds4 as Set<string>).has(id4);
-          const foundBy4 = inHindi4 && inHinglish4 ? 'Both' : inHindi4 ? `Hindi("${searchName}")` : `Hinglish("${transliterateHindiToHinglish(searchName)}")`;
-          const bestM4 = (r.matches || []).reduce((b: any, m: any) => {
-            if (!b) return m;
-            return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
-          }, null);
-          _traceRows.push({
-            _id: id4,
-            'Product Name':     cand.name,
-            'Product ID':       id4,
-            'Found By':         foundBy4,
-            'Matched Field':    bestM4?.key ?? '—',
-            'Matched Value':    String(bestM4?.value ?? '—').slice(0, 40),
-            'Match Indices':    bestM4 ? JSON.stringify(bestM4.indices) : '—',
-            'Raw Fuse Score':   r.score?.toFixed(4) ?? '—',
-            'querySyl':         querySyllables,
-            'matchSyl':         matchSyllables,
-            'Syllable Penalty': syllablePenaltyAdded.toFixed(4),
-            // weight/packet columns filled in next pass
-            'isCandLoose':      '?',
-            'isNameComp':       '?',
-            'Weight Adj':       '—',
-            'Adj Reason':       '—',
-            'Final Score':      '?',
-            'Final Rank':       '?',
-            'bestMatch?':       'No',
-            'Removed?':         'No',
-            'Removal Reason':   '—',
-          });
-        }
-        // ── [/TRACE] ───────────────────────────────────────────────────────────
-        return { item: cand, nameScore: score };
-      });
-      // Best (lowest) name score across all candidates
-      const bestNameScore = nameQualityResults.length
-        ? Math.min(...nameQualityResults.map(r => r.nameScore))
-        : 1;
-
-      let scoredResults = nameQualityResults.map(({ item: cand, nameScore }) => {
-        let score = nameScore;
-
-        const nameLower = (cand.name || '').toLowerCase();
-        const localLower = (cand.localName || '').toLowerCase();
-        const isCandLoose = (
-          nameLower.includes('khula') || nameLower.includes('loose') || nameLower.includes('खुला') || nameLower.includes('खुली') ||
-          localLower.includes('khula') || localLower.includes('loose') || localLower.includes('खुला') || localLower.includes('खुली') ||
-          ['kg', 'g', 'l', 'ml'].includes(cand.baseUnit)
-        );
-
-        // Weight bonus is only a tiebreaker: only candidates whose name score is
-        // within 0.15 of the best name score are eligible for the weight bonus.
-        // This ensures a poorly-named product never wins just because its weight matches.
-        const isNameCompetitive = (nameScore - bestNameScore) <= 0.15;
-
-        let adjustment = 0;
-        let adjustReason = 'none';
-
-        if (isPacketRequested) {
-          if (isCandLoose) {
-            adjustment = +2.0; adjustReason = 'isPacketRequested+loose→+2.0';
-          } else if (requestedWeightGrams !== null && isNameCompetitive) {
-            const candWeight = cand.packetWeight || cand.baseQuantity || 0;
-            if (candWeight === requestedWeightGrams) {
-              adjustment = -0.45; adjustReason = 'weightMatch→-0.45';
-            }
-          }
-        } else if (isKhulaRequested) {
-          if (!isCandLoose) {
-            adjustment = +2.0; adjustReason = 'isKhulaRequested+packed→+2.0';
-          }
-        } else {
-          if (requestedWeightGrams !== null) {
-            if (!isCandLoose) {
-              const candWeight = cand.packetWeight || cand.baseQuantity || 0;
-              if (candWeight === requestedWeightGrams) {
-                if (isNameCompetitive) {
-                  adjustment = -0.45; adjustReason = 'weightMatch+nameCompetitive→-0.45';
-                }
-              } else {
-                adjustment = +0.25; adjustReason = 'wrongWeight→+0.25';
-              }
-            }
-          }
-        }
-        score += adjustment;
-        // ── [TRACE] console log ────────────────────────────────────────────────
-        if (_isTracedQuery) {
-          console.log(`[TRACE] weight adj — "${cand.name}": nameScore=${nameScore.toFixed(4)} loose=${isCandLoose} nameComp=${isNameCompetitive} adj=${adjustment} (${adjustReason}) → final=${score.toFixed(4)}`);
-        }
-        // ── [DEBUG PANEL] always fill weight columns when debug is on ─────────
-        if (_isDebug) {
-          const row4 = _traceRows.find((rx: any) => rx._id === (cand.id || cand.name));
-          if (row4) {
-            row4['isCandLoose']  = isCandLoose;
-            row4['isNameComp']   = isNameCompetitive;
-            row4['Weight Adj']   = adjustment !== 0 ? adjustment.toFixed(4) : '0';
-            row4['Adj Reason']   = adjustReason;
-            row4['Final Score']  = score.toFixed(4);
-          }
-        }
-        // ── [/TRACE] ───────────────────────────────────────────────────────────
-        return { item: cand, score };
-      });
-
-      scoredResults.sort((a: any, b: any) => a.score - b.score);
-
-      // ── [TRACE] Stage 4 — final ranked table after all adjustments ───────────
-      if (_isTracedQuery) {
-        // Fill Final Rank and bestMatch column for candidates that passed TOP_N
-        scoredResults.forEach((r: any, i: number) => {
-          const row4 = _traceRows.find((rx: any) => rx._id === (r.item.id || r.item.name));
-          if (row4) row4['Final Rank'] = i + 1;
-        });
-
-        // Mark the winner
-        if (scoredResults.length && scoredResults[0].score <= 0.6) {
-          const winnerRow = _traceRows.find((rx: any) => rx._id === (scoredResults[0].item.id || scoredResults[0].item.name));
-          if (winnerRow) winnerRow['bestMatch?'] = '✅ YES';
-        }
-
-        // Mark candidates that scored > 0.6 (passed TOP_N but rejected by threshold)
-        _traceRows.forEach((row4: any) => {
-          if (row4['Final Score'] !== '?' && Number(row4['Final Score']) > 0.6) {
-            row4['Removed?']       = 'Yes';
-            row4['Removal Reason'] = `score ${row4['Final Score']} > 0.6 threshold`;
-          }
-        });
-
-        // Append rows for candidates cut by TOP_N (in merged list but never scored)
-        const _scoredIds = new Set(_traceRows.map((rx: any) => rx._id));
-        combined
-          .slice()
-          .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
-          .forEach((r: any, mergedRank: number) => {
-            const id = r.item.id || r.item.name;
-            if (_scoredIds.has(id)) return;   // already in _traceRows
-            const inHindi4    = (_hindiIds4 as Set<string>).has(id);
-            const inHinglish4 = (_hinglishIds4 as Set<string>).has(id);
-            const foundBy4    = inHindi4 && inHinglish4 ? 'Both' : inHindi4 ? 'Hindi("धनिया")' : 'Hinglish("dhaniya")';
-            const bestMcut = (r.matches || []).reduce((b: any, m: any) => {
-              if (!b) return m;
-              return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
-            }, null);
-            _traceRows.push({
-              _id:              id,
-              'Product Name':   r.item.name,
-              'Product ID':     id,
-              'Found By':       foundBy4,
-              'Matched Field':  bestMcut?.key ?? '—',
-              'Matched Value':  String(bestMcut?.value ?? '—').slice(0, 40),
-              'Match Indices':  bestMcut ? JSON.stringify(bestMcut.indices) : '—',
-              'Raw Fuse Score': r.score?.toFixed(4) ?? '—',
-              'querySyl':       '—',
-              'matchSyl':       '—',
-              'Syllable Penalty': '—',
-              'isCandLoose':    '—',
-              'isNameComp':     '—',
-              'Weight Adj':     '—',
-              'Adj Reason':     '—',
-              'Final Score':    '—',
-              'Final Rank':     '—',
-              'bestMatch?':     'No',
-              'Removed?':       'Yes',
-              'Removal Reason': `cut by TOP_N=${TOP_N} (merged rank ${mergedRank + 1})`,
-            });
-          });
-
-        // Remove internal _id key before printing
-        const _printRows = _traceRows.map((rx: any) => { const { _id, ...rest } = rx; return rest; });
-        // Sort: scored candidates by Final Rank first, then removed/cut candidates at the bottom
-        _printRows.sort((a: any, b: any) => {
-          const aRank = Number(a['Final Rank']);
-          const bRank = Number(b['Final Rank']);
-          if (!isNaN(aRank) && !isNaN(bRank)) return aRank - bRank;
-          if (!isNaN(aRank)) return -1;
-          if (!isNaN(bRank)) return 1;
-          return Number(a['Raw Fuse Score'] ?? 1) - Number(b['Raw Fuse Score'] ?? 1);
-        });
-        console.log('%c[TRACE] ── STAGE 4: Final ranked table after ALL scoring adjustments ──', 'color:#0055cc;font-weight:bold');
-        console.log('[TRACE] bestNameScore (used to gate weight bonus):', bestNameScore.toFixed(4));
-        console.log('[TRACE] acceptance threshold: score ≤ 0.6  |  TOP_N cut:', TOP_N);
-        console.table(_printRows);
-        const winner = scoredResults.length && scoredResults[0].score <= 0.6 ? scoredResults[0] : null;
-        if (winner) {
-          console.log('%c[TRACE] ✅ PRIMARY PATH bestMatch → "' + winner.item.name + '" (score=' + winner.score.toFixed(4) + ')', 'color:green;font-weight:bold');
-        } else {
-          console.log('%c[TRACE] ❌ Primary path: no candidate scored ≤ 0.6 — falling through to multi-word fallback', 'color:#cc0000;font-weight:bold');
-        }
-      }
-      // ── [DEBUG PANEL] Stage 4 ────────────────────────────────────────────────
-      if (_isDebug) {
-        // Fill Final Rank, bestMatch?, and Removed? for all scored rows
-        scoredResults.forEach((r: any, i: number) => {
-          const row4 = _traceRows.find((rx: any) => rx._id === (r.item.id || r.item.name));
-          if (row4) {
-            row4['Final Rank'] = i + 1;
-            if (r.score > 0.6) {
-              row4['Removed?']       = 'Yes';
-              row4['Removal Reason'] = `score ${r.score.toFixed(4)} > 0.6 threshold`;
-            }
-          }
-        });
-        // Mark the winner
-        if (scoredResults.length && scoredResults[0].score <= 0.6) {
-          const winnerRow = _traceRows.find((rx: any) => rx._id === (scoredResults[0].item.id || scoredResults[0].item.name));
-          if (winnerRow) winnerRow['bestMatch?'] = '✅ YES';
-        }
-        // Append rows for candidates cut by TOP_N
-        const _hIds4b   = new Set(origRes.map((r: any) => r.item.id || r.item.name));
-        const _gIds4b   = new Set(_hinglishRes.map((r: any) => r.item.id || r.item.name));
-        const _scoredIds4 = new Set(_traceRows.map((rx: any) => rx._id));
-        combined
-          .slice()
-          .sort((a: any, b: any) => (a.score ?? 1) - (b.score ?? 1))
-          .forEach((r: any, mergedRank: number) => {
-            const id = r.item.id || r.item.name;
-            if (_scoredIds4.has(id)) return;
-            const inH4 = (_hIds4b as Set<string>).has(id);
-            const inG4 = (_gIds4b as Set<string>).has(id);
-            const bMcut = (r.matches || []).reduce((b: any, m: any) => {
-              if (!b) return m;
-              return (m.indices?.[0]?.[0] ?? Infinity) < (b.indices?.[0]?.[0] ?? Infinity) ? m : b;
-            }, null);
-            _traceRows.push({
-              _id:              id,
-              'Product Name':   r.item.name,
-              'Product ID':     id,
-              'Found By':       inH4 && inG4 ? 'Both' : inH4 ? `Hindi("${searchName}")` : `Hinglish("${transliterateHindiToHinglish(searchName)}")`,
-              'Matched Field':  bMcut?.key ?? '—',
-              'Matched Value':  String(bMcut?.value ?? '—').slice(0, 40),
-              'Match Indices':  bMcut ? JSON.stringify(bMcut.indices) : '—',
-              'Raw Fuse Score': r.score?.toFixed(4) ?? '—',
-              'querySyl':       '—', 'matchSyl': '—', 'Syllable Penalty': '—',
-              'isCandLoose':    '—', 'isNameComp': '—',
-              'Weight Adj':     '—', 'Adj Reason': '—',
-              'Final Score':    '—', 'Final Rank': '—',
-              'bestMatch?':     'No',
-              'Removed?':       'Yes',
-              'Removal Reason': `cut by TOP_N=${TOP_N} (merged rank ${mergedRank + 1})`,
-            });
-          });
-        const _dbgPrint = _traceRows
-          .map((rx: any) => { const { _id, ...rest } = rx; return rest; })
-          .sort((a: any, b: any) => {
-            const ar = Number(a['Final Rank']); const br = Number(b['Final Rank']);
-            if (!isNaN(ar) && !isNaN(br)) return ar - br;
-            if (!isNaN(ar)) return -1; if (!isNaN(br)) return 1;
-            return Number(a['Raw Fuse Score'] ?? 1) - Number(b['Raw Fuse Score'] ?? 1);
-          });
-        debugDataRef.current.stage4 = _dbgPrint;
-        const _winner = scoredResults.length && scoredResults[0].score <= 0.6 ? scoredResults[0] : null;
-        debugDataRef.current.bestMatchName = _winner ? _winner.item.name : '—';
-        debugDataRef.current.bestMatchPath = _winner ? 'primary' : 'none';
-      }
-      // ── [/DEBUG PANEL] ───────────────────────────────────────────────────────
-      // ── [/TRACE] ─────────────────────────────────────────────────────────────
-
-      if (scoredResults.length && scoredResults[0].score <= 0.6) {
-        bestMatch = scoredResults[0].item;
-        // ── [TRACE] ──────────────────────────────────────────────────────────
-        if (_isTracedQuery) {
-          console.groupEnd();
-        }
-        // ── [/TRACE] ─────────────────────────────────────────────────────────
-      }
-
-      // Enhanced multi-word fallback:
-      if (!bestMatch) {
-        // ── [TRACE] ────────────────────────────────────────────────────────────
-        if (_isTracedQuery) {
-          console.log('[TRACE] primary path found no bestMatch — entering multi-word fallback...');
-        }
-        // ── [/TRACE] ───────────────────────────────────────────────────────────
-        const words = searchName.split(/\s+/).filter((w: string) => w.length > 2);
-        if (words.length > 0) {
-          // For each word, find catalog products it matches well (score ≤ 0.45)
-          const productHits = new Map<string, { item: any; hitCount: number; bestScore: number }>();
-          for (const w of words) {
-            const subResult = fuse.search(w);
-            const transW = transliterateHinglishToHindi(w);
-            let combinedSub = [...subResult];
-            if (transW !== w) {
-              const transSubResult = fuse.search(transW);
-              const subSeen = new Map<string, any>(subResult.map(r => [r.item.id || r.item.name, r]));
-              for (const r of transSubResult) {
-                const key = r.item.id || r.item.name;
-                const existing = subSeen.get(key);
-                if (!existing) {
-                  combinedSub.push(r);
-                  subSeen.set(key, r);
-                } else {
-                  if ((r.score ?? 1) < (existing.score ?? 1)) {
-                    existing.score = r.score;
-                  }
-                }
-              }
-            }
-            for (const r of combinedSub) {
-              if ((r.score ?? 1) > 0.45) continue;
-              const id = r.item.id;
-              const existing = productHits.get(id);
-              if (!existing) {
-                productHits.set(id, { item: r.item, hitCount: 1, bestScore: r.score ?? 1 });
-              } else {
-                existing.hitCount += 1;
-                existing.bestScore = Math.min(existing.bestScore, r.score ?? 1);
-              }
-            }
-          }
-          if (productHits.size > 0) {
-            // Apply scoring adjustments to these hits as well
-            const hitCandidates = Array.from(productHits.values()).map(h => {
-              let score = h.bestScore;
-              const nameScore = score; // preserve name-match score before adjustments
-              const cand = h.item;
-              
-              const isQueryHindi = /[\u0900-\u097F]/.test(searchName);
-              const querySyllables = countSyllables(isQueryHindi ? searchName : transliterated);
-              const matchSyllables = getClosestWordSyllableCount(searchName, cand, isQueryHindi);
-              if (querySyllables > 0 && matchSyllables > 0) {
-                const syllablePenalty = Math.abs(querySyllables - matchSyllables) / Math.max(querySyllables, matchSyllables);
-                score += syllablePenalty * 0.8;
-              }
-              
-              const nameLower = (cand.name || '').toLowerCase();
-              const localLower = (cand.localName || '').toLowerCase();
-              const isCandLoose = (
-                nameLower.includes('khula') || nameLower.includes('loose') || nameLower.includes('खुला') || nameLower.includes('खुली') ||
-                localLower.includes('khula') || localLower.includes('loose') || localLower.includes('खुला') || localLower.includes('खुली') ||
-                ['kg', 'g', 'l', 'ml'].includes(cand.baseUnit)
-              );
-
-              // Will be replaced after bestNameScoreFallback is computed below
-              return { item: cand, hitCount: h.hitCount, nameScore, score };
-            });
-
-            // Compute the best name score among fallback candidates
-            const bestNameScoreFallback = hitCandidates.length
-              ? Math.min(...hitCandidates.map(c => c.nameScore))
-              : 1;
-
-            // Now apply weight adjustments, gated by name-competitiveness
-            const weightAdjustedCandidates = hitCandidates.map(({ item: cand, hitCount, nameScore, score }) => {
-              const nameLower = (cand.name || '').toLowerCase();
-              const localLower = (cand.localName || '').toLowerCase();
-              const isCandLoose = (
-                nameLower.includes('khula') || nameLower.includes('loose') || nameLower.includes('खुला') || nameLower.includes('खुली') ||
-                localLower.includes('khula') || localLower.includes('loose') || localLower.includes('खुला') || localLower.includes('खुली') ||
-                ['kg', 'g', 'l', 'ml'].includes(cand.baseUnit)
-              );
-
-              // Weight bonus is only a tiebreaker: only candidates within 0.15 of the
-              // best name score are eligible, so a wrong-named product can't win by weight alone.
-              const isNameCompetitive = (nameScore - bestNameScoreFallback) <= 0.15;
-
-              if (isPacketRequested) {
-                if (isCandLoose) {
-                  score += 2.0;
-                } else if (requestedWeightGrams !== null && isNameCompetitive) {
-                  const candWeight = cand.packetWeight || cand.baseQuantity || 0;
-                  if (candWeight === requestedWeightGrams) {
-                    score -= 0.45;
-                  }
-                }
-              } else if (isKhulaRequested) {
-                if (!isCandLoose) {
-                  score += 2.0;
-                }
-              } else {
-                if (requestedWeightGrams !== null) {
-                  if (!isCandLoose) {
-                    const candWeight = cand.packetWeight || cand.baseQuantity || 0;
-                    if (candWeight === requestedWeightGrams) {
-                      if (isNameCompetitive) {
-                        score -= 0.45;
-                      }
-                    } else {
-                      score += 0.25;
-                    }
-                  }
-                }
-              }
-              return { item: cand, hitCount, score };
-            });
-
-            // Sort product hits: most hitCounts first; break ties by best score
-            weightAdjustedCandidates.sort((a: any, b: any) =>
-              b.hitCount !== a.hitCount ? b.hitCount - a.hitCount : a.score - b.score
-            );
-
-            if (weightAdjustedCandidates.length && weightAdjustedCandidates[0].score <= 0.6) {
-              bestMatch = weightAdjustedCandidates[0].item;
-              // ── [TRACE] ──────────────────────────────────────────────────────
-              if (_isTracedQuery) {
-                console.log('%c[TRACE] ✅ bestMatch selected (multi-word fallback):', 'color:green;font-weight:bold', {
-                  name: bestMatch.name,
-                  localName: bestMatch.localName,
-                  score: weightAdjustedCandidates[0].score.toFixed(4),
-                  hitCount: weightAdjustedCandidates[0].hitCount
-                });
-                console.log('[TRACE] full fallback ranking:', weightAdjustedCandidates.map((c: any) => ({
-                  name: c.item.name, score: c.score.toFixed(4), hitCount: c.hitCount
-                })));
-                console.groupEnd();
-              }
-              // ── [/TRACE] ─────────────────────────────────────────────────────
-            } else if (_isTracedQuery) {
-              console.log('[TRACE] ❌ fallback also found no match (all scores > 0.6)');
-              console.groupEnd();
-            }
-          }
-        }
-      }
-
       const key = (bestMatch?.id || item.name).toLowerCase();
       let isRepeated = false;
       if (seenItemsMap.has(key)) {
@@ -1241,6 +318,12 @@ export default function BillingPage() {
           costPrice: 0,
           productId: null,
           confidence: 'low',
+          needsMatchReview: true,
+          matchReason: decision.reason,
+          _matchDecision: _isDebug ? debugDataRef.current.matchDecision : undefined,
+          matchCandidates: decision.candidates.map(candidate => candidate.product),
+          spokenWord: item.name,
+          sourceRawText: item.rawText,
           aiLabel: item.name,
           hasExplicitQty: item.hasExplicitQty || false,
           isRepeated,
@@ -1253,96 +336,7 @@ export default function BillingPage() {
 
       // PHASE 4: FINAL SAFE OUTPUT
       const match = bestMatch;
-      let finalQty = item.quantity;
-      let finalUnit = item.unit || 'pc';
-      const baseUnit = match.baseUnit || 'pc';
-      const baseQty = match.baseQuantity || 1;
-
-      if (item.unit === 'g') {
-          if (baseUnit === 'kg') {
-              finalQty = finalQty / 1000;
-              finalUnit = 'kg';
-          } else if (['pc', 'pkt'].includes(baseUnit)) {
-              // User said 'g', but DB is packet/piece. Calculate packets!
-              if (baseQty > 1) { // Assuming baseQty is packet weight in grams
-                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                  finalUnit = baseUnit;
-              } else {
-                  finalUnit = 'g';
-              }
-          } else if (baseUnit === 'g') {
-              if (baseQty > 1) {
-                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                  finalUnit = 'pc';
-              } else {
-                  finalUnit = 'g';
-              }
-          }
-      } else if (item.unit === 'ml') {
-          if (baseUnit === 'l') {
-              finalQty = finalQty / 1000;
-              finalUnit = 'l';
-          } else if (['pc', 'pkt'].includes(baseUnit)) {
-              if (baseQty > 1) {
-                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                  finalUnit = baseUnit;
-              } else {
-                  finalUnit = 'ml';
-              }
-          } else if (baseUnit === 'ml') {
-              if (baseQty > 1) {
-                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                  finalUnit = 'pc';
-              } else {
-                  finalUnit = 'ml';
-              }
-          }
-      } else if (item.unit === 'kg') {
-          if (['pc', 'pkt'].includes(baseUnit)) {
-              if (baseQty > 1) { // baseQty is in grams
-                  finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
-                  finalUnit = baseUnit;
-              } else {
-                  finalUnit = 'kg';
-              }
-          } else if (baseUnit === 'kg') {
-              if (baseQty > 1) {
-                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                  finalUnit = 'pc';
-              } else {
-                  finalUnit = 'kg';
-              }
-          }
-      } else if (item.unit === 'l') {
-          if (['pc', 'pkt'].includes(baseUnit)) {
-              if (baseQty > 1) { // baseQty is in ml
-                  finalQty = Math.max(1, Math.round((finalQty * 1000) / baseQty));
-                  finalUnit = baseUnit;
-              } else {
-                  finalUnit = 'l';
-              }
-          } else if (baseUnit === 'l') {
-              if (baseQty > 1) {
-                  finalQty = Math.max(1, Math.round(finalQty / baseQty));
-                  finalUnit = 'pc';
-              } else {
-                  finalUnit = 'l';
-              }
-          }
-      } else {
-        // Mismatch between spoken unit and base unit without a conversion rule
-        if (['pc', 'pkt'].includes(item.unit) && ['pc', 'pkt'].includes(baseUnit)) {
-          // Both are packet/piece types — align to baseUnit
-          finalUnit = baseUnit;
-        } else if (['pc', 'pkt'].includes(item.unit) && ['kg', 'g', 'l', 'ml'].includes(baseUnit)) {
-          // User said no unit (defaulted to 'pc') but the product is weight-based.
-          // Honour the product's baseUnit — the spoken quantity means "N units of that weight".
-          finalUnit = baseUnit;
-          // No quantity conversion: "2 namak" for a 1-kg product means qty=2 in kg
-        } else {
-          finalUnit = item.unit;
-        }
-      }
+      const { quantity: finalQty, unit: finalUnit } = voiceQuantityForProduct(item.quantity, item.unit, match);
 
       const _matched = {
         productId: match.id,
@@ -1357,20 +351,19 @@ export default function BillingPage() {
         packetUnit: match.packetUnit,
         price: match.price,
         costPrice: match.costPrice,
-        confidence: 'high',
+        confidence: decision.confidence,
+        needsMatchReview: false,
+        matchReason: decision.reason,
+        _matchDecision: _isDebug ? debugDataRef.current.matchDecision : undefined,
+        matchCandidates: decision.candidates.map(candidate => candidate.product),
         hasExplicitQty: item.hasExplicitQty || false,
         aiLabel: match.name,
         spokenWord: item.name, // original spoken word — used for generic category detection
+        sourceRawText: item.rawText,
         isRepeated,
         parsedQty: item.quantity,
         parsedUnit: item.unit
       };
-      // ── [TRACE] ────────────────────────────────────────────────────────────
-      if (_isTracedQuery) {
-        console.log('%c[TRACE] 📦 writing to matchCacheRef — cacheKey:', 'color:#aa00ff;font-weight:bold', _cacheKey);
-        console.log('[TRACE] cached result:', { name: _matched.name, localName: _matched.localName, productId: _matched.productId });
-      }
-      // ── [/TRACE] ───────────────────────────────────────────────────────────
       matchCacheRef.current.set(_cacheKey, _matched);
       return _matched;
     });    // Deduplicate within the same voice phrase
@@ -1646,51 +639,17 @@ export default function BillingPage() {
                         if (pref) {
                             const prefProduct = catalog.find((p: any) => p.id === pref.productId);
                             if (prefProduct) {
-                                // Safeguard: Verify if the spokenKey actually matches the prefProduct using Fuse.js
-                                // to prevent historical wrong matches (stored in localStorage) from hijacking the search.
-                                const singleFuse = new Fuse([prefProduct], {
-                                    keys: ['name', 'localName', 'localAliases'],
-                                    threshold: 0.6,
-                                    ignoreLocation: true,
-                                    minMatchCharLength: 2
-                                });
-                                const isMatchValid = singleFuse.search(spokenKey).length > 0;
-                                if (!isMatchValid) {
-                                    // Clean up this bad cached override to prevent it from happening again
-                                    if (shop?.id) {
-                                        voicePrefsCache.clear(shop.id, spokenKey);
-                                    }
-                                } else {
-                                    // Find family variants by stripping weight/volume suffix from the product name
-                                    const baseBrandName = prefProduct.name.replace(/\s*\d+(?:\.\d+)?\s*(g|gm|gram|grams|kg|kilo|kilos|l|ml|liter|litre|litres|ltr|pcs?|pieces?|pkts?|pack|packet|box|bottles?|can)\b/i, '').trim();
-                                    const candidates = catalog.filter((p: any) => {
-                                        const pBaseName = p.name.replace(/\s*\d+(?:\.\d+)?\s*(g|gm|gram|grams|kg|kilo|kilos|l|ml|liter|litre|litres|ltr|pcs?|pieces?|pkts?|pack|packet|box|bottles?|can)\b/i, '').trim();
-                                        return pBaseName.toLowerCase() === baseBrandName.toLowerCase();
-                                    });
-
-                                    let matchedProduct = prefProduct;
-
-                                    let requestedWeightGrams: number | null = null;
-                                    if (item.unit === 'kg' || item.unit === 'l') {
-                                        requestedWeightGrams = item.quantity * 1000;
-                                    } else if (item.unit === 'g' || item.unit === 'ml') {
-                                        requestedWeightGrams = item.quantity;
-                                    }
-
-                                    if (requestedWeightGrams !== null && candidates.length > 0) {
-                                        let bestCand = candidates[0];
-                                        let minDiff = Infinity;
-                                        for (const cand of candidates) {
-                                            const candWeight = cand.packetWeight || cand.baseQuantity || 0;
-                                            const diff = Math.abs(candWeight - requestedWeightGrams);
-                                            if (diff < minDiff) {
-                                                minDiff = diff;
-                                                bestCand = cand;
-                                            }
-                                        }
-                                        matchedProduct = bestCand;
-                                    }
-
+                                const preferenceDecision = voiceMatcherRef.current?.match({
+                                  name: spokenKey,
+                                  quantity: item.parsedQty ?? item.quantity,
+                                  unit: item.parsedUnit ?? item.unit,
+                                  rawText: item.sourceRawText,
+                                }, prefProduct.id);
+                                const isMatchValid = preferenceDecision?.product?.id === prefProduct.id;
+                                // Ignore incompatible defaults for this request; do not erase a
+                                // useful preference just because a different size was requested.
+                                if (isMatchValid) {
+                                    const matchedProduct = prefProduct;
                                     // Recalculate quantity and unit for the matched variant
                                     const pQty = item.parsedQty !== undefined ? item.parsedQty : item.quantity;
                                     const pUnit = item.parsedUnit !== undefined ? item.parsedUnit : (item.unit || item.baseUnit || 'pc');
@@ -1698,6 +657,8 @@ export default function BillingPage() {
 
                                     finalItem = {
                                         ...finalItem,
+                                        confidence: 'high',
+                                        needsMatchReview: false,
                                         productId: matchedProduct.id,
                                         name: matchedProduct.name,
                                         localName: matchedProduct.localName,
@@ -1846,21 +807,12 @@ export default function BillingPage() {
   const [catalog, setCatalog] = useState<any[]>([]);
   const [mode, setMode] = useState<'MANUAL' | 'OCR' | 'PENDING'>('MANUAL');
 
-  // Rebuild the voice Fuse index whenever the catalog changes (page load, background
+  // Rebuild the voice product index whenever the catalog changes (page load, background
   // refresh, or inline price edit). This avoids rebuilding it on every speech event.
   // Also clear the match cache — catalog change means stored match results are stale.
   useEffect(() => {
-    if (catalog.length > 0) {
-      fuseRef.current = new Fuse(catalog, {
-        keys: ['name', 'localName', 'localAliases'],
-        threshold: 0.6,
-        includeScore: true,
-        includeMatches: true,
-        ignoreLocation: true,
-        minMatchCharLength: 2
-      });
-      matchCacheRef.current.clear();
-    }
+    voiceMatcherRef.current = createVoiceProductMatcher(catalog);
+    matchCacheRef.current.clear();
   }, [catalog]);
 
   // Cart state
@@ -2373,6 +1325,10 @@ export default function BillingPage() {
   };
 
   const confirmReview = () => {
+    if (reviewItems.some(item => item.needsMatchReview)) {
+      alert('Choose a product for each uncertain item, or remove it before adding the bill.');
+      return;
+    }
     // Merge valid review items into cart
     const validItems = reviewItems.filter(item => item.name && (item.price > 0 || item.sellingPrice > 0)).map(i => ({
       ...i,
@@ -2943,7 +1899,7 @@ export default function BillingPage() {
                                 <span className={`text-[10px] font-medium truncate ${item.productId ? 'text-emerald-600' : 'text-rose-500'}`}>
                                   {item.productId
                                     ? (hindiMode ? (item.name || item.aiLabel || 'Matched') : (item.localName || item.aiLabel || 'Matched'))
-                                    : 'Not found in catalog'}
+                                    : item.needsMatchReview ? 'Please choose the correct product' : 'Not found in catalog'}
                                 </span>
                               </div>
                             </div>
@@ -2962,6 +1918,38 @@ export default function BillingPage() {
                               <X size={14} />
                             </button>
                           </div>
+
+                          {item.needsMatchReview && (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                              <p className="text-xs font-semibold text-amber-800">{item.matchReason}</p>
+                              <p className="mt-1 text-xs text-amber-800">Check the quantity and unit after choosing a product.</p>
+                              <div className="mt-2 flex gap-2 overflow-x-auto">
+                                {(item.matchCandidates || []).map((candidate: any) => (
+                                  <button key={candidate.id} type="button"
+                                    className="min-w-36 rounded-lg border border-amber-200 bg-white p-2 text-left text-xs"
+                                    onClick={() => {
+                                      const parsedQty = item.parsedQty ?? item.quantity;
+                                      const parsedUnit = item.parsedUnit ?? item.unit;
+                                      const converted = recalculateQtyAndUnit(parsedQty, parsedUnit, candidate);
+                                      const chosen = {
+                                        ...candidate, productId: candidate.id,
+                                        quantity: converted.quantity, unit: converted.unit,
+                                        confidence: 'high', needsMatchReview: false,
+                                        parsedQty, parsedUnit,
+                                      };
+                                      itemOverridesRef.current[item.aiLabel || item.name] = chosen;
+                                      const updated = [...reviewItems];
+                                      updated[idx] = { ...item, ...chosen, suggestions: getSuggestions({ ...item, ...chosen }) };
+                                      setReviewItems(updated);
+                                    }}>
+                                    <span className="block font-semibold">{pName(candidate.name, candidate.localName)}</span>
+                                    <span>₹{candidate.price || 0}</span>
+                                  </button>
+                                ))}
+                              </div>
+                              {!item.matchCandidates?.length && <p className="mt-1 text-xs text-amber-800">Repeat the full name, or remove this item and use manual search.</p>}
+                            </div>
+                          )}
 
                           {/* Row 2: rate | total | suggest-arrow | qty-pill */}
                           <div className="flex gap-2 mt-2.5 items-center">
@@ -3187,7 +2175,8 @@ export default function BillingPage() {
                     </button>
                     <button
                       onClick={confirmReview}
-                      className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-3.5 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 active:scale-[0.98] transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm"
+                      disabled={reviewItems.some(item => item.needsMatchReview)}
+                      className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-3.5 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 active:scale-[0.98] transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <CheckCircle size={18} />
                       Add {reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} to Bill
@@ -4362,4 +3351,3 @@ function QuantitySelectorSheet({ item, onSelect, onClose }: {
     </>
   );
 }
-
