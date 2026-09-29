@@ -1,6 +1,8 @@
+import { markVoicePrices } from './voice-price';
+
 export const parseVoiceItems = (text: string) => {
     // PRE-PROCESSING: Normalization for robust parsing
-    text = text.toLowerCase().trim()
+    text = markVoicePrices(text).trim()
       // Remove prices so they aren't parsed as quantities (e.g. "50 wala namak" -> "namak")
       .replace(/(\d+(?:\.\d+)?)\s*(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)/gi, ' ')
       .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' ')
@@ -74,6 +76,7 @@ export const parseVoiceItems = (text: string) => {
     let pendingName: string[] = [];
     let pendingQty = 1;
     let pendingUnit = "pc";
+    let pendingPrice: number | undefined;
     let hasLeadingNumber = false;
     let itemWords: string[] = [];
 
@@ -83,6 +86,7 @@ export const parseVoiceItems = (text: string) => {
           name: pendingName.join(" "),
           quantity: overrideQty !== undefined ? overrideQty : pendingQty,
           unit: overrideUnit !== undefined ? overrideUnit : pendingUnit,
+          ...(pendingPrice !== undefined ? { requestedPrice: pendingPrice } : {}),
           hasExplicitQty: overrideQty !== undefined || pendingQty !== 1 || pendingUnit !== "pc" || hasLeadingNumber,
           rawText: itemWords.join(" ")
         });
@@ -90,6 +94,7 @@ export const parseVoiceItems = (text: string) => {
       pendingName = [];
       pendingQty = 1;
       pendingUnit = "pc";
+      pendingPrice = undefined;
       hasLeadingNumber = false;
       itemWords = [];
     };
@@ -97,6 +102,7 @@ export const parseVoiceItems = (text: string) => {
     const hasNameAhead = (startIndex: number) => {
       for (let j = startIndex; j < words.length; j++) {
         const w = words[j];
+        if (w.startsWith('price:')) continue;
         if (w === '|') {
             // Check if what follows the separator is a number
             const nextW = words[j+1];
@@ -154,6 +160,15 @@ export const parseVoiceItems = (text: string) => {
 
       itemWords.push(word);
 
+      if (word.startsWith('price:')) {
+        pendingPrice = Number(word.slice(6));
+        // A trailing price completes the product unless a quantity follows.
+        const quantityAhead = unitMap[words[i + 2]] || /^\d/.test(nextWord) || numMap[nextWord] !== undefined;
+        if (pendingName.length && !quantityAhead) commitItem();
+        i++;
+        continue;
+      }
+
       let isNumber = false;
       let parsedNum = NaN;
       let isCombined = false;
@@ -200,7 +215,14 @@ export const parseVoiceItems = (text: string) => {
               commitItem();
             }
           } else {
-            commitItem(parsedNum, finalUnit);
+            const afterQuantity = i + (isCombined ? 1 : (parsedUnitStr ? 2 : 1));
+            if (words[afterQuantity]?.startsWith('price:')) {
+              pendingQty = parsedNum;
+              pendingUnit = finalUnit;
+              hasLeadingNumber = true;
+            } else {
+              commitItem(parsedNum, finalUnit);
+            }
           }
         } else {
           pendingQty = parsedNum;
