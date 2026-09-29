@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:voice": "node --import tsx --test src/lib/voice-product-matcher.test.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

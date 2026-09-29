@@ -70,6 +70,7 @@ export interface DebugData {
   spokenText: string; normalizedText: string;
   language: string; processingTimeMs: string;
   bestMatchName: string; bestMatchPath: string;
+  matchDecision?: { reason: string; candidates: { name: string; id: string; score: number; coverage: number; field: string; missing: string; eligible: boolean; reason: string }[] };
   // Transcript pipeline
   traceEntries: TraceEntry[];
   traceSeq: number;
@@ -329,18 +330,24 @@ export default function DebugPanel({ dataRef, updateTick }: Props) {
           {/* ── SEARCH TAB ─────────────────────────────────────────────── */}
           {tab === '🔎 Search' && (
             <>
+              {data.matchDecision ? <>
+                {sectionTitle('Product identity decision (higher score is better)')}
+                <p>{data.matchDecision.reason}</p>
+                <SortableTable rows={data.matchDecision.candidates} />
+              </> : <>
               {sectionTitle(`Stage 1 — fuse.search("${data.spokenText || '…'}")`)}
               <SortableTable rows={data.stage1} />
               {sectionTitle(`Stage 2 — fuse.search("${data.normalizedText || '…'}") [Hindi→Hinglish]`)}
               <SortableTable rows={data.stage2} />
               {sectionTitle('Stage 3 — Merged candidates (before scoring)')}
               <SortableTable rows={data.stage3} />
-              {sectionTitle('Stage 4 — Final ranked decision table')}
+              {sectionTitle('Stage 4 — Legacy ranked decision table')}
               <SortableTable rows={data.stage4} highlight={row => row['bestMatch?'] === '✅ YES' ? 'green' : row['Removed?'] === 'Yes' ? 'red' : null} />
               <div style={{ marginTop: 8, display: 'flex', gap: 12, fontSize: 11 }}>
                 <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:10,height:10,borderRadius:2,background:'rgba(34,197,94,0.5)',display:'inline-block'}}/>bestMatch</span>
                 <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:10,height:10,borderRadius:2,background:'rgba(239,68,68,0.5)',display:'inline-block'}}/>Removed</span>
               </div>
+              </>}
             </>
           )}
 
