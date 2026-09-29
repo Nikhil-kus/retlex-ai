@@ -321,7 +321,7 @@ export default function BillingPage() {
           needsMatchReview: true,
           matchReason: decision.reason,
           _matchDecision: _isDebug ? debugDataRef.current.matchDecision : undefined,
-          matchCandidates: decision.candidates.map(candidate => candidate.product),
+          matchCandidateDetails: decision.candidates,
           spokenWord: item.name,
           sourceRawText: item.rawText,
           aiLabel: item.name,
@@ -413,14 +413,23 @@ export default function BillingPage() {
   };
 
   const getSuggestions = (item: any) => {
-    if (!item.productId) return { brandVariants: [], sizeVariants: [] };
+    // When voice matching is uncertain, use its best same-category candidate as
+    // context for the familiar photo/price cards, while keeping it unselected.
+    const rankedSeed = (item.matchCandidateDetails || [])
+      .find((candidate: any) => candidate.product?.category)?.product;
+    const seed = item.productId
+      ? (catalog.find(p => p.id === item.productId) || item)
+      : rankedSeed;
+    if (!seed?.id) return { brandVariants: [], sizeVariants: [] };
 
-    const itemNameLower = (item.name || '').toLowerCase();
-    const itemLocal = (item.localName || '').toLowerCase();
+    const itemNameLower = (seed.name || '').toLowerCase();
+    const itemLocal = (seed.localName || '').toLowerCase();
     const itemBrand = itemNameLower.split(' ')[0];
-    const itemCategory = item.category || catalog.find(p => p.id === item.productId)?.category;
+    const itemCategory = seed.category;
 
-    const spokenWord = (item.spokenWord || item.name || '').toLowerCase().trim();
+    const spokenWord = (item.productId
+      ? (item.spokenWord || item.name || '')
+      : `${seed.name || ''} ${seed.localName || ''}`).toLowerCase().trim();
     const spokenWords = spokenWord.split(/\s+/)
       .map((w: string) => w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, ""))
       .filter((w: string) => {
@@ -430,23 +439,39 @@ export default function BillingPage() {
         return true;
       });
 
+    const sameCategory = (p: any) => Boolean(itemCategory) && p.category === itemCategory;
+    const isBiscuits = /biscuit|बिस्किट|बिस्कुट/i.test(`${itemCategory || ''} ${seed.name || ''} ${seed.localName || ''}`);
+    const isChocolateRequest = /chocolate|चॉकलेट/i.test(`${seed.name || ''} ${seed.localName || ''}`);
+    const hasRelevantProductWords = (p: any) => {
+      const candidateText = `${p.name || ''} ${p.localName || ''}`.toLowerCase();
+      // Common words such as milk are not enough to make two products related.
+      const usefulWords = spokenWords.filter((w: string) => ![
+        'milk', 'dairy', 'मिल्क', 'डेयरी', 'दूध', 'small', 'छोटा', 'छोटी',
+      ].includes(w));
+      return usefulWords.some((word: string) => candidateText.includes(word));
+    };
+    const isRelevantAlternative = (p: any) => {
+      if (!sameCategory(p)) return false;
+      const candidateName = `${p.name || ''} ${p.localName || ''}`;
+      if (isBiscuits) return true;
+      if (isChocolateRequest) return !/biscuit|बिस्किट|बिस्कुट/i.test(candidateName);
+      return hasRelevantProductWords(p);
+    };
+
     // Build pool: always include same-brand products + spoken-word matches
     const related: any[] = [];
     const seenIds = new Set<string>();
 
     const brandRelated = catalog.filter(p => {
       if (p.id === item.productId) return false;
-      if (itemCategory && p.category !== itemCategory) return false;
+      if (!sameCategory(p)) return false;
       const pn = (p.name || '').toLowerCase();
       return pn.startsWith(itemBrand + ' ') || pn === itemBrand;
     });
 
     const spokenRelated = spokenWords.length > 0 ? catalog.filter(p => {
       if (p.id === item.productId) return false;
-      if (itemCategory && p.category !== itemCategory) return false;
-      const pn = (p.name || '').toLowerCase();
-      const pl = (p.localName || '').toLowerCase();
-      return spokenWords.some((w: string) => pn.includes(w) || pl.includes(w));
+      return isRelevantAlternative(p);
     }) : [];
 
     for (const p of [...brandRelated, ...spokenRelated]) {
@@ -456,7 +481,7 @@ export default function BillingPage() {
     if (itemLocal) {
       for (const p of catalog) {
         if (p.id === item.productId || seenIds.has(p.id)) continue;
-        if (itemCategory && p.category !== itemCategory) continue;
+        if (!sameCategory(p)) continue;
         if ((p.localName || '').toLowerCase() === itemLocal) {
           seenIds.add(p.id); related.push(p);
         }
@@ -494,6 +519,18 @@ export default function BillingPage() {
     }
 
     const brandVariants = Array.from(brandMap.values()).slice(0, 12);
+
+    if (!item.productId) {
+      // Keep the closest recognized choices visible as image cards so the
+      // shopkeeper can correct an uncertain match using the existing flow.
+      const rankedChoices = (item.matchCandidateDetails || [])
+        .map((candidate: any) => candidate.product)
+        .filter((p: any) => p?.id && sameCategory(p));
+      const choices = [...rankedChoices, ...brandVariants]
+        .filter((p: any, index: number, all: any[]) => all.findIndex(x => x.id === p.id) === index)
+        .slice(0, 12);
+      return { brandVariants: choices, sizeVariants };
+    }
 
     return { brandVariants, sizeVariants };
   };
@@ -694,7 +731,9 @@ export default function BillingPage() {
                 // them for. Previously getSuggestions() ran for every item and was then
                 // immediately discarded for all but the last, wasting 3 catalog scans per item.
                 const finalItems = allItems.map((item, idx) => {
-                    if (idx === allItems.length - 1) return { ...item, suggestions: getSuggestions(item) };
+                    if (item.needsMatchReview || idx === allItems.length - 1) {
+                      return { ...item, suggestions: getSuggestions(item) };
+                    }
                     return item;
                 });
                 const _tSugEnd = performance.now();
@@ -1923,31 +1962,9 @@ export default function BillingPage() {
                             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
                               <p className="text-xs font-semibold text-amber-800">{item.matchReason}</p>
                               <p className="mt-1 text-xs text-amber-800">Check the quantity and unit after choosing a product.</p>
-                              <div className="mt-2 flex gap-2 overflow-x-auto">
-                                {(item.matchCandidates || []).map((candidate: any) => (
-                                  <button key={candidate.id} type="button"
-                                    className="min-w-36 rounded-lg border border-amber-200 bg-white p-2 text-left text-xs"
-                                    onClick={() => {
-                                      const parsedQty = item.parsedQty ?? item.quantity;
-                                      const parsedUnit = item.parsedUnit ?? item.unit;
-                                      const converted = recalculateQtyAndUnit(parsedQty, parsedUnit, candidate);
-                                      const chosen = {
-                                        ...candidate, productId: candidate.id,
-                                        quantity: converted.quantity, unit: converted.unit,
-                                        confidence: 'high', needsMatchReview: false,
-                                        parsedQty, parsedUnit,
-                                      };
-                                      itemOverridesRef.current[item.aiLabel || item.name] = chosen;
-                                      const updated = [...reviewItems];
-                                      updated[idx] = { ...item, ...chosen, suggestions: getSuggestions({ ...item, ...chosen }) };
-                                      setReviewItems(updated);
-                                    }}>
-                                    <span className="block font-semibold">{pName(candidate.name, candidate.localName)}</span>
-                                    <span>₹{candidate.price || 0}</span>
-                                  </button>
-                                ))}
-                              </div>
-                              {!item.matchCandidates?.length && <p className="mt-1 text-xs text-amber-800">Repeat the full name, or remove this item and use manual search.</p>}
+                              {!item.suggestions?.brandVariants?.length && !item.suggestions?.sizeVariants?.length && (
+                                <p className="mt-1 text-xs text-amber-800">Repeat the full name, or remove this item and use manual search.</p>
+                              )}
                             </div>
                           )}
 
@@ -2005,7 +2022,7 @@ export default function BillingPage() {
                           </div>
 
                           {/* Suggestions — two rows: brands/variants + size/price packs */}
-                          {(openSuggestionIdx === idx || idx === reviewItems.length - 1) && item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
+                          {(item.needsMatchReview || openSuggestionIdx === idx || idx === reviewItems.length - 1) && item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
                             const selectedBrand = selectedBrandPerItem[idx] || null;
                             const activeSizeVariants = selectedBrand
                               ? getSizeVariantsForBrand(selectedBrand)
@@ -2022,7 +2039,8 @@ export default function BillingPage() {
                                 price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity,
                                 packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl,
                                 quantity: recalculated.quantity, unit: recalculated.unit,
-                                parsedQty: pQty, parsedUnit: pUnit
+                                parsedQty: pQty, parsedUnit: pUnit,
+                                confidence: 'high', needsMatchReview: false,
                               };
                             };
 
@@ -2098,7 +2116,7 @@ export default function BillingPage() {
                               {/* Row 2: Brand / Variant suggestions */}
                               {item.suggestions.brandVariants?.length > 0 && (
                                 <div>
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Other Brands <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span></p>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">{item.needsMatchReview ? 'Suggested Products' : 'Other Brands'} <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span></p>
                                   <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
                                     onTouchStart={e => e.stopPropagation()}
                                     onTouchMove={e => e.stopPropagation()}
