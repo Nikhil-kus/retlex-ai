@@ -9,12 +9,14 @@ export interface VoiceProduct {
   baseQuantity?: number;
   packetWeight?: number | null;
   packetUnit?: string | null;
+  price?: number;
 }
 export interface MatchRequest {
   name: string;
   quantity?: number;
   unit?: string;
   rawText?: string;
+  requestedPrice?: number;
 }
 export interface VoiceCandidate<T> {
   product: T;
@@ -199,6 +201,11 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
           if (requested.dimension !== entry.measure.dimension || requested.amount !== entry.measure.amount) reason = 'Confirm the requested pack size';
         }
         if (requested && !entry.measure && !loose) reason = 'Pack weight is missing; choose a product and check its quantity';
+        if (request.requestedPrice !== undefined && (
+          !Number.isFinite(request.requestedPrice) || request.requestedPrice <= 0 ||
+          !Number.isFinite(entry.product.price) ||
+          Math.round(entry.product.price! * 100) !== Math.round(request.requestedPrice * 100)
+        )) reason = 'Product price does not match the spoken price';
         return { product: entry.product, ...best, identityComplete, eligible: !reason && best.coverage >= 0.85 && best.score >= 0.72,
           reason: reason || (best.coverage < 0.85 || best.score < 0.72 ? 'Name match is uncertain' : 'All spoken identity words match') };
       }).sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.score - a.score || a.product.id.localeCompare(b.product.id));

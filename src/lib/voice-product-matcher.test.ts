@@ -21,6 +21,46 @@ const products = [
 ];
 const matcher = createVoiceProductMatcher(products);
 
+const pricedProducts = [
+  { id: 'sugar', name: 'Sugar Loose', localName: 'चीनी', price: 45, baseUnit: 'kg', baseQuantity: 1 },
+  { id: 'small-colgate', name: 'Colgate Toothpaste 50g', localName: 'कोलगेट', price: 30, baseUnit: 'pc' },
+  { id: 'large-colgate', name: 'Colgate Toothpaste 100g', localName: 'कोलगेट', price: 60, baseUnit: 'pc' },
+];
+
+test('spoken prices resolve the same product as weight and select a priced pack', () => {
+  const priced = createVoiceProductMatcher(pricedProducts);
+  for (const sentence of ['चीनी पैंतालीस रुपये', 'चीनी ४५ रुपए', 'चीनी ₹45', 'चीनी एक किलो']) {
+    const items = parseVoiceItems(sentence);
+    assert.equal(items.length, 1, sentence);
+    assert.equal(priced.match(items[0]).product?.id, 'sugar', sentence);
+    assert.equal(items[0].quantity, 1);
+  }
+  for (const sentence of ['कोलगेट तीस रुपए', 'तीस रुपये वाला कोलगेट', 'colgate thirty rupees', 'colgate rs. 30']) {
+    const items = parseVoiceItems(sentence);
+    assert.equal(items.length, 1, sentence);
+    assert.equal(items[0].requestedPrice, 30, sentence);
+    assert.equal(priced.match(items[0]).product?.id, 'small-colgate', sentence);
+    assert.equal(items[0].quantity, 1);
+    assert.equal(items[0].hasExplicitQty, false);
+  }
+  assert.equal(priced.match(parseVoiceItems('कोलगेट तीस रुपए')[0], 'large-colgate').product?.id, 'small-colgate');
+  assert.equal(priced.match(parseVoiceItems('कोलगेट चालीस रुपये')[0]).product, null);
+  assert.equal(priced.match(parseVoiceItems('कोलगेट सौ ग्राम तीस रुपये')[0]).product, null);
+  const duplicates = createVoiceProductMatcher([...pricedProducts, { ...pricedProducts[1], id: 'duplicate' }]);
+  assert.equal(duplicates.match(parseVoiceItems('कोलगेट तीस रुपए')[0]).product, null);
+});
+
+test('prices stay separate from quantities across multiple spoken products', () => {
+  const parsed = parseVoiceItems('चीनी पैंतालीस रुपये और कोलगेट तीस रुपए दो पैकेट');
+  assert.deepEqual(parsed.map(i => [i.name, i.requestedPrice, i.quantity]), [['चीनी', 45, 1], ['कोलगेट', 30, 2]]);
+  const trailing = parseVoiceItems('कोलगेट दो पैकेट तीस रुपए');
+  assert.equal(trailing.length, 1);
+  assert.equal(trailing[0].requestedPrice, 30);
+  assert.equal(trailing[0].quantity, 2);
+  assert.equal(parseVoiceItems('चाय एक सौ पैंतालीस रुपये')[0].requestedPrice, 145);
+  assert.equal(parseVoiceItems('tea forty five rupees')[0].requestedPrice, 45);
+});
+
 test('reported sentence resolves the correct identity with quantity and packet intent intact', () => {
   const parsed = parseVoiceItems('परले-ग बिस्किट दो पैकेट');
   assert.equal(parsed.length, 1);
@@ -140,7 +180,7 @@ test('actual billing pipeline preserves quantity, rejects unknown names, and upd
   assert.ok(start >= 0 && end > start);
   const javascript = transpileModule(source.slice(start, end), { compilerOptions: { target: ScriptTarget.ES2022 } }).outputText;
   const processVoiceText = new Function('parseVoiceItems', 'voiceQuantityForProduct', 'voiceMatcherRef', 'matchCacheRef', '_isDebug', 'normalizeVoiceName', 'debugDataRef', `${javascript}; return processVoiceTextToItems;`)(
-    parseVoiceItems, voiceQuantityForProduct, { current: matcher }, { current: new Map() }, false, normalizeVoiceName, { current: {} },
+    parseVoiceItems, voiceQuantityForProduct, { current: createVoiceProductMatcher([...products, ...pricedProducts]) }, { current: new Map() }, false, normalizeVoiceName, { current: {} },
   );
   for (const spoken of ['पारले-जी बिस्किट', 'परले-ग बिस्किट दो पैकेट', 'परले-ग बिस्किट दो पैकेट']) {
     const item = processVoiceText(spoken).items[0];
@@ -155,6 +195,18 @@ test('actual billing pipeline preserves quantity, rejects unknown names, and upd
   assert.equal(unknown.productId, null);
   assert.equal(unknown.needsMatchReview, true);
   assert.equal(unknown.price, 0);
+  for (const [spoken, id, price] of [
+    ['चीनी पैंतालीस रुपये', 'sugar', 45], ['चीनी एक किलो', 'sugar', 45],
+    ['कोलगेट तीस रुपए', 'small-colgate', 30], ['कोलगेट साठ रुपए', 'large-colgate', 60],
+    ['कोलगेट तीस रुपए', 'small-colgate', 30],
+  ] as const) {
+    const result = processVoiceText(spoken).items;
+    assert.equal(result.length, 1, spoken);
+    assert.equal(result[0].productId, id, spoken);
+    assert.equal(result[0].price, price);
+    assert.equal(result[0].quantity, 1);
+    assert.equal(result[0].needsMatchReview, false);
+  }
 });
 
 test('exact catalogue names never automatically switch to a different product', () => {

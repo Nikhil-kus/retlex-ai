@@ -1,6 +1,7 @@
 
 'use client';
 import Fuse from 'fuse.js';
+import { createProductSuggestions } from '@/lib/product-suggestions';
 import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct } from '@/lib/voice-product-matcher';
 import { parseVoiceItems } from '@/lib/voice-parser';
 
@@ -48,12 +49,6 @@ const getLevenshteinDistance = (a: string, b: string): number => {
   return matrix[b.length][a.length];
 };
 
-const unitKeywords = new Set([
-  'kg', 'g', 'gram', 'grams', 'kilo', 'kilos', 'ml', 'l', 'ltr', 'liter', 'liters',
-  'pkt', 'packet', 'packets', 'pc', 'pcs', 'piece', 'pieces', 'box', 'sachet', 'sachets',
-  'half', 'आधा', 'किलो', 'ग्राम', 'लीटर', 'पैकेट', 'पीस', 'बोतल', 'डिब्बा', 'खुला', 'khula', 'khule'
-]);
-
 export default function BillingPage() {
   const { pName, hindiMode, toggleHindi, catName, setIsSearching, headerVisible, setHeaderVisible } = useHindi();
   const [isListening, setIsListening] = useState(false);
@@ -71,6 +66,7 @@ export default function BillingPage() {
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Cached product identity index for voice matching — rebuilt only when catalog changes,
   // not on every speech recognition event.
+  const suggestionsRef = useRef<ReturnType<typeof createProductSuggestions<any>> | null>(null);
   const voiceMatcherRef = useRef<ReturnType<typeof createVoiceProductMatcher<any>> | null>(null);
   // Match result cache: key = "name__unit__quantity__rawText", value = matched item object.
   // Populated during voice matching; cleared when catalog changes or a new voice session starts.
@@ -255,7 +251,7 @@ export default function BillingPage() {
     const matchedItems = normalizedItems.map(item => {
       // ── MATCH CACHE: skip the entire Fuse + scoring pipeline for items whose
       // name/unit/quantity/rawText haven't changed since the last speech event.
-      const _cacheKey = `${item.name}__${item.unit}__${item.quantity}__${item.rawText || ''}`;
+      const _cacheKey = `${item.name}__${item.unit}__${item.quantity}__${item.requestedPrice ?? ''}__${item.rawText || ''}`;
       if (matchCacheRef.current.has(_cacheKey)) {
         // ── [TRACE] ──────────────────────────────────────────────────────────
         if (/धनिया/i.test(item.name) || /dhaniya/i.test(item.name)) {
@@ -324,6 +320,7 @@ export default function BillingPage() {
           matchCandidateDetails: decision.candidates,
           spokenWord: item.name,
           sourceRawText: item.rawText,
+          requestedPrice: item.requestedPrice,
           aiLabel: item.name,
           hasExplicitQty: item.hasExplicitQty || false,
           isRepeated,
@@ -360,6 +357,7 @@ export default function BillingPage() {
         aiLabel: match.name,
         spokenWord: item.name, // original spoken word — used for generic category detection
         sourceRawText: item.rawText,
+        requestedPrice: item.requestedPrice,
         isRepeated,
         parsedQty: item.quantity,
         parsedUnit: item.unit
@@ -412,144 +410,11 @@ export default function BillingPage() {
     };
   };
 
-  const getSuggestions = (item: any) => {
-    // When voice matching is uncertain, use its best same-category candidate as
-    // context for the familiar photo/price cards, while keeping it unselected.
-    const rankedSeed = (item.matchCandidateDetails || [])
-      .find((candidate: any) => candidate.product?.category)?.product;
-    const seed = item.productId
-      ? (catalog.find(p => p.id === item.productId) || item)
-      : rankedSeed;
-    if (!seed?.id) return { brandVariants: [], sizeVariants: [] };
+  const getSuggestions = (item: any) => suggestionsRef.current?.suggest(item)
+    || { brandVariants: [], sizeVariants: [] };
 
-    const itemNameLower = (seed.name || '').toLowerCase();
-    const itemLocal = (seed.localName || '').toLowerCase();
-    const itemBrand = itemNameLower.split(' ')[0];
-    const itemCategory = seed.category;
-
-    const spokenWord = (item.productId
-      ? (item.spokenWord || item.name || '')
-      : `${seed.name || ''} ${seed.localName || ''}`).toLowerCase().trim();
-    const spokenWords = spokenWord.split(/\s+/)
-      .map((w: string) => w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, ""))
-      .filter((w: string) => {
-        if (w.length <= 1) return false;
-        if (/^\d+[a-zA-Z]*$/.test(w)) return false;
-        if (unitKeywords.has(w)) return false;
-        return true;
-      });
-
-    const sameCategory = (p: any) => Boolean(itemCategory) && p.category === itemCategory;
-    const isBiscuits = /biscuit|बिस्किट|बिस्कुट/i.test(`${itemCategory || ''} ${seed.name || ''} ${seed.localName || ''}`);
-    const isChocolateRequest = /chocolate|चॉकलेट/i.test(`${seed.name || ''} ${seed.localName || ''}`);
-    const hasRelevantProductWords = (p: any) => {
-      const candidateText = `${p.name || ''} ${p.localName || ''}`.toLowerCase();
-      // Common words such as milk are not enough to make two products related.
-      const usefulWords = spokenWords.filter((w: string) => ![
-        'milk', 'dairy', 'मिल्क', 'डेयरी', 'दूध', 'small', 'छोटा', 'छोटी',
-      ].includes(w));
-      return usefulWords.some((word: string) => candidateText.includes(word));
-    };
-    const isRelevantAlternative = (p: any) => {
-      if (!sameCategory(p)) return false;
-      const candidateName = `${p.name || ''} ${p.localName || ''}`;
-      if (isBiscuits) return true;
-      if (isChocolateRequest) return !/biscuit|बिस्किट|बिस्कुट/i.test(candidateName);
-      return hasRelevantProductWords(p);
-    };
-
-    // Build pool: always include same-brand products + spoken-word matches
-    const related: any[] = [];
-    const seenIds = new Set<string>();
-
-    const brandRelated = catalog.filter(p => {
-      if (p.id === item.productId) return false;
-      if (!sameCategory(p)) return false;
-      const pn = (p.name || '').toLowerCase();
-      return pn.startsWith(itemBrand + ' ') || pn === itemBrand;
-    });
-
-    const spokenRelated = spokenWords.length > 0 ? catalog.filter(p => {
-      if (p.id === item.productId) return false;
-      return isRelevantAlternative(p);
-    }) : [];
-
-    for (const p of [...brandRelated, ...spokenRelated]) {
-      if (!seenIds.has(p.id)) { seenIds.add(p.id); related.push(p); }
-    }
-
-    if (itemLocal) {
-      for (const p of catalog) {
-        if (p.id === item.productId || seenIds.has(p.id)) continue;
-        if (!sameCategory(p)) continue;
-        if ((p.localName || '').toLowerCase() === itemLocal) {
-          seenIds.add(p.id); related.push(p);
-        }
-      }
-    }
-
-    // Pack Sizes: clean product name matching
-    const baseClean = cleanProductName(item.name || '');
-    const isSizeVariant = (p: any) => {
-      if (p.id === item.productId) return false;
-      const candidateClean = cleanProductName(p.name || '');
-      return (
-        baseClean.length >= 3 &&
-        (candidateClean.startsWith(baseClean) || baseClean.startsWith(candidateClean) || candidateClean === baseClean)
-      );
-    };
-
-    const sizeVariants = related
-      .filter(isSizeVariant)
-      .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
-      .slice(0, 8);
-
-    const sizeVariantIds = new Set(sizeVariants.map((p: any) => p.id));
-
-    // Other Brands: different brand, cheapest variant per brand
-    const brandMap = new Map<string, any>();
-    for (const p of related) {
-      if (sizeVariantIds.has(p.id)) continue;
-      const pBrand = (p.name || '').toLowerCase().split(' ')[0];
-      if (pBrand === itemBrand) continue;
-      const existing = brandMap.get(pBrand);
-      if (!existing || (p.price > 0 && (existing.price === 0 || p.price < existing.price))) {
-        brandMap.set(pBrand, p);
-      }
-    }
-
-    const brandVariants = Array.from(brandMap.values()).slice(0, 12);
-
-    if (!item.productId) {
-      // Keep the closest recognized choices visible as image cards so the
-      // shopkeeper can correct an uncertain match using the existing flow.
-      const rankedChoices = (item.matchCandidateDetails || [])
-        .map((candidate: any) => candidate.product)
-        .filter((p: any) => p?.id && sameCategory(p));
-      const choices = [...rankedChoices, ...brandVariants]
-        .filter((p: any, index: number, all: any[]) => all.findIndex(x => x.id === p.id) === index)
-        .slice(0, 12);
-      return { brandVariants: choices, sizeVariants };
-    }
-
-    return { brandVariants, sizeVariants };
-  };
-
-  const getSizeVariantsForBrand = (brandProduct: any) => {
-    if (!brandProduct) return [];
-    const brandCleanName = cleanProductName(brandProduct.name || '');
-    return catalog
-      .filter(p => {
-        if (p.id === brandProduct.id) return false;
-        const candidateClean = cleanProductName(p.name || '');
-        return (
-          brandCleanName.length >= 3 &&
-          (candidateClean.startsWith(brandCleanName) || brandCleanName.startsWith(candidateClean) || candidateClean === brandCleanName)
-        );
-      })
-      .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
-      .slice(0, 8);
-  };
+  const getSizeVariantsForBrand = (product: any) => product
+    ? suggestionsRef.current?.sizes(product) || [] : [];
 
   const startVoiceInput = () => {
     const SpeechRecognition =
@@ -681,6 +546,7 @@ export default function BillingPage() {
                                   quantity: item.parsedQty ?? item.quantity,
                                   unit: item.parsedUnit ?? item.unit,
                                   rawText: item.sourceRawText,
+                                  requestedPrice: item.requestedPrice,
                                 }, prefProduct.id);
                                 const isMatchValid = preferenceDecision?.product?.id === prefProduct.id;
                                 // Ignore incompatible defaults for this request; do not erase a
@@ -851,6 +717,9 @@ export default function BillingPage() {
   // Also clear the match cache — catalog change means stored match results are stale.
   useEffect(() => {
     voiceMatcherRef.current = createVoiceProductMatcher(catalog);
+    suggestionsRef.current = createProductSuggestions(catalog);
+    setReviewItems(items => items.map(item => item.suggestions
+      ? { ...item, suggestions: suggestionsRef.current!.suggest(item) } : item));
     matchCacheRef.current.clear();
   }, [catalog]);
 
@@ -2036,7 +1905,7 @@ export default function BillingPage() {
                               const recalculated = recalculateQtyAndUnit(pQty, pUnit, sug);
                               return {
                                 productId: sug.id, name: sug.name, localName: sug.localName,
-                                price: sug.price, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity,
+                                price: sug.price, costPrice: sug.costPrice, category: sug.category, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity,
                                 packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl,
                                 quantity: recalculated.quantity, unit: recalculated.unit,
                                 parsedQty: pQty, parsedUnit: pUnit,
@@ -2085,7 +1954,7 @@ export default function BillingPage() {
                                           onClick={() => {
                                             const overrides = buildOverrides(sug);
                                             if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
-                                            const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides };
+                                            const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides, suggestions: getSuggestions({ ...newItems[idx], ...overrides }) };
                                             setReviewItems(newItems);
                                             setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
                                             setOpenSuggestionIdx(null);
