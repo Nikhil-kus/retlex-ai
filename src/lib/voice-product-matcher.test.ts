@@ -27,6 +27,30 @@ const pricedProducts = [
   { id: 'large-colgate', name: 'Colgate Toothpaste 100g', localName: 'कोलगेट', price: 60, baseUnit: 'pc' },
 ];
 
+test('screenshot: exact shop alias and price select Cool over a fuzzy same-price Skincare match', () => {
+  const cool = { id: 'cool', name: 'Dettol Soap Cool 75g', localName: 'डिटॉल कूल साबुन',
+    localAliases: ['डिटॉल साबुन', 'डिटोल साबुन', 'डिटॉल कूल', 'डेटॉल साबुन', 'डिटॉल सोप', 'डिटोल सोप'], price: 42, baseUnit: 'g' };
+  const skincare = { id: 'skincare', name: 'Dettol Soap Skincare 75g', localName: 'डिटॉल स्किनकेयर साबुन',
+    localAliases: ['डिटॉल साबुन', 'डिटोल साबुन', 'डिटॉल स्किनकेयर', 'डिटोल स्किनकेयर', 'डिटॉल सोप'], price: 42, baseUnit: 'g' };
+  for (const catalog of [[cool, skincare], [skincare, cool]]) {
+    const engine = createVoiceProductMatcher(catalog);
+    for (const spoken of ['₹42 डेटॉल साबुन | अच्छा', 'डेटॉल साबुन बयालीस रुपये']) {
+      const parsed = parseVoiceItems(spoken)[0];
+      assert.equal(parsed.requestedPrice, 42);
+      assert.equal(engine.match(parsed).product?.id, 'cool');
+    }
+    assert.equal(engine.match(parseVoiceItems('डेटॉल साबुन')[0]).product, null);
+    assert.equal(engine.match(parseVoiceItems('₹42 डिटॉल साबुन')[0]).product?.id, 'cool');
+    assert.equal(engine.match(parseVoiceItems('₹42 डिटॉल साबुन')[0], 'skincare').product?.id, 'skincare');
+  }
+  // The same rule applies to unrelated brands and aliases, without brand exceptions.
+  const tea = createVoiceProductMatcher([
+    { id: 'exact', name: 'Acme Premium Tea', localAliases: ['acme tea'], price: 50 },
+    { id: 'fuzzy', name: 'Acme Strong Tea', localAliases: ['acmee tea'], price: 50 },
+  ]);
+  assert.equal(tea.match(parseVoiceItems('acme tea fifty rupees')[0]).product?.id, 'exact');
+});
+
 test('spoken prices resolve the same product as weight and select a priced pack', () => {
   const priced = createVoiceProductMatcher(pricedProducts);
   for (const sentence of ['चीनी पैंतालीस रुपये', 'चीनी ४५ रुपए', 'चीनी ₹45', 'चीनी एक किलो']) {
@@ -47,7 +71,7 @@ test('spoken prices resolve the same product as weight and select a priced pack'
   assert.equal(priced.match(parseVoiceItems('कोलगेट चालीस रुपये')[0]).product, null);
   assert.equal(priced.match(parseVoiceItems('कोलगेट सौ ग्राम तीस रुपये')[0]).product, null);
   const duplicates = createVoiceProductMatcher([...pricedProducts, { ...pricedProducts[1], id: 'duplicate' }]);
-  assert.equal(duplicates.match(parseVoiceItems('कोलगेट तीस रुपए')[0]).product, null);
+  assert.equal(duplicates.match(parseVoiceItems('कोलगेट तीस रुपए')[0]).product?.id, 'duplicate');
 });
 
 test('prices stay separate from quantities across multiple spoken products', () => {

@@ -23,6 +23,13 @@ const products = [
 const engine = createProductSuggestions(products);
 const ids = (items: { id: string }[]) => items.map(p => p.id).sort();
 
+test('price requests show matching-price variants rather than hiding them behind other sizes', () => {
+  const catalog = Array.from({ length: 12 }, (_, i) => ({ id: `soap-${i}`, name: `Dettol Soap ${i + 1}00g`, price: i < 10 ? 68 : 42 }));
+  const choices = createProductSuggestions(catalog).suggest({ name: 'Dettol Soap', requestedPrice: 42 });
+  assert.deepEqual(ids(choices.brandVariants), ['soap-10', 'soap-11']);
+  assert.deepEqual(createProductSuggestions(catalog).suggest({ name: 'Dettol Soap', requestedPrice: 99 }).brandVariants, []);
+});
+
 test('almond packets exclude loose stock, oil and drinks despite shared words/categories', () => {
   const result = engine.suggest({ productId: 'badam', spokenWord: 'बादाम' });
   assert.deepEqual(ids(result.sizeVariants), ['badam-large']);

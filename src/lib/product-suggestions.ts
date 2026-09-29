@@ -1,7 +1,7 @@
 import { createVoiceProductMatcher, normalizeVoiceName, type VoiceProduct } from './voice-product-matcher';
 
 type Product = VoiceProduct & { category?: string; price?: number };
-type ReviewItem = { productId?: string | null; name?: string; spokenWord?: string; sourceRawText?: string; parsedQty?: number; parsedUnit?: string };
+type ReviewItem = { productId?: string | null; name?: string; spokenWord?: string; sourceRawText?: string; parsedQty?: number; parsedUnit?: string; requestedPrice?: number };
 
 // Product kinds describe what is being sold, not its shelf/category or brand.
 // Compound forms take precedence over ingredients: almond oil is not an almond.
@@ -78,7 +78,7 @@ export function createProductSuggestions<T extends Product>(catalog: T[]) {
         // or trust stale/partial debug candidates as display recommendations.
         const name = item.spokenWord || item.name || '';
         const intent = profile(name);
-        const result = matcher.match({ name, rawText: item.sourceRawText, quantity: item.parsedQty, unit: item.parsedUnit });
+        const result = matcher.match({ name, rawText: item.sourceRawText, quantity: item.parsedQty, unit: item.parsedUnit, requestedPrice: item.requestedPrice });
         const choices = result.candidates.filter(c => !c.missingTokens.length && c.coverage >= 0.85
           && (c.eligible || /pack size|Pack weight/.test(c.reason)))
           .filter(c => {

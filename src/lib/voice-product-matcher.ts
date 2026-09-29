@@ -213,11 +213,15 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       const eligible = ranked.filter(c => c.eligible);
       const top = eligible[0], next = eligible[1];
       const preferred = eligible.find(c => c.product.id === preferredProductId && top.score - c.score <= 0.15);
-      const clear = top && (!next || (top.identityComplete && top.score - next.score >= 0.06));
+      // For price requests, select the best eligible name match automatically.
+      // Eligibility still enforces name, price, pack intent and any spoken size.
+      // Sorting by ID keeps equal-score choices stable across catalogue order.
+      const priceSelected = request.requestedPrice !== undefined && top;
+      const clear = top && (priceSelected || !next || (top.identityComplete && top.score - next.score >= 0.06));
       return {
         product: preferred?.product || (clear ? top.product : null),
         confidence: preferred || clear ? 'high' : 'low',
-        reason: preferred ? 'Compatible saved choice' : clear ? 'Clear product identity match' : top ? 'Choose the brand or pack size' : 'No reliable match; choose a product or repeat its name',
+        reason: preferred ? 'Compatible saved choice' : priceSelected ? 'Best name match at the requested price' : clear ? 'Clear product identity match' : top ? 'Choose the brand or pack size' : 'No reliable match; choose a product or repeat its name',
         // Limit display only AFTER checking the entire catalogue and ambiguity.
         candidates: ranked.filter(c => c.coverage >= 0.45).slice(0, 8),
       };
