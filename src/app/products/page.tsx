@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useHindi } from '@/lib/hindi-context';
 
 import { shopCache } from '@/lib/session-cache';
+import { formatProductPackSize } from '@/lib/bill-utils';
 
 const standardCategories = [
   'Grains & Cereals',
@@ -485,7 +486,7 @@ export default function ProductsPage() {
                 {/* Products Grid */}
                 {expandedCategories.has(category) && (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {groupedProducts[category].map((p) => (
+                    {groupedProducts[category].map((p: any) => (
                       <div
                         key={p.id}
                         className={`bg-white rounded-lg border-2 overflow-hidden transition hover:shadow-lg ${
@@ -537,18 +538,18 @@ export default function ProductsPage() {
 
                           {/* Price */}
                           <div className="mb-2">
-                            {quickPriceEdit?.id === p.id ? (
+                            {quickPriceEdit && quickPriceEdit.id === p.id ? (
                               <div className="flex gap-1">
                                 <input
                                   type="number"
                                   step="0.01"
                                   value={quickPriceEdit.price}
-                                  onChange={(e) => setQuickPriceEdit({ ...quickPriceEdit, price: e.target.value })}
+                                  onChange={(e) => setQuickPriceEdit({ id: p.id, price: e.target.value })}
                                   className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs"
                                   autoFocus
                                 />
                                 <button
-                                  onClick={() => handleQuickPriceUpdate(p.id, quickPriceEdit.price)}
+                                  onClick={() => quickPriceEdit && handleQuickPriceUpdate(p.id, quickPriceEdit.price)}
                                   disabled={updatingPriceId === p.id}
                                   className="bg-emerald-600 text-white px-2 py-1 rounded text-xs hover:bg-emerald-700 disabled:opacity-50"
                                 >
@@ -561,7 +562,7 @@ export default function ProductsPage() {
                                 className="w-full text-left hover:opacity-70 transition"
                               >
                                 <div className="text-lg font-bold text-emerald-600">₹{(p.price || 0).toFixed(2)}</div>
-                                <div className="text-xs text-slate-500">{p.unit || p.baseUnit || 'pc'}</div>
+                                <div className="text-xs text-slate-500">{formatProductPackSize(p)}</div>
                               </button>
                             )}
                           </div>

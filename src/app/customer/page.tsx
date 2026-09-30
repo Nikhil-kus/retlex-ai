@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package } from 'lucide-react';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
-import { getBillLabel, getBillNumber, getBillIdentifier } from '@/lib/bill-utils';
+import { getBillLabel, getBillNumber, getBillIdentifier, formatProductPackSize } from '@/lib/bill-utils';
 import { transliterateHinglishToHindi } from '@/lib/transliterate';
 import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
@@ -2878,7 +2878,7 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec }: {
       {/* Info */}
       <div className="p-2">
         <p className={`font-semibold text-slate-900 line-clamp-2 leading-tight mb-0.5 ${mini ? 'text-[11px]' : 'text-xs'}`}>{pName(p.name, p.localName)}</p>
-        <p className="text-[10px] text-slate-400 mb-1">{p.baseQuantity === 1 ? '' : p.baseQuantity}{p.baseUnit}</p>
+        <p className="text-[10px] text-slate-400 mb-1">{formatProductPackSize(p)}</p>
         <p className={`font-bold text-slate-900 ${mini ? 'text-xs mb-1.5' : 'text-sm mb-2'}`}>₹{(p.price || 0).toFixed(0)}</p>
 
         {inCart ? (

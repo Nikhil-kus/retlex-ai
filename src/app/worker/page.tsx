@@ -139,7 +139,7 @@ export default function WorkerPage() {
   const currentBillPackedItems = selectedBill ? (billPackedItems.get(selectedBill.id) || new Set<number>()) : new Set<number>();
 
   const allItemsPacked = selectedBill && selectedBill.items?.length > 0 && 
-    selectedBill.items.every((_, idx: number) => currentBillPackedItems.has(idx));
+    selectedBill.items.every((_: any, idx: number) => currentBillPackedItems.has(idx));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6">

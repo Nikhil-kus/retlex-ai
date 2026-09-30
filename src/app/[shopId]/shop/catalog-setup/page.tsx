@@ -464,7 +464,7 @@ export default function CatalogSetupPage() {
                                 )}
                                 <div className="flex items-center justify-between mt-1">
                                   <span className="text-[10px] text-slate-500">{p.baseUnit || 'pc'}</span>
-                                  {p.price > 0 && (
+                                  {p.price != null && p.price > 0 && (
                                     <span className="text-[10px] font-bold text-emerald-600">₹{p.price}</span>
                                   )}
                                 </div>
