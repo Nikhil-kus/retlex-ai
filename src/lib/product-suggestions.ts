@@ -97,6 +97,19 @@ export function createProductSuggestions<T extends Product>(catalog: T[]) {
         && (['biscuit', 'chocolate', 'salt', 'tea', 'coffee'].includes(seed.profile.kind!)
           || Boolean(seed.profile.ingredients)));
       const families = new Map<string, T>();
+      // Once selected, let the user browse other variants of the spoken name,
+      // including different prices. Keep product kind and sale form compatible.
+      if (item.spokenWord && seed.profile.kind) {
+        const related = matcher.match({ name: item.spokenWord }).candidates;
+        for (const candidate of related) {
+          const entry = byId.get(candidate.product.id)!;
+          if (!candidate.eligible || candidate.missingTokens.length || candidate.coverage < 0.85
+            || entry.product.id === seed.product.id || entry.family === seed.family
+            || entry.form !== seed.form || entry.profile.kind !== seed.profile.kind
+            || entry.profile.ingredients !== seed.profile.ingredients) continue;
+          if (!families.has(entry.family)) families.set(entry.family, entry.product);
+        }
+      }
       for (const e of alternatives.sort((a, b) => priceOrder(a.product, b.product))) {
         if (!families.has(e.family)) families.set(e.family, e.product);
       }

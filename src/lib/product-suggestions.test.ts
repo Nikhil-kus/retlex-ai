@@ -30,6 +30,20 @@ test('price requests show matching-price variants rather than hiding them behind
   assert.deepEqual(createProductSuggestions(catalog).suggest({ name: 'Dettol Soap', requestedPrice: 99 }).brandVariants, []);
 });
 
+test('selected voice products keep related variants available for browsing at other prices', () => {
+  const catalog = [
+    { id: 'cool', name: 'Dettol Soap Cool 75g', localAliases: ['dettol soap'], price: 42 },
+    { id: 'original', name: 'Dettol Original Soap 75g', price: 40 },
+    { id: 'original-large', name: 'Dettol Original Soap 125g', price: 65 },
+    { id: 'skincare', name: 'Dettol Soap Skincare 75g', price: 68 },
+    { id: 'handwash', name: 'Dettol Liquid Handwash', localAliases: ['dettol soap'], price: 85 },
+    { id: 'bulk', name: 'Dettol Original Soap Bulk 12 pcs', price: 420 },
+  ];
+  const suggestions = createProductSuggestions(catalog).suggest({ productId: 'cool', spokenWord: 'dettol soap', requestedPrice: 42 });
+  assert.deepEqual(ids(suggestions.brandVariants), ['original', 'skincare']);
+  assert.deepEqual(suggestions.sizeVariants, []);
+});
+
 test('almond packets exclude loose stock, oil and drinks despite shared words/categories', () => {
   const result = engine.suggest({ productId: 'badam', spokenWord: 'बादाम' });
   assert.deepEqual(ids(result.sizeVariants), ['badam-large']);

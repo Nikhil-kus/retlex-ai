@@ -108,6 +108,8 @@ export default function BillingPage() {
   const [qtyPickerIdx, setQtyPickerIdx] = useState<number | null>(null);
   // Suggestion panel: index of the review item whose suggestion panel is open (null = closed)
   const [openSuggestionIdx, setOpenSuggestionIdx] = useState<number | null>(null);
+  const openSuggestionIdxRef = useRef<number | null>(null);
+  useEffect(() => { openSuggestionIdxRef.current = openSuggestionIdx; }, [openSuggestionIdx]);
 
   const areWordsSimilar = (w1: string, w2: string): boolean => {
     const val1 = w1.trim().toLowerCase();
@@ -431,6 +433,7 @@ export default function BillingPage() {
     currentBreathRef.current = "";
     setFinalTranscript("");
     setSelectedBrandPerItem({});
+    setOpenSuggestionIdx(null);
     matchCacheRef.current.clear(); // clear stale interim results from any prior voice session
     // ── [PROVE] reset transcript trace for new session ───────────────────────
     if (_isDebug) {
@@ -593,11 +596,9 @@ export default function BillingPage() {
 
                 // ── TIMING: suggestion generation ─────────────────────────────
                 const _tSugStart = performance.now();
-                // Compute suggestions only for the last item — the only one the UI shows
-                // them for. Previously getSuggestions() ran for every item and was then
-                // immediately discarded for all but the last, wasting 3 catalog scans per item.
+                // Refresh suggestions for visible panels as speech updates arrive.
                 const finalItems = allItems.map((item, idx) => {
-                    if (item.needsMatchReview || idx === allItems.length - 1) {
+                    if (item.needsMatchReview || openSuggestionIdxRef.current === idx || idx === allItems.length - 1) {
                       return { ...item, suggestions: getSuggestions(item) };
                     }
                     return item;
@@ -1818,6 +1819,7 @@ export default function BillingPage() {
                                 globalTranscriptRef.current = "";
                                 currentBreathRef.current = "";
                                 setFinalTranscript("");
+                                setOpenSuggestionIdx(null);
                                 if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e) {} }
                                 setReviewItems(newItems);
                               }}
@@ -1848,22 +1850,15 @@ export default function BillingPage() {
                             <span className="text-xs font-bold text-indigo-600 shrink-0">
                               ₹{calculateItemTotal(item).toFixed(0)}
                             </span>
-                            {/* 3rd: Suggestions toggle arrow — only shown for non-last items that have suggestions */}
-                            {item.productId && idx !== reviewItems.length - 1 && (() => {
-                              const hasSugs = item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0);
-                              // Compute lazily if not yet computed for this item
-                              const computedSugs = hasSugs ? item.suggestions : (item.productId ? getSuggestions(item) : null);
-                              const hasAnySugs = computedSugs && (computedSugs.brandVariants?.length > 0 || computedSugs.sizeVariants?.length > 0);
-                              if (!hasAnySugs) return null;
+                            {/* 3rd: Suggestions toggle arrow — available on every selected product */}
+                            {item.productId && (() => {
                               const isOpen = openSuggestionIdx === idx;
                               return (
                                 <button
                                   onClick={() => {
-                                    // Ensure suggestions are stored on the item if not already
-                                    if (!hasSugs && computedSugs) {
-                                      const n = [...reviewItems];
-                                      n[idx] = { ...n[idx], suggestions: computedSugs };
-                                      setReviewItems(n);
+                                    if (!isOpen) {
+                                      setReviewItems(previous => previous.map((current, currentIdx) =>
+                                        currentIdx === idx ? { ...current, suggestions: getSuggestions(current) } : current));
                                     }
                                     setOpenSuggestionIdx(isOpen ? null : idx);
                                   }}
@@ -1872,7 +1867,9 @@ export default function BillingPage() {
                                       ? 'bg-violet-100 border-violet-400 text-violet-600'
                                       : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-violet-300 hover:text-violet-500'
                                   }`}
-                                  title="Show suggested products"
+                                  title={isOpen ? 'Hide suggested products' : 'Show suggested products'}
+                                  aria-label={isOpen ? 'Hide suggested products' : 'Show suggested products'}
+                                  aria-expanded={isOpen}
                                 >
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 200ms' }}><path d="M9 18l6-6-6-6"/></svg>
                                 </button>
@@ -1890,8 +1887,11 @@ export default function BillingPage() {
                             </button>
                           </div>
 
-                          {/* Suggestions — two rows: brands/variants + size/price packs */}
-                          {(item.needsMatchReview || openSuggestionIdx === idx || idx === reviewItems.length - 1) && item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
+                          {openSuggestionIdx === idx && !item.suggestions?.brandVariants?.length && !item.suggestions?.sizeVariants?.length && (
+                            <p className="mt-3 border-t border-slate-100 pt-2.5 text-xs text-slate-500">No other suggested products available.</p>
+                          )}
+                          {/* Selected products show alternatives when their arrow is opened. */}
+                          {(item.needsMatchReview || openSuggestionIdx === idx) && item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
                             const selectedBrand = selectedBrandPerItem[idx] || null;
                             const activeSizeVariants = selectedBrand
                               ? getSizeVariantsForBrand(selectedBrand)
@@ -1985,7 +1985,7 @@ export default function BillingPage() {
                               {/* Row 2: Brand / Variant suggestions */}
                               {item.suggestions.brandVariants?.length > 0 && (
                                 <div>
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">{item.needsMatchReview ? 'Suggested Products' : 'Other Brands'} <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span></p>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Suggested Products <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span></p>
                                   <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
                                     onTouchStart={e => e.stopPropagation()}
                                     onTouchMove={e => e.stopPropagation()}
@@ -2054,7 +2054,7 @@ export default function BillingPage() {
                   <div className="px-4 pb-20 pt-2 flex-shrink-0 border-t border-slate-100 bg-white flex items-center gap-2">
                     {/* Red clear button — always visible, left of Add to Bill */}
                     <button
-                      onClick={() => { setIsReviewing(false); setReviewItems([]); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
+                      onClick={() => { setIsReviewing(false); setReviewItems([]); setOpenSuggestionIdx(null); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
                       className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-2xl bg-rose-50 border border-rose-200 text-rose-500 hover:bg-rose-100 active:scale-95 transition-all"
                       aria-label="Clear items"
                     >
