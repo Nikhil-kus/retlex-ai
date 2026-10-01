@@ -1,11 +1,12 @@
 import { markVoicePrices } from './voice-price';
+import { requestedSaleForm, stripSaleWords } from './product-packaging';
 
 export const parseVoiceItems = (text: string) => {
     // PRE-PROCESSING: Normalization for robust parsing
     text = markVoicePrices(text).trim()
       // Remove prices so they aren't parsed as quantities (e.g. "50 wala namak" -> "namak")
       .replace(/(\d+(?:\.\d+)?)\s*(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)/gi, ' ')
-      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(wala|wale|wali|वाला|वाले|वाली|rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' ')
+      .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(rs|rupees|rupya|rupaye|रुपये|रुपया|रुपए)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' ')
       // Use | as a separator for conjunctions and commas
       .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(and|plus)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/gi, ' | ')
       .replace(/(?<=^|[^a-zA-Z0-9_\u0900-\u097F])(और|तथा|भी|या)(?=$|[^a-zA-Z0-9_\u0900-\u097F])/g, ' | ')
@@ -52,15 +53,15 @@ export const parseVoiceItems = (text: string) => {
     const items: any[] = [];
 
     const unitMap: any = {
-      kg: "kg", kilo: "kg", kilos: "kg", 'किलो': "kg",
-      g: "g", gram: "g", grams: "g", 'ग्राम': "g",
+      kg: "kg", kilo: "kg", kilos: "kg", 'किलो': "kg", 'किलोग्राम': "kg",
+      g: "g", gm: "g", gram: "g", grams: "g", 'ग्राम': "g",
       l: "l", liter: "l", litre: "l", litres: "l", 'लीटर': "l",
       ml: "ml", mili: "ml", 'मिली': "ml",
       pc: "pc", pcs: "pc", piece: "pc", pieces: "pc", packet: "pc", packets: "pc", pkt: "pc", pack: "pc", packs: "pc", 'पैकेट': "pc", 'पीस': "pc"
     };
 
     const numMap: any = {
-      'एक': 1, 'do': 2, 'दो': 2, 'dui': 2, 'दुई': 2, 'teen': 3, 'तीन': 3, 'char': 4, 'चार': 4, 'paanch': 5, 'पांच': 5,
+      'एक': 1, 'ek': 1, 'do': 2, 'दो': 2, 'dui': 2, 'दुई': 2, 'teen': 3, 'तीन': 3, 'char': 4, 'चार': 4, 'paanch': 5, 'पांच': 5, 'पाँच': 5,
       'che': 6, 'छह': 6, 'chhe': 6, 'chay': 6, 'छय': 6, 'saat': 7, 'सात': 7, 'aath': 8, 'आठ': 8, 'nau': 9, 'नौ': 9, 'das': 10, 'दस': 10,
       'gyarah': 11, 'ग्यारह': 11, 'barah': 12, 'बारह': 12, 'bara': 12, 'बारा': 12,
       'tera': 13, 'तेरा': 13, 'तेरह': 13, 'chauda': 14, 'चौदह': 14, 'चौदा': 14,
@@ -77,8 +78,17 @@ export const parseVoiceItems = (text: string) => {
     let pendingQty = 1;
     let pendingUnit = "pc";
     let pendingPrice: number | undefined;
+    let pendingPackSize: { quantity: number; unit: string } | undefined;
     let hasLeadingNumber = false;
     let itemWords: string[] = [];
+    const isSizeQualifier = (word: string) => /^(?:wala|wale|wali|वाला|वाले|वाली)$/.test(word);
+    const numberAt = (index: number) => {
+      const token = words[index] || '';
+      const joined = token.match(/^(\d+(?:\.\d+)?)(.+)$/u);
+      if (joined && unitMap[joined[2]]) return { quantity: Number(joined[1]), unit: unitMap[joined[2]] as string };
+      const quantity = numMap[token] ?? (/^\d+(?:\.\d+)?$/.test(token) ? Number(token) : undefined);
+      return quantity === undefined ? undefined : { quantity, unit: unitMap[words[index + 1]] as string | undefined };
+    };
 
     const commitItem = (overrideQty?: number, overrideUnit?: string) => {
       if (pendingName.length > 0) {
@@ -87,7 +97,12 @@ export const parseVoiceItems = (text: string) => {
           quantity: overrideQty !== undefined ? overrideQty : pendingQty,
           unit: overrideUnit !== undefined ? overrideUnit : pendingUnit,
           ...(pendingPrice !== undefined ? { requestedPrice: pendingPrice } : {}),
-          hasExplicitQty: overrideQty !== undefined || pendingQty !== 1 || pendingUnit !== "pc" || hasLeadingNumber,
+          ...(pendingPackSize ? {
+            packSize: pendingPackSize,
+            packetCount: overrideQty ?? (pendingUnit === 'pc' ? pendingQty : 1),
+          } : {}),
+          saleForm: pendingPackSize ? 'packet' : requestedSaleForm(itemWords.join(' ')),
+          hasExplicitQty: Boolean(pendingPackSize) || overrideQty !== undefined || pendingQty !== 1 || pendingUnit !== "pc" || hasLeadingNumber,
           rawText: itemWords.join(" ")
         });
       }
@@ -95,6 +110,7 @@ export const parseVoiceItems = (text: string) => {
       pendingQty = 1;
       pendingUnit = "pc";
       pendingPrice = undefined;
+      pendingPackSize = undefined;
       hasLeadingNumber = false;
       itemWords = [];
     };
@@ -103,6 +119,7 @@ export const parseVoiceItems = (text: string) => {
       for (let j = startIndex; j < words.length; j++) {
         const w = words[j];
         if (w.startsWith('price:')) continue;
+        if (isSizeQualifier(w)) continue;
         if (w === '|') {
             // Check if what follows the separator is a number
             const nextW = words[j+1];
@@ -160,6 +177,8 @@ export const parseVoiceItems = (text: string) => {
 
       itemWords.push(word);
 
+      if (isSizeQualifier(word)) { i++; continue; }
+
       if (word.startsWith('price:')) {
         pendingPrice = Number(word.slice(6));
         // A trailing price completes the product unless a quantity follows.
@@ -198,12 +217,47 @@ export const parseVoiceItems = (text: string) => {
 
       // Keep the spoken unit on the item being committed, not the next item.
       if (isNumber && parsedUnitStr && !isCombined) itemWords.push(nextWord);
+      const afterNumber = i + (isCombined ? 1 : (parsedUnitStr ? 2 : 1));
+      const trailingWord = words[afterNumber] || '';
+      const trailingForm = isNumber && parsedUnitStr && requestedSaleForm(trailingWord) && !stripSaleWords(trailingWord).trim();
+      if (trailingForm) itemWords.push(trailingWord);
       if (isNumber && !isNaN(parsedNum)) {
         let finalUnit = parsedUnitStr || "pc";
+        let afterSpecification = afterNumber + (trailingForm ? 1 : 0);
+        const sizeQualifier = isSizeQualifier(words[afterSpecification] || '');
+        if (sizeQualifier) { itemWords.push(words[afterSpecification]); afterSpecification++; }
+        const following = numberAt(afterSpecification);
+        const isWeight = /^(kg|g|l|ml)$/.test(finalUnit);
+        const saleForm = requestedSaleForm(itemWords.join(' '));
+
+        // "1 kilo wala 5 packet", "packet 5 kilo", and "5 packet ... 1 kilo"
+        // describe a pack size, independently of how many packs are required.
+        if (isWeight && saleForm !== 'loose' && (saleForm === 'packet' || sizeQualifier || following?.unit === 'pc')) {
+          pendingPackSize = { quantity: parsedNum, unit: finalUnit };
+          if (pendingUnit !== 'pc') { pendingQty = 1; pendingUnit = 'pc'; hasLeadingNumber = false; }
+          if (pendingName.length && words[afterSpecification] && words[afterSpecification] !== '|'
+            && !following && !words[afterSpecification].startsWith('price:')) commitItem();
+          i = afterSpecification;
+          continue;
+        }
+        if (finalUnit === 'pc' && parsedUnitStr && saleForm !== 'loose') {
+          // A leading weight becomes the size when the later packet count arrives.
+          if (!pendingPackSize && hasLeadingNumber && /^(kg|g|l|ml)$/.test(pendingUnit)) {
+            pendingPackSize = { quantity: pendingQty, unit: pendingUnit };
+          }
+          if (pendingPackSize || (following?.unit && /^(kg|g|l|ml)$/.test(following.unit))) {
+            pendingQty = parsedNum;
+            pendingUnit = 'pc';
+            hasLeadingNumber = true;
+            if (pendingName.length && pendingPackSize && !following && !words[afterSpecification]?.startsWith('price:')) commitItem();
+            i = afterSpecification;
+            continue;
+          }
+        }
         
         if (pendingName.length > 0) {
           if (hasLeadingNumber) {
-            const nextWordIndex = i + (isCombined ? 1 : (parsedUnitStr ? 2 : 1));
+            const nextWordIndex = afterSpecification;
             if (hasNameAhead(nextWordIndex)) {
               commitItem();
               pendingQty = parsedNum;
@@ -215,7 +269,7 @@ export const parseVoiceItems = (text: string) => {
               commitItem();
             }
           } else {
-            const afterQuantity = i + (isCombined ? 1 : (parsedUnitStr ? 2 : 1));
+            const afterQuantity = afterSpecification;
             if (words[afterQuantity]?.startsWith('price:')) {
               pendingQty = parsedNum;
               pendingUnit = finalUnit;
@@ -233,6 +287,8 @@ export const parseVoiceItems = (text: string) => {
         if (parsedUnitStr && !isCombined) {
            i++;
         }
+        if (trailingForm) i++;
+        if (sizeQualifier) i++;
       } else {
         if (unitMap[word] && pendingName.length === 0) {
            pendingUnit = unitMap[word];

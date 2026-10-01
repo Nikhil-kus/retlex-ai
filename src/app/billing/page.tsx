@@ -253,7 +253,7 @@ export default function BillingPage() {
     const matchedItems = normalizedItems.map(item => {
       // ── MATCH CACHE: skip the entire Fuse + scoring pipeline for items whose
       // name/unit/quantity/rawText haven't changed since the last speech event.
-      const _cacheKey = `${item.name}__${item.unit}__${item.quantity}__${item.requestedPrice ?? ''}__${item.rawText || ''}`;
+      const _cacheKey = `${item.name}__${item.unit}__${item.quantity}__${item.requestedPrice ?? ''}__${item.rawText || ''}__${JSON.stringify([item.saleForm, item.packSize, item.packetCount])}`;
       if (matchCacheRef.current.has(_cacheKey)) {
         // ── [TRACE] ──────────────────────────────────────────────────────────
         if (/धनिया/i.test(item.name) || /dhaniya/i.test(item.name)) {
@@ -274,7 +274,7 @@ export default function BillingPage() {
           debugDataRef.current.matchDecision = cached?._matchDecision;
         }
         // ── [/DEBUG PANEL] ───────────────────────────────────────────────────
-        return matchCacheRef.current.get(_cacheKey);
+        return { ...matchCacheRef.current.get(_cacheKey) };
       }
 
       const decision = matcher.match(item);
@@ -323,6 +323,9 @@ export default function BillingPage() {
           spokenWord: item.name,
           sourceRawText: item.rawText,
           requestedPrice: item.requestedPrice,
+          saleForm: item.saleForm,
+          packSize: item.packSize,
+          packetCount: item.packetCount,
           aiLabel: item.name,
           hasExplicitQty: item.hasExplicitQty || false,
           isRepeated,
@@ -330,12 +333,12 @@ export default function BillingPage() {
           parsedUnit: item.unit
         };
         matchCacheRef.current.set(_cacheKey, _rejected);
-        return _rejected;
+        return { ..._rejected };
       }
 
       // PHASE 4: FINAL SAFE OUTPUT
       const match = bestMatch;
-      const { quantity: finalQty, unit: finalUnit } = voiceQuantityForProduct(item.quantity, item.unit, match);
+      const { quantity: finalQty, unit: finalUnit } = voiceQuantityForProduct(item.quantity, item.unit, match, decision.packetCount);
 
       const _matched = {
         productId: match.id,
@@ -360,12 +363,17 @@ export default function BillingPage() {
         spokenWord: item.name, // original spoken word — used for generic category detection
         sourceRawText: item.rawText,
         requestedPrice: item.requestedPrice,
+        saleForm: item.saleForm,
+        packSize: item.packSize,
+        packetCount: decision.packetCount,
+        isApproximateSize: decision.isApproximateSize,
+        selectedPackLabel: decision.selectedPackLabel,
         isRepeated,
         parsedQty: item.quantity,
         parsedUnit: item.unit
       };
       matchCacheRef.current.set(_cacheKey, _matched);
-      return _matched;
+      return { ..._matched };
     });    // Deduplicate within the same voice phrase
     const deduplicatedItems: any[] = [];
     const dedupeMap = new Map();
@@ -381,11 +389,14 @@ export default function BillingPage() {
           existing.hasExplicitQty = true;
           existing.parsedQty = item.parsedQty;
           existing.parsedUnit = item.parsedUnit;
+          existing.packetCount = item.packetCount;
+          existing.packSize = item.packSize;
         } else if (existing.hasExplicitQty && item.hasExplicitQty) {
           // Add quantities if both are explicit
           if (existing.unit === item.unit) {
             existing.quantity += item.quantity;
             existing.parsedQty = (existing.parsedQty || 0) + (item.parsedQty || 0);
+            if (existing.packetCount !== undefined && item.packetCount !== undefined) existing.packetCount += item.packetCount;
           }
         }
       } else {
@@ -550,21 +561,27 @@ export default function BillingPage() {
                                   unit: item.parsedUnit ?? item.unit,
                                   rawText: item.sourceRawText,
                                   requestedPrice: item.requestedPrice,
+                                  saleForm: item.saleForm,
+                                  packSize: item.packSize,
+                                  packetCount: item.packetCount,
                                 }, prefProduct.id);
                                 const isMatchValid = preferenceDecision?.product?.id === prefProduct.id;
                                 // Ignore incompatible defaults for this request; do not erase a
                                 // useful preference just because a different size was requested.
-                                if (isMatchValid) {
+                                if (isMatchValid && preferenceDecision) {
                                     const matchedProduct = prefProduct;
                                     // Recalculate quantity and unit for the matched variant
                                     const pQty = item.parsedQty !== undefined ? item.parsedQty : item.quantity;
                                     const pUnit = item.parsedUnit !== undefined ? item.parsedUnit : (item.unit || item.baseUnit || 'pc');
-                                    const recalculated = recalculateQtyAndUnit(pQty, pUnit, matchedProduct);
+                                    const recalculated = recalculateQtyAndUnit(pQty, pUnit, matchedProduct, preferenceDecision.packetCount);
 
                                     finalItem = {
                                         ...finalItem,
                                         confidence: 'high',
                                         needsMatchReview: false,
+                                        packetCount: preferenceDecision.packetCount,
+                                        isApproximateSize: preferenceDecision.isApproximateSize,
+                                        selectedPackLabel: preferenceDecision.selectedPackLabel,
                                         productId: matchedProduct.id,
                                         name: matchedProduct.name,
                                         localName: matchedProduct.localName,
@@ -1829,6 +1846,12 @@ export default function BillingPage() {
                             </button>
                           </div>
 
+                          {item.productId && item.selectedPackLabel && (
+                            <p className={`mt-2 text-xs ${item.isApproximateSize ? 'text-amber-700' : 'text-slate-500'}`}>
+                              {item.isApproximateSize ? 'Closest available size: ' : 'Pack size: '}{item.selectedPackLabel}
+                              {item.packetCount ? ` × ${item.packetCount} packet${item.packetCount === 1 ? '' : 's'}` : ''}
+                            </p>
+                          )}
                           {item.needsMatchReview && (
                             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
                               <p className="text-xs font-semibold text-amber-800">{item.matchReason}</p>
@@ -1902,7 +1925,7 @@ export default function BillingPage() {
                             const buildOverrides = (sug: any) => {
                               const pQty = item.parsedQty !== undefined ? item.parsedQty : item.quantity;
                               const pUnit = item.parsedUnit !== undefined ? item.parsedUnit : (item.unit || item.baseUnit || 'pc');
-                              const recalculated = recalculateQtyAndUnit(pQty, pUnit, sug);
+                              const recalculated = recalculateQtyAndUnit(pQty, pUnit, sug, item.packetCount);
                               return {
                                 productId: sug.id, name: sug.name, localName: sug.localName,
                                 price: sug.price, costPrice: sug.costPrice, category: sug.category, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity,
@@ -1910,6 +1933,7 @@ export default function BillingPage() {
                                 quantity: recalculated.quantity, unit: recalculated.unit,
                                 parsedQty: pQty, parsedUnit: pUnit,
                                 confidence: 'high', needsMatchReview: false,
+                                isApproximateSize: false, selectedPackLabel: undefined,
                               };
                             };
 
@@ -2225,7 +2249,12 @@ export default function BillingPage() {
           item={reviewItems[qtyPickerIdx]}
           onSelect={(newQty: number, newUnit: string) => {
             const n = [...reviewItems];
-            n[qtyPickerIdx] = { ...n[qtyPickerIdx], quantity: newQty, unit: newUnit };
+            const current = n[qtyPickerIdx];
+            const perPack = voiceQuantityForProduct(1, 'pc', current, 1);
+            const converted = voiceQuantityForProduct(newQty, newUnit, current);
+            const packetCount = current.packetCount !== undefined && perPack.unit === converted.unit && perPack.quantity > 0
+              ? converted.quantity / perPack.quantity : undefined;
+            n[qtyPickerIdx] = { ...current, quantity: newQty, unit: newUnit, parsedQty: newQty, parsedUnit: newUnit, packetCount, hasExplicitQty: true };
             setReviewItems(n);
             setQtyPickerIdx(null);
           }}

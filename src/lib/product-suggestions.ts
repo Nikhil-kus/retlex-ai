@@ -1,8 +1,9 @@
 import { createVoiceProductMatcher, normalizeVoiceName, type VoiceProduct } from './voice-product-matcher';
 import { groceryMeaning } from './grocery-meaning';
+import { productSaleForm } from './product-packaging';
 
 type Product = VoiceProduct & { category?: string; price?: number };
-type ReviewItem = { productId?: string | null; name?: string; spokenWord?: string; sourceRawText?: string; parsedQty?: number; parsedUnit?: string; requestedPrice?: number };
+type ReviewItem = { productId?: string | null; name?: string; spokenWord?: string; sourceRawText?: string; parsedQty?: number; parsedUnit?: string; requestedPrice?: number; saleForm?: 'loose' | 'packet'; packSize?: { quantity: number; unit: string }; packetCount?: number };
 
 // Product kinds describe what is being sold, not its shelf/category or brand.
 // Compound forms take precedence over ingredients: almond oil is not an almond.
@@ -47,9 +48,7 @@ function profile(text: string) {
 function form(p: Product) {
   const text = `${p.name} ${p.localName || ''}`;
   if (/\bbulk\b|\bcarton\b|\b\d+\s*(?:pcs|pieces|packs)\b|बल्क|कार्टन/i.test(text)) return 'bulk';
-  if (/\b(?:loose|khula|khulla)\b|खुला|खुली/i.test(text)
-    || (['kg', 'g', 'ml', 'l', 'ltr'].includes(p.baseUnit || '') && (p.baseQuantity || 1) === 1)) return 'loose';
-  return 'retail';
+  return productSaleForm(p) === 'loose' ? 'loose' : 'retail';
 }
 function family(p: Product) {
   // Remove only pack measures/prices. Keep variant words, numeric brand names,
@@ -81,7 +80,8 @@ export function createProductSuggestions<T extends Product>(catalog: T[]) {
         // or trust stale/partial debug candidates as display recommendations.
         const name = item.spokenWord || item.name || '';
         const intent = profile(name);
-        const result = matcher.match({ name, rawText: item.sourceRawText, quantity: item.parsedQty, unit: item.parsedUnit, requestedPrice: item.requestedPrice });
+        const result = matcher.match({ name, rawText: item.sourceRawText, quantity: item.parsedQty, unit: item.parsedUnit,
+          requestedPrice: item.requestedPrice, saleForm: item.saleForm, packSize: item.packSize, packetCount: item.packetCount });
         const choices = result.candidates.filter(c => !c.missingTokens.length && c.coverage >= 0.85
           && (c.eligible || /pack size|Pack weight/.test(c.reason)))
           .filter(c => {

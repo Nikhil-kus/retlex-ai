@@ -5,6 +5,7 @@ import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct,
 import { transpileModule, ScriptTarget } from 'typescript';
 import { parseVoiceItems } from './voice-parser';
 import { createProductSuggestions } from './product-suggestions';
+import { productSaleForm } from './product-packaging';
 
 const products = [
   { id: 'parle', name: 'ParleG Biscuit', localName: 'पारले-जी बिस्किट', price: 5, baseUnit: 'pc' },
@@ -21,6 +22,94 @@ const products = [
   { id: 'other-salt', name: 'Aashirvaad Salt 1 kg', localName: 'आशीर्वाद नमक', baseUnit: 'pc', packetWeight: 1, packetUnit: 'kg' },
 ];
 const matcher = createVoiceProductMatcher(products);
+
+const packagedProducts = [
+  { id: 'poha-loose', name: 'Poha Khula', localName: 'पोहा खुला', price: 40, baseUnit: 'kg', baseQuantity: 1 },
+  { id: 'poha-500', name: 'Poha 500g', localName: 'पोहा', price: 38, baseUnit: 'pkt', baseQuantity: 1, packetWeight: 500, packetUnit: 'g' },
+  { id: 'poha-1000', name: 'Poha 1kg', localName: 'पोहा', price: 70, baseUnit: 'pkt', baseQuantity: 1, packetWeight: 1, packetUnit: 'kg' },
+  { id: 'atta-loose', name: 'Aata Khula', localName: 'आटा खुला', price: 28, baseUnit: 'kg', baseQuantity: 1 },
+  { id: 'atta-1', name: 'Aata 1kg', localName: 'आटा 1 किलो', price: 45, baseUnit: 'pkt', baseQuantity: 1000, packetWeight: 1000, packetUnit: 'g' },
+  { id: 'atta-2', name: 'Aata 2kg', localName: 'आटा 2 किलो', price: 85, baseUnit: 'pkt', baseQuantity: 1, packetWeight: 2, packetUnit: 'kg' },
+  { id: 'atta-5', name: 'Aata 5kg', localName: 'आटा 5 किलो', price: 200, baseUnit: 'pkt', baseQuantity: 1, packetWeight: 5, packetUnit: 'kg' },
+  { id: 'atta-10', name: 'Aata 10kg', localName: 'आटा 10 किलो', price: 390, baseUnit: 'pkt', baseQuantity: 1, packetWeight: 10, packetUnit: 'kg' },
+];
+
+test('loose and packet requests match and suggest only their requested sale form', () => {
+  const engine = createVoiceProductMatcher(packagedProducts);
+  const suggestions = createProductSuggestions(packagedProducts);
+  for (const [spoken, form] of [
+    ['poha khula', 'loose'], ['पोहा खुला', 'loose'], ['पोहा एक किलो खुला', 'loose'],
+    ['poha packet', 'packet'], ['पोहा पैकेट', 'packet'], ['पोहा एक किलो पैकेट', 'packet'],
+  ] as const) {
+    const parsed = parseVoiceItems(spoken);
+    assert.equal(parsed.length, 1, spoken);
+    const result = engine.match(parsed[0]);
+    assert.ok(result.product, spoken);
+    assert.equal(productSaleForm(result.product), form, spoken);
+    assert.ok(result.candidates.every(c => productSaleForm(c.product) === form), spoken);
+    const choices = suggestions.suggest({ name: parsed[0].name, sourceRawText: parsed[0].rawText,
+      parsedQty: parsed[0].quantity, parsedUnit: parsed[0].unit, packSize: parsed[0].packSize });
+    assert.ok(choices.brandVariants.length, spoken);
+    assert.ok(choices.brandVariants.every(p => productSaleForm(p) === form), spoken);
+  }
+});
+
+test('packet size and packet count remain separate in Hindi, Hinglish, and either word order', () => {
+  const engine = createVoiceProductMatcher(packagedProducts);
+  for (const spoken of [
+    'aata ek kilo wala 5 packet', 'आटा एक किलो वाला पाँच पैकेट', 'आटा 1kg वाला 5 पैकेट',
+    'आटा 5 पैकेट एक किलो वाले', '5 पैकेट आटा एक किलो वाला', '1 किलो आटा 5 पैकेट',
+    'आटा एक किलो 5 पैकेट', 'aata 5 packets 1kg',
+  ]) {
+    const parsed = parseVoiceItems(spoken);
+    assert.equal(parsed.length, 1, spoken);
+    assert.deepEqual(parsed[0].packSize, { quantity: 1, unit: 'kg' }, spoken);
+    assert.equal(parsed[0].packetCount, 5, spoken);
+    const result = engine.match(parsed[0]);
+    assert.equal(result.product?.id, 'atta-1', spoken);
+    assert.deepEqual(voiceQuantityForProduct(parsed[0].quantity, parsed[0].unit, result.product!, result.packetCount), { quantity: 5, unit: 'pkt' }, spoken);
+  }
+});
+
+test('exact and nearest packet sizes select whole packs, with the actual size reported', () => {
+  const engine = createVoiceProductMatcher(packagedProducts);
+  for (const spoken of ['aata packet 5 kg', 'आटा पैकेट पांच किलो', 'आटा 5 किलो वाला']) {
+    const request = parseVoiceItems(spoken)[0];
+    const result = engine.match(request, 'atta-1');
+    assert.equal(result.product?.id, 'atta-5', spoken);
+    assert.equal(result.packetCount, 1);
+    assert.equal(result.isApproximateSize, false);
+  }
+  const available = createVoiceProductMatcher(packagedProducts.filter(p => p.id !== 'atta-5' && p.id !== 'atta-10'));
+  const request = parseVoiceItems('आटा पैकेट 5 किलो')[0];
+  const result = available.match(request);
+  assert.equal(result.product?.id, 'atta-2');
+  assert.equal(result.isApproximateSize, true);
+  assert.equal(result.selectedPackLabel, '2 kg');
+  assert.deepEqual(voiceQuantityForProduct(request.quantity, request.unit, result.product!, result.packetCount), { quantity: 1, unit: 'pkt' });
+  assert.equal(engine.match(parseVoiceItems('unknownbrand आटा पैकेट 5 किलो')[0]).product, null);
+  assert.equal(engine.match(parseVoiceItems('आटा पैकेट 5 लीटर')[0]).product, null);
+});
+
+test('pack count converts correctly for packets stored in weight-based catalogue units', () => {
+  const weighed = { id: 'weighed', name: 'Acme Atta 1kg', baseUnit: 'g', baseQuantity: 1000, packetWeight: 1, packetUnit: 'kg' };
+  assert.deepEqual(voiceQuantityForProduct(5, 'pc', weighed, 5), { quantity: 5000, unit: 'g' });
+  assert.deepEqual(voiceQuantityForProduct(5, 'pc', weighed), { quantity: 5000, unit: 'g' });
+  assert.deepEqual(voiceQuantityForProduct(5, 'kg', weighed, 1), { quantity: 1000, unit: 'g' });
+});
+
+test('packet sizes and counts do not spill into the next product or replace the price', () => {
+  const parsed = parseVoiceItems('आटा एक किलो वाला 5 पैकेट 45 रुपये और पोहा खुला दो किलो');
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].packetCount, 5);
+  assert.equal(parsed[0].requestedPrice, 45);
+  assert.deepEqual(parsed[0].packSize, { quantity: 1, unit: 'kg' });
+  assert.equal(parsed[1].quantity, 2);
+  assert.equal(parsed[1].unit, 'kg');
+  assert.equal(parsed[1].packSize, undefined);
+  const result = createVoiceProductMatcher(packagedProducts).match(parsed[0]);
+  assert.equal(result.product?.id, 'atta-1');
+});
 
 // Relevant product names, aliases and sale units from the reported shop catalogue.
 const pulseProducts = [
@@ -278,8 +367,12 @@ test('actual billing pipeline preserves quantity, rejects unknown names, and upd
   assert.ok(start >= 0 && end > start);
   const javascript = transpileModule(source.slice(start, end), { compilerOptions: { target: ScriptTarget.ES2022 } }).outputText;
   const processVoiceText = new Function('parseVoiceItems', 'voiceQuantityForProduct', 'voiceMatcherRef', 'matchCacheRef', '_isDebug', 'normalizeVoiceName', 'debugDataRef', `${javascript}; return processVoiceTextToItems;`)(
-    parseVoiceItems, voiceQuantityForProduct, { current: createVoiceProductMatcher([...products, ...pricedProducts, ...pulseProducts]) }, { current: new Map() }, false, normalizeVoiceName, { current: {} },
+    parseVoiceItems, voiceQuantityForProduct, { current: createVoiceProductMatcher([...products, ...pricedProducts, ...pulseProducts, ...packagedProducts]) }, { current: new Map() }, false, normalizeVoiceName, { current: {} },
   );
+  const totalStart = source.indexOf('  const calculateItemTotal =');
+  const totalEnd = source.indexOf('  const handlePriceUpdate =', totalStart);
+  const totalJavascript = transpileModule(source.slice(totalStart, totalEnd), { compilerOptions: { target: ScriptTarget.ES2022 } }).outputText;
+  const calculateTotal = new Function('shop', `${totalJavascript}; return calculateItemTotal;`)(null);
   for (const spoken of ['पारले-जी बिस्किट', 'परले-ग बिस्किट दो पैकेट', 'परले-ग बिस्किट दो पैकेट']) {
     const item = processVoiceText(spoken).items[0];
     assert.equal(item.productId, 'parle');
@@ -317,6 +410,30 @@ test('actual billing pipeline preserves quantity, rejects unknown names, and upd
   assert.equal(chickpeas[0].quantity, 1);
   assert.equal(chickpeas[0].unit, 'kg');
   assert.equal(chickpeas[0].needsMatchReview, false);
+  for (const [spoken, id, quantity, unit] of [
+    ['poha khula', 'poha-loose', 1, 'kg'],
+    ['aata packet 5 kg', 'atta-5', 1, 'pkt'],
+    ['aata ek kilo wala 5 packet', 'atta-1', 5, 'pkt'],
+    ['aata ek kilo wala 2 packet', 'atta-1', 2, 'pkt'],
+    ['aata packet 7 kg', 'atta-5', 1, 'pkt'],
+  ] as const) {
+    const items = processVoiceText(spoken).items;
+    assert.equal(items.length, 1, spoken);
+    assert.equal(items[0].productId, id, spoken);
+    assert.equal(items[0].quantity, quantity, spoken);
+    assert.equal(items[0].unit, unit, spoken);
+    assert.equal(items[0].needsMatchReview, false, spoken);
+    assert.equal(items[0].isApproximateSize, spoken === 'aata packet 7 kg', spoken);
+    assert.equal(calculateTotal(items[0]), items[0].price * quantity, spoken);
+  }
+  for (let repeat = 0; repeat < 2; repeat++) {
+    const items = processVoiceText('आटा एक किलो वाला 5 पैकेट और आटा एक किलो वाला 2 पैकेट').items;
+    assert.equal(items.length, 1);
+    assert.equal(items[0].quantity, 7);
+    assert.equal(items[0].packetCount, 7);
+    assert.equal(calculateTotal(items[0]), 315);
+  }
+  assert.equal(calculateTotal({ ...packagedProducts[4], baseUnit: 'g', baseQuantity: 1000, quantity: 5000, unit: 'g' }), 225);
 });
 
 test('exact catalogue names never automatically switch to a different product', () => {
