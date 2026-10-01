@@ -55,6 +55,9 @@ export default function BillingPage() {
   const [finalTranscript, setFinalTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);
+  const heldInputRef = useRef<number | string | null>(null);
+  const [correctingItemIdx, setCorrectingItemIdx] = useState<number | null>(null);
+  const [voiceMessage, setVoiceMessage] = useState('');
   const globalTranscriptRef = useRef("");
   const currentBreathRef = useRef("");
   const baseReviewItemsRef = useRef<any[]>([]);
@@ -429,14 +432,20 @@ export default function BillingPage() {
   const getSizeVariantsForBrand = (product: any) => product
     ? suggestionsRef.current?.sizes(product) || [] : [];
 
-  const startVoiceInput = () => {
+  const startVoiceInput = (correctionIdx: number | null = null) => {
+    if (recognitionRef.current) return;
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
+      heldInputRef.current = null;
       alert("Speech Recognition not supported");
       return;
     }
+
+    const correctionItem = correctionIdx === null ? null : reviewItems[correctionIdx];
+    setCorrectingItemIdx(correctionIdx);
+    setVoiceMessage('');
 
     baseReviewItemsRef.current = [...reviewItems];
     itemOverridesRef.current = {};
@@ -468,8 +477,15 @@ export default function BillingPage() {
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
     recognitionRef.current = recognition;
+    // Permission prompts can finish after the finger has already been released.
+    recognition.onstart = () => {
+      if (recognitionRef.current !== recognition || !isListeningRef.current) {
+        try { recognition.abort(); } catch (_) {}
+      }
+    };
 
     recognition.onresult = (event: any) => {
+        if (recognitionRef.current !== recognition) return;
         // ── TIMING: total onresult event ─────────────────────────────────────
         const _tEvent = performance.now();
 
@@ -523,6 +539,8 @@ export default function BillingPage() {
         // ── [/PROVE] ─────────────────────────────────────────────────────────
 
         setFinalTranscript(fullText);
+        // Keep the touched card stable; replace it once the final result arrives.
+        if (correctionIdx !== null) return;
 
         if (fullText.length > 1) {
             // ── [PROVE] record the exact query passed into processing ─────────
@@ -663,21 +681,21 @@ export default function BillingPage() {
     };
 
     recognition.onerror = (e: any) => {
+        if (recognitionRef.current !== recognition) return;
         console.error("Speech Error:", e.error || e);
+        if (e.error !== 'no-speech') {
+          stopVoiceInput();
+          setVoiceMessage('Could not hear you. Hold again to retry.');
+        }
         if (e.error === 'not-allowed' || e.error === 'audio-capture') {
             setIsListening(false);
             isListeningRef.current = false;
             alert("Microphone error: Please check permissions or hardware.");
         }
-        // For other errors (network, aborted), onend will handle restart
     };
 
     recognition.onend = () => {
-        // Restart FIRST before anything else — absolute minimum gap between
-        // stop and start so Android has no time to close the audio session.
-        if (isListeningRef.current) {
-            try { recognition.start(); } catch(_) {}
-        }
+        if (recognitionRef.current !== recognition) return;
         // ── [PROVE] capture state before commit ───────────────────────────────
         const _endGlobalBefore = _isDebug ? globalTranscriptRef.current : '';
         const _endBreath       = _isDebug ? currentBreathRef.current   : '';
@@ -706,6 +724,33 @@ export default function BillingPage() {
         }
         // ── [/PROVE] ─────────────────────────────────────────────────────────
         currentBreathRef.current = "";
+        if (isListeningRef.current && heldInputRef.current !== null) {
+          try { recognition.start(); return; } catch (_) { stopVoiceInput(); }
+        }
+        recognitionRef.current = null;
+        setCorrectingItemIdx(null);
+        if (correctionIdx !== null && correctionItem) {
+          const corrected = processVoiceTextToItems(globalTranscriptRef.current).items;
+          if (corrected.length !== 1) {
+            setVoiceMessage(corrected.length ? 'Say only one product to correct this card.' : 'No speech heard. Hold the card and repeat the product name.');
+            return;
+          }
+          let replacement = corrected[0];
+          if (!replacement.hasExplicitQty) {
+            const quantity = correctionItem.parsedQty ?? correctionItem.quantity;
+            const unit = correctionItem.parsedUnit ?? correctionItem.unit;
+            const converted = replacement.productId
+              ? voiceQuantityForProduct(quantity, unit, replacement, correctionItem.packetCount)
+              : { quantity, unit };
+            replacement = { ...replacement, ...converted, parsedQty: quantity, parsedUnit: unit,
+              hasExplicitQty: correctionItem.hasExplicitQty, packetCount: correctionItem.packetCount };
+          }
+          const updated = { ...replacement, suggestions: getSuggestions(replacement) };
+          // Do not overwrite another row if this item was removed while recognizing.
+          setReviewItems(items => items.map((item, idx) =>
+            idx === correctionIdx && item === correctionItem ? updated : item));
+          setVoiceMessage(updated.productId ? 'Product corrected.' : 'Still no reliable match. Hold the card to try again, or choose a suggestion.');
+        }
     };
 
     try {
@@ -714,16 +759,81 @@ export default function BillingPage() {
         console.error("Failed to start mic:", e);
         setIsListening(false);
         isListeningRef.current = false;
+        heldInputRef.current = null;
+        recognitionRef.current = null;
+        setCorrectingItemIdx(null);
+        setVoiceMessage('Could not start the microphone. Hold again to retry.');
     }
   };
 
   const stopVoiceInput = () => {
+    heldInputRef.current = null;
     isListeningRef.current = false;
     setIsListening(false);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
     }
   };
+
+  const holdToSpeak = (correctionIdx: number | null = null) => ({
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      if (!event.isPrimary || event.button !== 0 || recognitionRef.current) return;
+      if (correctionIdx !== null && (event.target as HTMLElement).closest('button, input, select, textarea, a')) return;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      heldInputRef.current = event.pointerId;
+      startVoiceInput(correctionIdx);
+    },
+    onPointerUp: (event: React.PointerEvent<HTMLElement>) => {
+      if (heldInputRef.current === event.pointerId) stopVoiceInput();
+    },
+    onPointerCancel: (event: React.PointerEvent<HTMLElement>) => {
+      if (heldInputRef.current === event.pointerId) stopVoiceInput();
+    },
+    onLostPointerCapture: (event: React.PointerEvent<HTMLElement>) => {
+      if (heldInputRef.current === event.pointerId) stopVoiceInput();
+    },
+    onContextMenu: (event: React.MouseEvent<HTMLElement>) => event.preventDefault(),
+    onTouchStart: (event: React.TouchEvent<HTMLElement>) => event.stopPropagation(),
+    onTouchMove: (event: React.TouchEvent<HTMLElement>) => event.stopPropagation(),
+    onTouchEnd: (event: React.TouchEvent<HTMLElement>) => event.stopPropagation(),
+    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+      if (event.target !== event.currentTarget || ![' ', 'Enter'].includes(event.key)) return;
+      event.preventDefault();
+      if (event.repeat || recognitionRef.current) return;
+      heldInputRef.current = event.key;
+      startVoiceInput(correctionIdx);
+    },
+    onKeyUp: (event: React.KeyboardEvent<HTMLElement>) => {
+      if (event.target === event.currentTarget && heldInputRef.current === event.key) {
+        event.preventDefault();
+        stopVoiceInput();
+      }
+    },
+    onBlur: () => { if (typeof heldInputRef.current === 'string') stopVoiceInput(); },
+  });
+
+  useEffect(() => {
+    const release = (event: PointerEvent) => {
+      if (heldInputRef.current === event.pointerId) stopVoiceInput();
+    };
+    const hide = () => { if (document.hidden) stopVoiceInput(); };
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    window.addEventListener('blur', stopVoiceInput);
+    document.addEventListener('visibilitychange', hide);
+    return () => {
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+      window.removeEventListener('blur', stopVoiceInput);
+      document.removeEventListener('visibilitychange', hide);
+      heldInputRef.current = null;
+      isListeningRef.current = false;
+      const recognition = recognitionRef.current;
+      recognitionRef.current = null;
+      try { recognition?.abort(); } catch (_) {}
+    };
+  }, []);
 
   const router = useRouter();
   const [shop, setShop] = useState<any>(null);
@@ -815,6 +925,7 @@ export default function BillingPage() {
       }
       if (selectedBill) { setSelectedBill(null); return; }
       if (isReviewing) {
+        stopVoiceInput();
         setIsReviewing(false);
         setReviewItems([]);
         globalTranscriptRef.current = '';
@@ -1789,8 +1900,14 @@ export default function BillingPage() {
                     {reviewItems.map((item, idx) => (
                       <div
                         key={idx}
+                        {...(!item.productId ? holdToSpeak(idx) : {})}
+                        tabIndex={!item.productId ? 0 : undefined}
+                        aria-label={!item.productId ? `Hold to correct ${item.name}` : undefined}
+                        style={!item.productId ? { touchAction: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } : undefined}
                         className={`relative rounded-2xl border overflow-hidden transition-all ${
-                          item.isRepeated
+                          isListening && correctingItemIdx === idx
+                            ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-300'
+                            : item.isRepeated
                             ? 'border-amber-300 bg-amber-50/30'
                             : item.productId
                             ? 'border-slate-200 bg-white'
@@ -1837,7 +1954,7 @@ export default function BillingPage() {
                                 currentBreathRef.current = "";
                                 setFinalTranscript("");
                                 setOpenSuggestionIdx(null);
-                                if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e) {} }
+                                stopVoiceInput();
                                 setReviewItems(newItems);
                               }}
                               className="w-7 h-7 rounded-full flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors shrink-0"
@@ -1857,9 +1974,14 @@ export default function BillingPage() {
                               <p className="text-xs font-semibold text-amber-800">{item.matchReason}</p>
                               <p className="mt-1 text-xs text-amber-800">Check the quantity and unit after choosing a product.</p>
                               {!item.suggestions?.brandVariants?.length && !item.suggestions?.sizeVariants?.length && (
-                                <p className="mt-1 text-xs text-amber-800">Repeat the full name, or remove this item and use manual search.</p>
+                                <p className="mt-1 text-xs text-amber-800">Hold this card and repeat the full product name. Release to update this item.</p>
                               )}
                             </div>
+                          )}
+                          {!item.productId && (
+                            <p className="mt-2 text-xs font-semibold text-rose-600" aria-live="polite">
+                              {isListening && correctingItemIdx === idx ? 'Listening… release to correct this product' : 'Hold card to correct by voice'}
+                            </p>
                           )}
 
                           {/* Row 2: rate | total | suggest-arrow | qty-pill */}
@@ -2078,7 +2200,7 @@ export default function BillingPage() {
                   <div className="px-4 pb-20 pt-2 flex-shrink-0 border-t border-slate-100 bg-white flex items-center gap-2">
                     {/* Red clear button — always visible, left of Add to Bill */}
                     <button
-                      onClick={() => { setIsReviewing(false); setReviewItems([]); setOpenSuggestionIdx(null); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
+                      onClick={() => { stopVoiceInput(); setIsReviewing(false); setReviewItems([]); setOpenSuggestionIdx(null); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
                       className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-2xl bg-rose-50 border border-rose-200 text-rose-500 hover:bg-rose-100 active:scale-95 transition-all"
                       aria-label="Clear items"
                     >
@@ -2102,9 +2224,16 @@ export default function BillingPage() {
       </div>
 
       {/* Floating Voice Button - fixed bottom center, hidden during manual search */}
+      {voiceMessage && (
+        <div role="status" className="fixed left-1/2 -translate-x-1/2 bottom-28 z-50 max-w-sm w-[90%] rounded-xl bg-slate-900 px-4 py-3 text-center text-sm text-white shadow-lg" onClick={() => setVoiceMessage('')}>
+          {voiceMessage}
+        </div>
+      )}
       {!(mode === 'MANUAL' && search.length > 0) && (
       <button
-        onClick={isListening ? stopVoiceInput : startVoiceInput}
+        {...holdToSpeak()}
+        aria-label="Hold to speak order. Release to stop."
+        aria-pressed={isListening && correctingItemIdx === null}
         className={`fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5 px-6 py-3.5 rounded-full font-bold text-white text-sm tracking-wide shadow-lg active:scale-95 transition-transform duration-150 ${
           isListening
             ? 'bg-rose-500'
@@ -2112,6 +2241,9 @@ export default function BillingPage() {
         }`}
         style={{
           minWidth: '164px',
+          touchAction: 'none',
+          userSelect: 'none',
+          WebkitTouchCallout: 'none',
           justifyContent: 'center',
           bottom: cart.length > 0 ? '5rem' : '1.5rem',
         }}
@@ -2119,7 +2251,7 @@ export default function BillingPage() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="shrink-0">
           <path d="M12 1a4 4 0 0 1 4 4v7a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v7a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 9a7 7 0 0 0 14 0h2a9 9 0 0 1-8 8.94V23h-2v-2.06A9 9 0 0 1 3 12h2z"/>
         </svg>
-        {isListening ? 'Stop Listening' : 'Speak Order'}
+        {isListening && correctingItemIdx === null ? 'Release to Finish' : 'Hold to Speak Order'}
       </button>
       )}
 
