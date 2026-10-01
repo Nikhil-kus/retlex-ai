@@ -152,6 +152,7 @@ export const HINDI_TO_HINGLISH_MAP: Record<string, string> = {
   'दूध': 'doodh',
   'आटा': 'atta',
   'चावल': 'chawal',
+  'बासमती': 'basmati',
   'दाल': 'dal',
   'नमक': 'namak',
   'चीनी': 'chini',

@@ -189,7 +189,7 @@ test('recognized names awaiting brand or size choices never activate card correc
     { id: 'lux', name: 'Lux Soap', baseUnit: 'pc', packetWeight: 100, packetUnit: 'g' },
     { id: 'nirma', name: 'Nirma Soap', baseUnit: 'pc', packetWeight: 100, packetUnit: 'g' },
   ]);
-  for (const request of [{ name: 'soap' }, { name: 'lux soap', quantity: 500, unit: 'g' }]) {
+  for (const request of [{ name: 'soap' }, { name: 'lux soap', quantity: 150, unit: 'g' }]) {
     const decision = matcher.match(request);
     assert.equal(decision.product, null);
     const item = { productId: null, confidence: decision.confidence, matchReason: decision.reason, matchCandidateDetails: decision.candidates };

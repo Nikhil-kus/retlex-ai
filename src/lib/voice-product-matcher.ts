@@ -34,6 +34,8 @@ export interface VoiceCandidate<T> {
   reason: string;
   sizeDistance?: number;
   packSizeAmount?: number;
+  quantityRank?: number;
+  fulfillmentCount?: number;
 }
 export interface VoiceMatch<T> {
   product: T | null;
@@ -118,6 +120,31 @@ function productMeasure(product: VoiceProduct) {
   return null; // Do not assume an unspecified baseQuantity is grams.
 }
 
+function measureLabel(size: { amount: number; dimension: string }) {
+  return `${size.amount >= 1000 ? size.amount / 1000 : size.amount} ${size.dimension === 'weight'
+    ? (size.amount >= 1000 ? 'kg' : 'g') : (size.amount >= 1000 ? 'l' : 'ml')}`;
+}
+
+// Total weight/volume is distinct from an explicitly requested individual pack.
+export function totalQuantityPlan(quantity: number, unit: string, product: VoiceProduct) {
+  if (!/^(kg|g|ml|l|ltr)$/.test(unit) || !Number.isFinite(quantity) || quantity <= 0) return undefined;
+  const requested = measure(quantity, unit);
+  const size = productMeasure(product);
+  if (productSaleForm(product) === 'loose') {
+    const base = /^(kg|g|ml|l|ltr)$/.test(product.baseUnit || '') ? measure(1, product.baseUnit!) : size;
+    const exact = Boolean(base && base.dimension === requested.dimension);
+    return { rank: exact ? 1 : 5, exact, count: undefined, size: undefined,
+      label: exact ? `${measureLabel(requested)} loose` : 'Check quantity' };
+  }
+  if (!size || size.dimension !== requested.dimension) return { rank: 5, exact: false, count: undefined, size: undefined, label: 'Check pack size' };
+  const ratio = requested.amount / size.amount;
+  const exact = ratio >= 1 && Math.abs(ratio - Math.round(ratio)) < 1e-8;
+  const count = exact ? Math.round(ratio) : undefined;
+  const rank = exact ? (count === 1 ? 0 : 2) : size.amount < requested.amount ? 3 : 4;
+  return { rank, exact, count, size: measureLabel(size),
+    label: exact ? `${count} × ${measureLabel(size)} = ${measureLabel(requested)}` : `${measureLabel(size)} pack — choose quantity` };
+}
+
 export function voiceQuantityForProduct(quantity: number, unit: string, product: VoiceProduct, packetCount?: number) {
   const count = packetCount ?? (/^(pc|pkt|packet|pack|pcs)$/.test(unit) ? quantity : undefined);
   if (count !== undefined && productSaleForm(product) === 'packet') {
@@ -186,6 +213,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       const requested = request.packSize ? measure(request.packSize.quantity, request.packSize.unit)
         : namedSize ? measure(Number(namedSize[1]), namedSize[2])
         : /^(kg|g|ml|l|ltr)$/.test(request.unit || '') ? measure(request.quantity || 1, request.unit!) : null;
+      const totalRequested = Boolean(requested && !namedSize && !request.packSize && saleForm !== 'packet');
 
       const ranked: VoiceCandidate<T>[] = entries
         .filter(entry => compatibleGroceryMeaning(requestedMeaning, entry.meaning))
@@ -221,10 +249,14 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
         let reason = best.missingTokens.length ? 'Product identity does not match every spoken word' : '';
         if (entry.bulk !== bulkRequested) reason = entry.bulk ? 'Bulk pack was not requested' : 'A bulk pack was requested';
         const loose = entry.saleForm === 'loose';
+        const plan = totalRequested && requested ? totalQuantityPlan(requested.amount,
+          requested.dimension === 'weight' ? 'g' : 'ml', entry.product) : undefined;
         if (requested && entry.measure && requested.dimension !== entry.measure.dimension) reason = 'Weight and volume units do not match';
         if (requested && entry.measure && !loose) {
-          if (requested.dimension !== entry.measure.dimension || (saleForm !== 'packet' && requested.amount !== entry.measure.amount)) reason = 'Confirm the requested pack size';
+          if (!reason && (requested.dimension !== entry.measure.dimension || (totalRequested ? !plan?.exact
+            : saleForm !== 'packet' && requested.amount !== entry.measure.amount))) reason = 'Confirm the requested pack size';
         }
+        if (!reason && totalRequested && !plan?.exact) reason = 'Confirm the requested pack size';
         if (requested && !entry.measure && !loose) reason = 'Pack weight is missing; choose a product and check its quantity';
         if (request.requestedPrice !== undefined && (
           !Number.isFinite(request.requestedPrice) || request.requestedPrice <= 0 ||
@@ -233,9 +265,13 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
         )) reason = 'Product price does not match the spoken price';
         const sizeDistance = saleForm === 'packet' && requested && entry.measure && requested.dimension === entry.measure.dimension
           ? Math.abs(requested.amount - entry.measure.amount) : undefined;
-        return { product: entry.product, ...best, identityComplete, sizeDistance, packSizeAmount: entry.measure?.amount, eligible: !reason && best.coverage >= 0.85 && best.score >= 0.72,
+        return { product: entry.product, ...best, identityComplete, sizeDistance, quantityRank: plan?.rank, fulfillmentCount: plan?.count, packSizeAmount: entry.measure?.amount, eligible: !reason && best.coverage >= 0.85 && best.score >= 0.72,
           reason: reason || (best.coverage < 0.85 || best.score < 0.72 ? 'Name match is uncertain' : 'All spoken identity words match') };
       }).sort((a, b) => Number(b.eligible) - Number(a.eligible)
+        || (a.quantityRank ?? 0) - (b.quantityRank ?? 0)
+        || (totalRequested && a.quantityRank === 2 ? (a.fulfillmentCount ?? Infinity) - (b.fulfillmentCount ?? Infinity) : 0)
+        || (totalRequested && a.quantityRank === 3 ? (b.packSizeAmount ?? 0) - (a.packSizeAmount ?? 0) : 0)
+        || (totalRequested && a.quantityRank === 4 ? (a.packSizeAmount ?? Infinity) - (b.packSizeAmount ?? Infinity) : 0)
         || (a.sizeDistance ?? Infinity) - (b.sizeDistance ?? Infinity)
         || b.score - a.score
         || (saleForm === 'packet' && requested ? (a.packSizeAmount ?? Infinity) - (b.packSizeAmount ?? Infinity) : 0)
@@ -244,25 +280,29 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       const eligible = ranked.filter(c => c.eligible);
       const top = eligible[0], next = eligible[1];
       const preferred = eligible.find(c => c.product.id === preferredProductId && top.score - c.score <= 0.15
+        && c.quantityRank === top.quantityRank && c.fulfillmentCount === top.fulfillmentCount
         && c.sizeDistance === top.sizeDistance);
       // For price requests, select the best eligible name match automatically.
       // Eligibility still enforces name, price, pack intent and any spoken size.
       // Sorting by ID keeps equal-score choices stable across catalogue order.
       const priceSelected = request.requestedPrice !== undefined && top;
       const packetSelected = saleForm === 'packet' && !bulkRequested && top;
-      const clear = top && (priceSelected || packetSelected || !next || (top.identityComplete && top.score - next.score >= 0.06));
+      const betterQuantity = totalRequested && top && next && (top.quantityRank !== next.quantityRank
+        || top.fulfillmentCount !== next.fulfillmentCount);
+      const totalPacketsSelected = totalRequested && top?.fulfillmentCount;
+      const clear = top && (totalPacketsSelected || betterQuantity || priceSelected || packetSelected || !next || (top.identityComplete && top.score - next.score >= 0.06));
       const selected = preferred || (clear ? top : undefined);
       const isApproximateSize = Boolean(selected?.sizeDistance && selected.sizeDistance > 0);
       const selectedSize = selected ? productMeasure(selected.product) : null;
-      const selectedPackLabel = selectedSize && saleForm === 'packet'
+      const selectedPackLabel = selectedSize && (saleForm === 'packet' || selected?.fulfillmentCount)
         ? `${selectedSize.amount >= 1000 ? selectedSize.amount / 1000 : selectedSize.amount} ${selectedSize.dimension === 'weight'
           ? (selectedSize.amount >= 1000 ? 'kg' : 'g') : (selectedSize.amount >= 1000 ? 'l' : 'ml')}` : undefined;
       return {
         product: preferred?.product || (clear ? top.product : null),
         confidence: preferred || clear ? 'high' : 'low',
-        reason: isApproximateSize ? 'Closest available pack size selected' : preferred ? 'Compatible saved choice' : priceSelected ? 'Best name match at the requested price' : clear ? 'Clear product identity match' : top ? 'Choose the brand or pack size' : 'No reliable match; choose a product or repeat its name',
+        reason: totalRequested && selected ? 'Requested total quantity matched' : isApproximateSize ? 'Closest available pack size selected' : preferred ? 'Compatible saved choice' : priceSelected ? 'Best name match at the requested price' : clear ? 'Clear product identity match' : top ? 'Choose the brand or pack size' : ranked.some(c => !c.missingTokens.length && c.coverage >= 0.85 && /pack size|Pack weight/.test(c.reason)) ? 'Product recognized; choose a pack size and quantity' : 'No reliable match; choose a product or repeat its name',
         isApproximateSize,
-        packetCount: saleForm === 'packet' ? (request.packetCount ?? (requested ? 1 : request.quantity ?? 1)) : undefined,
+        packetCount: totalRequested ? selected?.fulfillmentCount : saleForm === 'packet' ? (request.packetCount ?? (requested ? 1 : request.quantity ?? 1)) : undefined,
         selectedPackLabel,
         // Limit display only AFTER checking the entire catalogue and ambiguity.
         candidates: ranked.filter(c => c.coverage >= 0.45).slice(0, 8),

@@ -2,7 +2,7 @@
 'use client';
 import Fuse from 'fuse.js';
 import { createProductSuggestions } from '@/lib/product-suggestions';
-import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct } from '@/lib/voice-product-matcher';
+import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct, totalQuantityPlan } from '@/lib/voice-product-matcher';
 import { parseVoiceItems } from '@/lib/voice-parser';
 import { canCorrectProductByVoice } from '@/lib/voice-review';
 
@@ -1991,8 +1991,10 @@ export default function BillingPage() {
 
                           {item.productId && item.selectedPackLabel && (
                             <p className={`mt-2 text-xs ${item.isApproximateSize ? 'text-amber-700' : 'text-slate-500'}`}>
-                              {item.isApproximateSize ? 'Closest available size: ' : 'Pack size: '}{item.selectedPackLabel}
-                              {item.packetCount ? ` × ${item.packetCount} packet${item.packetCount === 1 ? '' : 's'}` : ''}
+                              {!item.packSize && item.saleForm !== 'packet' && item.parsedQty && item.parsedUnit
+                                ? totalQuantityPlan(item.parsedQty, item.parsedUnit, item)?.label
+                                : <>{item.isApproximateSize ? 'Closest available size: ' : 'Pack size: '}{item.selectedPackLabel}
+                                  {item.packetCount ? ` × ${item.packetCount} packet${item.packetCount === 1 ? '' : 's'}` : ''}</>}
                             </p>
                           )}
                           {item.needsMatchReview && (
@@ -2064,7 +2066,9 @@ export default function BillingPage() {
                           {/* Selected products show alternatives when their arrow is opened. */}
                           {(item.needsMatchReview || openSuggestionIdx === idx) && item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
                             const selectedBrand = selectedBrandPerItem[idx] || null;
-                            const activeSizeVariants = selectedBrand
+                            const totalWeightReview = !item.packSize && item.saleForm !== 'packet'
+                              && /^(kg|g|ml|l|ltr)$/.test(item.parsedUnit || '');
+                            const activeSizeVariants = totalWeightReview ? [] : selectedBrand
                               ? getSizeVariantsForBrand(selectedBrand)
                               : (item.suggestions.sizeVariants || []);
                             const spokenKey = item.spokenWord || item.aiLabel || item.name;
@@ -2073,7 +2077,11 @@ export default function BillingPage() {
                             const buildOverrides = (sug: any) => {
                               const pQty = item.parsedQty !== undefined ? item.parsedQty : item.quantity;
                               const pUnit = item.parsedUnit !== undefined ? item.parsedUnit : (item.unit || item.baseUnit || 'pc');
-                              const recalculated = recalculateQtyAndUnit(pQty, pUnit, sug, item.packetCount);
+                              const plan = !item.packSize && item.saleForm !== 'packet' ? totalQuantityPlan(pQty, pUnit, sug) : undefined;
+                              // Recompute for the newly chosen pack; an inferred count
+                              // from the previous product must never carry across sizes.
+                              const count = plan ? (plan.count ?? (plan.rank !== 1 ? 1 : undefined)) : item.packetCount;
+                              const recalculated = recalculateQtyAndUnit(pQty, pUnit, sug, count);
                               return {
                                 productId: sug.id, name: sug.name, localName: sug.localName,
                                 price: sug.price, costPrice: sug.costPrice, category: sug.category, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity,
@@ -2081,7 +2089,7 @@ export default function BillingPage() {
                                 quantity: recalculated.quantity, unit: recalculated.unit,
                                 parsedQty: pQty, parsedUnit: pUnit,
                                 confidence: 'high', needsMatchReview: false,
-                                isApproximateSize: false, selectedPackLabel: undefined,
+                                packetCount: count, isApproximateSize: Boolean(plan && !plan.exact), selectedPackLabel: plan?.size,
                               };
                             };
 
@@ -2166,7 +2174,7 @@ export default function BillingPage() {
                                     {item.suggestions.brandVariants.map((sug: any, sIdx: number) => {
                                       const isSelected = selectedBrand?.id === sug.id;
                                       const isPinned = pinnedProductId === sug.id;
-                                      const sugSizes = getSizeVariantsForBrand(sug);
+                                      const sugSizes = totalWeightReview ? [] : getSizeVariantsForBrand(sug);
                                       return (
                                         <button
                                           key={sIdx}
@@ -2206,6 +2214,11 @@ export default function BillingPage() {
                                           <div className="p-1 text-center">
                                             <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
                                             <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                            {!item.packSize && item.saleForm !== 'packet' && (
+                                              <p className="text-[9px] text-indigo-600 leading-tight mt-1">
+                                                {totalQuantityPlan(item.parsedQty, item.parsedUnit, sug)?.label}
+                                              </p>
+                                            )}
                                           </div>
                                         </button>
                                       );

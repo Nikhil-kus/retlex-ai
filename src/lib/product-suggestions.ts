@@ -21,7 +21,7 @@ const kinds: [string, RegExp][] = [
   ['oil', /\boil\b|तेल/iu],
   ['powder', /\bpowder\b|पाउडर/iu],
   ['nuts', /\balmonds?\b|\bbadam\b|\bcashew\b|\braisins?\b|बादाम|काजू|किशमिश/iu],
-  ['rice', /\brice\b|चावल/iu],
+  ['rice', /\brice\b|\bchawal\b|चावल/iu],
   ['flour', /\bflour\b|\batta\b|आटा/iu],
   ['salt', /\bsalt\b|नमक/iu],
   ['tea', /\btea\b|चाय/iu],
@@ -75,7 +75,11 @@ export function createProductSuggestions<T extends Product>(catalog: T[]) {
     sizes,
     suggest(item: ReviewItem): { brandVariants: T[]; sizeVariants: T[] } {
       const seed = item.productId ? byId.get(item.productId) : undefined;
-      if (!seed) {
+      // Keep every relevant quantity option after automatic selection, in the
+      // same order as matching. Family/brand grouping would hide pack choices.
+      const quantityRequest = Boolean(item.parsedQty && /^(kg|g|ml|l|ltr)$/.test(item.parsedUnit || '')
+        && !item.packSize && item.saleForm !== 'packet');
+      if (!seed || quantityRequest) {
         // Re-evaluate the actual utterance, never expand from an arbitrary seed
         // or trust stale/partial debug candidates as display recommendations.
         const name = item.spokenWord || item.name || '';
@@ -88,7 +92,7 @@ export function createProductSuggestions<T extends Product>(catalog: T[]) {
             const candidate = byId.get(c.product.id)!.profile;
             return (!intent.kind || candidate.kind === intent.kind)
               && (!intent.ingredients || candidate.ingredients === intent.ingredients);
-          }).map(c => c.product);
+          }).map(c => c.product).filter(p => p.id !== seed?.product.id);
         return { brandVariants: choices, sizeVariants: [] };
       }
       const sizeVariants = sizes(seed.product);

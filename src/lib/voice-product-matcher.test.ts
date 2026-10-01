@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
-import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct, type VoiceProduct } from './voice-product-matcher';
+import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct, totalQuantityPlan, type VoiceProduct } from './voice-product-matcher';
 import { transpileModule, ScriptTarget } from 'typescript';
 import { parseVoiceItems } from './voice-parser';
 import { createProductSuggestions } from './product-suggestions';
@@ -22,6 +22,56 @@ const products = [
   { id: 'other-salt', name: 'Aashirvaad Salt 1 kg', localName: 'आशीर्वाद नमक', baseUnit: 'pc', packetWeight: 1, packetUnit: 'kg' },
 ];
 const matcher = createVoiceProductMatcher(products);
+
+const basmatiProducts = [
+  { id: 'rice-5', name: 'Basmati Chawal 5kg', localName: 'बासमती चावल 5 किलो', baseUnit: 'pkt', price: 460 },
+  { id: 'rice-half', name: 'Basmati Chawal 500g', baseUnit: 'pkt', price: 50 },
+  { id: 'rice-1', name: 'Basmati Chawal 1kg', localName: 'बासमती चावल 1 किलो', baseUnit: 'pkt', price: 95 },
+  { id: 'ordinary', name: 'Chawal Khula', localName: 'चावल खुला', baseUnit: 'kg', price: 80 },
+];
+
+test('total weight ranks exact packs, loose, exact smaller combinations and oversized packs', () => {
+  const exact = { id: 'rice-2', name: 'Basmati Chawal 2kg', baseUnit: 'pkt', price: 185 };
+  const loose = { id: 'rice-loose', name: 'Basmati Chawal Khula', baseUnit: 'kg', price: 90 };
+  const request = parseVoiceItems('बासमती चावल 2 किलो')[0];
+  for (const catalog of [[...basmatiProducts, loose, exact], [exact, loose, ...basmatiProducts].reverse()]) {
+    const engine = createVoiceProductMatcher(catalog);
+    assert.equal(engine.match(request, 'rice-5').product?.id, 'rice-2');
+    assert.deepEqual(createProductSuggestions(catalog).suggest({ name: request.name, parsedQty: 2, parsedUnit: 'kg' }).brandVariants.map(p => p.id),
+      ['rice-2', 'rice-loose', 'rice-1', 'rice-half', 'rice-5']);
+    assert.equal(createVoiceProductMatcher(catalog.filter(p => p.id !== 'rice-2')).match(request).product?.id, 'rice-loose');
+  }
+});
+
+test('total weight selects whole smaller packets and keeps ranked alternatives after selection', () => {
+  const engine = createVoiceProductMatcher(basmatiProducts);
+  for (const spoken of ['basmati chawal 2 kilo', 'बासमती चावल दो किलो']) {
+    const request = parseVoiceItems(spoken)[0];
+    const result = engine.match(request);
+    assert.equal(result.product?.id, 'rice-1', spoken);
+    assert.equal(result.packetCount, 2);
+    assert.deepEqual(voiceQuantityForProduct(request.quantity, request.unit, result.product!, result.packetCount), { quantity: 2, unit: 'pkt' });
+    assert.equal(totalQuantityPlan(2, 'kg', result.product!)?.label, '2 × 1 kg = 2 kg');
+    assert.deepEqual(createProductSuggestions(basmatiProducts).suggest({ productId: 'rice-1', spokenWord: request.name, parsedQty: 2, parsedUnit: 'kg', packetCount: 2 }).brandVariants.map(p => p.id), ['rice-half', 'rice-5']);
+    const half = totalQuantityPlan(2, 'kg', basmatiProducts[1])!;
+    assert.equal(half.count, 4);
+    assert.deepEqual(voiceQuantityForProduct(2, 'kg', basmatiProducts[1], half.count), { quantity: 4, unit: 'pkt' });
+  }
+});
+
+test('total quantities never auto-round, split sealed packets, cross dimensions or lose identity', () => {
+  const engine = createVoiceProductMatcher(basmatiProducts.filter(p => p.id !== 'rice-half'));
+  for (const request of [
+    { name: 'basmati chawal', quantity: 1.5, unit: 'kg' },
+    { name: 'basmati chawal', quantity: 2, unit: 'l' },
+    { name: 'unknown basmati chawal', quantity: 2, unit: 'kg' },
+  ]) assert.equal(engine.match(request).product, null);
+  assert.match(engine.match({ name: 'basmati chawal', quantity: 1.5, unit: 'kg' }).reason, /Product recognized/);
+  const result = createVoiceProductMatcher([{ id: 'oil', name: 'Acme Oil 500ml', baseUnit: 'pkt' }]).match({ name: 'acme oil', quantity: 2, unit: 'l' });
+  assert.equal(result.packetCount, 4);
+  const explicit = createVoiceProductMatcher(basmatiProducts).match(parseVoiceItems('basmati chawal 2 kilo wala 1 packet')[0]);
+  assert.equal(explicit.packetCount, 1); // Explicit individual size is not a total-weight request.
+});
 
 test('exact catalogue tokens exclude phonetic neighbours before saved-choice and price selection', () => {
   const catalog = [
@@ -324,7 +374,9 @@ test('ambiguous sizes require selection; exact requested weight resolves them', 
   assert.equal(sizes.match({ name: 'acme tea 250g' }).product?.id, 'large');
   assert.equal(sizes.match({ name: 'acme tea', unit: 'g', quantity: 250 }).product?.id, 'large');
   assert.equal(sizes.match({ name: 'acme tea', unit: 'ml', quantity: 250 }).product, null);
-  assert.equal(sizes.match({ name: 'acme tea', unit: 'g', quantity: 200 }).product, null);
+  const total = sizes.match({ name: 'acme tea', unit: 'g', quantity: 200 });
+  assert.equal(total.product?.id, 'small');
+  assert.equal(total.packetCount, 2);
 });
 
 test('generic words and duplicate products are uncertain, not high confidence', () => {
@@ -396,12 +448,30 @@ test('actual billing pipeline preserves quantity, rejects unknown names, and upd
   assert.ok(start >= 0 && end > start);
   const javascript = transpileModule(source.slice(start, end), { compilerOptions: { target: ScriptTarget.ES2022 } }).outputText;
   const processVoiceText = new Function('parseVoiceItems', 'voiceQuantityForProduct', 'voiceMatcherRef', 'matchCacheRef', '_isDebug', 'normalizeVoiceName', 'debugDataRef', `${javascript}; return processVoiceTextToItems;`)(
-    parseVoiceItems, voiceQuantityForProduct, { current: createVoiceProductMatcher([...products, ...pricedProducts, ...pulseProducts, ...packagedProducts]) }, { current: new Map() }, false, normalizeVoiceName, { current: {} },
+    parseVoiceItems, voiceQuantityForProduct, { current: createVoiceProductMatcher([...products, ...pricedProducts, ...pulseProducts, ...packagedProducts, ...basmatiProducts]) }, { current: new Map() }, false, normalizeVoiceName, { current: {} },
   );
   const totalStart = source.indexOf('  const calculateItemTotal =');
   const totalEnd = source.indexOf('  const handlePriceUpdate =', totalStart);
   const totalJavascript = transpileModule(source.slice(totalStart, totalEnd), { compilerOptions: { target: ScriptTarget.ES2022 } }).outputText;
   const calculateTotal = new Function('shop', `${totalJavascript}; return calculateItemTotal;`)(null);
+  const rice = processVoiceText('बासमती चावल 2 किलो').items[0];
+  assert.equal(rice.productId, 'rice-1');
+  assert.equal(rice.quantity, 2);
+  assert.equal(rice.unit, 'pkt');
+  assert.equal(rice.packetCount, 2);
+  assert.equal(calculateTotal(rice), 190);
+  const overridesStart = source.indexOf('const buildOverrides = (sug: any) =>');
+  const overridesEnd = source.indexOf('// Helper: pin a product', overridesStart);
+  const overridesJs = transpileModule(source.slice(overridesStart, overridesEnd), { compilerOptions: { target: ScriptTarget.ES2022 } }).outputText;
+  const choose = new Function('item', 'recalculateQtyAndUnit', 'totalQuantityPlan', `${overridesJs}; return buildOverrides;`)(rice, voiceQuantityForProduct, totalQuantityPlan);
+  const halfRice = { ...rice, ...choose(basmatiProducts[1]) };
+  assert.equal(halfRice.packetCount, 4);
+  assert.equal(halfRice.quantity, 4);
+  assert.equal(calculateTotal(halfRice), 200);
+  const largerRice = { ...rice, ...choose(basmatiProducts[0]) };
+  assert.equal(largerRice.quantity, 1); // Explicitly chosen alternative, never 0.4 sealed packets.
+  assert.equal(largerRice.isApproximateSize, true);
+  assert.equal(calculateTotal(largerRice), 460);
   for (const spoken of ['पारले-जी बिस्किट', 'परले-ग बिस्किट दो पैकेट', 'परले-ग बिस्किट दो पैकेट']) {
     const item = processVoiceText(spoken).items[0];
     assert.equal(item.productId, 'parle');
