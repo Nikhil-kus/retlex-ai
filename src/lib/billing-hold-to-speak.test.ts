@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { transpileModule, ScriptTarget } from 'typescript';
 import { parseVoiceItems } from './voice-parser';
 import { createVoiceProductMatcher, voiceQuantityForProduct } from './voice-product-matcher';
+import { canCorrectProductByVoice } from './voice-review';
 
 // Exercise the actual page handlers with browser recognition events under our control.
 const source = readFileSync('src/app/billing/page.tsx', 'utf8');
@@ -22,7 +23,7 @@ function setup() {
     itemOverridesRef: { current: {} }, globalTranscriptRef: { current: '' },
     currentBreathRef: { current: '' }, matchCacheRef: { current: new Map() },
     voiceMatcherRef: { current: createVoiceProductMatcher([{ id: 'lux', name: 'Lux Soap', price: 20, baseUnit: 'pc' }]) },
-    _isDebug: false, parseVoiceItems, voiceQuantityForProduct,
+    _isDebug: false, parseVoiceItems, voiceQuantityForProduct, canCorrectProductByVoice,
     mergeOverlappingStrings: (a: string, b: string) => [a, b].filter(Boolean).join(' '),
     getSuggestions: () => ({ brandVariants: [], sizeVariants: [] }),
     useEffect: (effect: () => () => void) => { scope.cleanup = effect(); },
@@ -124,4 +125,31 @@ test('controls inside the card do not open the mic; keyboard hold stops on key r
   assert.equal(rec.starts, 1);
   h.main.onKeyUp(key);
   assert.equal(rec.stops, 1);
+});
+
+test('recognized names awaiting brand or size choices never activate card correction', () => {
+  const matcher = createVoiceProductMatcher([
+    { id: 'lux', name: 'Lux Soap', baseUnit: 'pc', packetWeight: 100, packetUnit: 'g' },
+    { id: 'nirma', name: 'Nirma Soap', baseUnit: 'pc', packetWeight: 100, packetUnit: 'g' },
+  ]);
+  for (const request of [{ name: 'soap' }, { name: 'lux soap', quantity: 500, unit: 'g' }]) {
+    const decision = matcher.match(request);
+    assert.equal(decision.product, null);
+    const item = { productId: null, confidence: decision.confidence, matchReason: decision.reason, matchCandidateDetails: decision.candidates };
+    assert.equal(canCorrectProductByVoice(item), false);
+    const h = setup();
+    h.scope.reviewItems[1] = item;
+    h.card.onPointerDown(h.pointer());
+    assert.equal(h.scope.recognitionRef.current, null);
+    const element = {};
+    h.card.onKeyDown({ key: ' ', target: element, currentTarget: element, preventDefault() {}, repeat: false });
+    assert.equal(h.scope.recognitionRef.current, null);
+  }
+});
+
+test('voice correction is available for missing or low-confidence identity, not a confident selection', () => {
+  assert.equal(canCorrectProductByVoice({ productId: 'lux', confidence: 'high' }), false);
+  assert.equal(canCorrectProductByVoice({ productId: 'lux', confidence: 'low' }), true);
+  assert.equal(canCorrectProductByVoice({ productId: null, confidence: 'low', matchCandidateDetails: [] }), true);
+  assert.equal(canCorrectProductByVoice({ productId: null, matchReason: 'Choose the brand or pack size' }), false);
 });

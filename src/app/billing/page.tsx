@@ -4,6 +4,7 @@ import Fuse from 'fuse.js';
 import { createProductSuggestions } from '@/lib/product-suggestions';
 import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct } from '@/lib/voice-product-matcher';
 import { parseVoiceItems } from '@/lib/voice-parser';
+import { canCorrectProductByVoice } from '@/lib/voice-review';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -434,6 +435,10 @@ export default function BillingPage() {
 
   const startVoiceInput = (correctionIdx: number | null = null) => {
     if (recognitionRef.current) return;
+    if (correctionIdx !== null && !canCorrectProductByVoice(reviewItems[correctionIdx])) {
+      heldInputRef.current = null;
+      return;
+    }
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -749,7 +754,9 @@ export default function BillingPage() {
           // Do not overwrite another row if this item was removed while recognizing.
           setReviewItems(items => items.map((item, idx) =>
             idx === correctionIdx && item === correctionItem ? updated : item));
-          setVoiceMessage(updated.productId ? 'Product corrected.' : 'Still no reliable match. Hold the card to try again, or choose a suggestion.');
+          setVoiceMessage(updated.productId ? 'Product corrected.' : canCorrectProductByVoice(updated)
+            ? 'Still no reliable match. Hold the card to try again, or choose a suggestion.'
+            : 'Product recognized. Choose the correct brand or pack size from the suggestions.');
         }
     };
 
@@ -1900,10 +1907,10 @@ export default function BillingPage() {
                     {reviewItems.map((item, idx) => (
                       <div
                         key={idx}
-                        {...(!item.productId ? holdToSpeak(idx) : {})}
-                        tabIndex={!item.productId ? 0 : undefined}
-                        aria-label={!item.productId ? `Hold to correct ${item.name}` : undefined}
-                        style={!item.productId ? { touchAction: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } : undefined}
+                        {...(canCorrectProductByVoice(item) ? holdToSpeak(idx) : {})}
+                        tabIndex={canCorrectProductByVoice(item) ? 0 : undefined}
+                        aria-label={canCorrectProductByVoice(item) ? `Hold to correct ${item.name}` : undefined}
+                        style={canCorrectProductByVoice(item) ? { touchAction: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } : undefined}
                         className={`relative rounded-2xl border overflow-hidden transition-all ${
                           isListening && correctingItemIdx === idx
                             ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-300'
@@ -1973,12 +1980,12 @@ export default function BillingPage() {
                             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
                               <p className="text-xs font-semibold text-amber-800">{item.matchReason}</p>
                               <p className="mt-1 text-xs text-amber-800">Check the quantity and unit after choosing a product.</p>
-                              {!item.suggestions?.brandVariants?.length && !item.suggestions?.sizeVariants?.length && (
+                              {canCorrectProductByVoice(item) && !item.suggestions?.brandVariants?.length && !item.suggestions?.sizeVariants?.length && (
                                 <p className="mt-1 text-xs text-amber-800">Hold this card and repeat the full product name. Release to update this item.</p>
                               )}
                             </div>
                           )}
-                          {!item.productId && (
+                          {canCorrectProductByVoice(item) && (
                             <p className="mt-2 text-xs font-semibold text-rose-600" aria-live="polite">
                               {isListening && correctingItemIdx === idx ? 'Listening… release to correct this product' : 'Hold card to correct by voice'}
                             </p>
