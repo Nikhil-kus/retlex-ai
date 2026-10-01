@@ -1,4 +1,5 @@
 import { createVoiceProductMatcher, normalizeVoiceName, type VoiceProduct } from './voice-product-matcher';
+import { groceryMeaning } from './grocery-meaning';
 
 type Product = VoiceProduct & { category?: string; price?: number };
 type ReviewItem = { productId?: string | null; name?: string; spokenWord?: string; sourceRawText?: string; parsedQty?: number; parsedUnit?: string; requestedPrice?: number };
@@ -38,8 +39,10 @@ const ingredients: [string, RegExp][] = [
   ['sunflower', /\bsunflower\b|सूरजमुखी/iu],
 ];
 function profile(text: string) {
-  return { kind: kinds.find(([, pattern]) => pattern.test(text))?.[0],
-    ingredients: ingredients.filter(([, pattern]) => pattern.test(text)).map(([name]) => name).join('|') };
+  const meaning = groceryMeaning(text);
+  return { kind: meaning.pulse ? meaning.form : kinds.find(([, pattern]) => pattern.test(text))?.[0],
+    ingredients: [...ingredients.filter(([, pattern]) => pattern.test(text)).map(([name]) => name),
+      ...(meaning.pulse ? [meaning.pulse] : [])].join('|') };
 }
 function form(p: Product) {
   const text = `${p.name} ${p.localName || ''}`;

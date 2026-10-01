@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct, type VoiceProduct } from './voice-product-matcher';
 import { transpileModule, ScriptTarget } from 'typescript';
 import { parseVoiceItems } from './voice-parser';
+import { createProductSuggestions } from './product-suggestions';
 
 const products = [
   { id: 'parle', name: 'ParleG Biscuit', localName: 'पारले-जी बिस्किट', price: 5, baseUnit: 'pc' },
@@ -20,6 +21,62 @@ const products = [
   { id: 'other-salt', name: 'Aashirvaad Salt 1 kg', localName: 'आशीर्वाद नमक', baseUnit: 'pc', packetWeight: 1, packetUnit: 'kg' },
 ];
 const matcher = createVoiceProductMatcher(products);
+
+// Relevant product names, aliases and sale units from the reported shop catalogue.
+const pulseProducts = [
+  { id: 'kabuli', name: 'Kabuli Chana Khula', localName: 'काबुली चना खुला',
+    localAliases: ['छोला', 'चोला', 'काबुली चना', 'सफेद चना', 'छोले', 'काबुली छोले', 'काबुली चने'],
+    price: 120, baseUnit: 'kg', baseQuantity: 1 },
+  { id: 'lobia', name: 'Lobiya Khula', localName: 'लोबिया खुला',
+    localAliases: ['लोबिया', 'खुला लोबिया', 'चौला', 'चौलाई', 'सफेद लोबिया'], price: 90, baseUnit: 'kg', baseQuantity: 1 },
+  { id: 'pushp-masala', name: 'Pushp Chhole Masala 100g', localName: 'पुष्प छोले मसाला',
+    localAliases: ['छोले मसाला', 'पुष्प मसाला', 'पुष्प छोले', 'छोले का मसाला'], price: 0, baseUnit: 'pkt', baseQuantity: 100, packetWeight: 100, packetUnit: 'g' },
+  { id: 'catch-masala', name: 'Catch Chhole Masala 50g', localName: 'कैच छोले मसाला',
+    localAliases: ['छोले मसाला', 'कैच छोले', 'कैच मसाला', 'छोले का मसाला'], price: 42, baseUnit: 'g', baseQuantity: 50, packetWeight: 50, packetUnit: 'g' },
+];
+
+test('bare chhole selects whole chickpeas and excludes lobia and masala before ranking', () => {
+  for (const catalog of [pulseProducts, [...pulseProducts].reverse()]) {
+    const engine = createVoiceProductMatcher(catalog);
+    for (const spoken of ['छोले एक किलो', 'chhole 1 kg', 'chole 1 kg', 'छोला आधा किलो', 'छोले', 'छोले 100 ग्राम']) {
+      const request = parseVoiceItems(spoken)[0];
+      const result = engine.match(request, 'lobia');
+      assert.equal(result.product?.id, 'kabuli', spoken);
+      assert.deepEqual(result.candidates.map(c => c.product.id), ['kabuli'], spoken);
+      const suggestions = createProductSuggestions(catalog).suggest({ name: request.name, parsedQty: request.quantity, parsedUnit: request.unit });
+      assert.deepEqual(suggestions.brandVariants.map(p => p.id), ['kabuli'], spoken);
+    }
+    for (const spoken of ['लोबिया एक किलो', 'चौला एक किलो', 'lobia 1 kg']) {
+      assert.equal(engine.match(parseVoiceItems(spoken)[0]).product?.id, 'lobia', spoken);
+    }
+  }
+});
+
+test('explicit masala and genuine chickpea ambiguity still require the correct product', () => {
+  const engine = createVoiceProductMatcher(pulseProducts);
+  assert.equal(engine.match(parseVoiceItems('कैच छोले मसाला 50 ग्राम')[0]).product?.id, 'catch-masala');
+  const masala = engine.match(parseVoiceItems('छोले मसाला 100 ग्राम')[0]);
+  assert.equal(masala.product?.id, 'pushp-masala');
+  assert.ok(masala.candidates.every(c => /Masala/.test(c.product.name)));
+  assert.equal(engine.match(parseVoiceItems('unknownbrand छोले एक किलो')[0]).product, null);
+  assert.equal(createVoiceProductMatcher(pulseProducts.slice(1)).match(parseVoiceItems('छोले एक किलो')[0]).product, null);
+  const duplicate = createVoiceProductMatcher([...pulseProducts, { ...pulseProducts[0], id: 'other-kabuli' }]);
+  assert.equal(duplicate.match(parseVoiceItems('छोले एक किलो')[0]).product, null);
+});
+
+test('aliases, price and even a matching kilo size cannot substitute a different grocery type', () => {
+  const wrong = [
+    { ...pulseProducts[1], localAliases: ['छोले'], price: 120 },
+    { ...pulseProducts[2], name: 'Chhole Masala 1kg', localAliases: ['छोले'], price: 120, packetWeight: 1, packetUnit: 'kg' },
+    { id: 'flour', name: 'Chickpea Flour', localAliases: ['छोले'], baseUnit: 'kg', baseQuantity: 1, price: 120 },
+  ];
+  const engine = createVoiceProductMatcher([pulseProducts[0], ...wrong]);
+  for (const spoken of ['छोले एक किलो', 'छोले ₹120']) {
+    assert.equal(engine.match(parseVoiceItems(spoken)[0]).product?.id, 'kabuli');
+  }
+  const suggestions = createProductSuggestions([pulseProducts[0], ...wrong]).suggest({ productId: 'kabuli', spokenWord: 'छोले' });
+  assert.deepEqual(suggestions, { brandVariants: [], sizeVariants: [] });
+});
 
 const pricedProducts = [
   { id: 'sugar', name: 'Sugar Loose', localName: 'चीनी', price: 45, baseUnit: 'kg', baseQuantity: 1 },
@@ -221,7 +278,7 @@ test('actual billing pipeline preserves quantity, rejects unknown names, and upd
   assert.ok(start >= 0 && end > start);
   const javascript = transpileModule(source.slice(start, end), { compilerOptions: { target: ScriptTarget.ES2022 } }).outputText;
   const processVoiceText = new Function('parseVoiceItems', 'voiceQuantityForProduct', 'voiceMatcherRef', 'matchCacheRef', '_isDebug', 'normalizeVoiceName', 'debugDataRef', `${javascript}; return processVoiceTextToItems;`)(
-    parseVoiceItems, voiceQuantityForProduct, { current: createVoiceProductMatcher([...products, ...pricedProducts]) }, { current: new Map() }, false, normalizeVoiceName, { current: {} },
+    parseVoiceItems, voiceQuantityForProduct, { current: createVoiceProductMatcher([...products, ...pricedProducts, ...pulseProducts]) }, { current: new Map() }, false, normalizeVoiceName, { current: {} },
   );
   for (const spoken of ['पारले-जी बिस्किट', 'परले-ग बिस्किट दो पैकेट', 'परले-ग बिस्किट दो पैकेट']) {
     const item = processVoiceText(spoken).items[0];
@@ -254,6 +311,12 @@ test('actual billing pipeline preserves quantity, rejects unknown names, and upd
   assert.equal(silk[0].price, 55);
   assert.equal(silk[0].quantity, 3);
   assert.equal(silk[0].needsMatchReview, false);
+  const chickpeas = processVoiceText('छोले एक किलो').items;
+  assert.equal(chickpeas.length, 1);
+  assert.equal(chickpeas[0].productId, 'kabuli');
+  assert.equal(chickpeas[0].quantity, 1);
+  assert.equal(chickpeas[0].unit, 'kg');
+  assert.equal(chickpeas[0].needsMatchReview, false);
 });
 
 test('exact catalogue names never automatically switch to a different product', () => {

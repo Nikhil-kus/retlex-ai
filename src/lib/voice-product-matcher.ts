@@ -1,4 +1,5 @@
 import { transliterateHindiToHinglish } from './transliterate';
+import { compatibleGroceryMeaning, groceryMeaning, normalizePulseNames } from './grocery-meaning';
 
 export interface VoiceProduct {
   id: string;
@@ -54,7 +55,7 @@ function hasBundleSize(text: string) {
 const measurePattern = /(\d+(?:\.\d+)?)\s*(kg|kilograms?|g|gm|grams?|ml|l|ltr|litres?|liters?|किलो|ग्राम|लीटर)(?=$|[^\p{L}\p{M}])/iu;
 
 export function normalizeVoiceName(text: string): string {
-  const cleaned = text.normalize('NFKC').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()
+  const cleaned = normalizePulseNames(text.replace(/([a-z])([A-Z])/g, '$1 $2'))
     .replace(/[०-९]/g, digit => String(digit.charCodeAt(0) - 0x966))
     .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ').trim();
   return cleaned.split(/\s+/).filter(Boolean).map(token =>
@@ -133,6 +134,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
     product,
     bulk: bulkRequestPattern.test(`${product.name} ${product.localName || ''}`) || hasBundleSize(product.name),
     measure: productMeasure(product),
+    meaning: groceryMeaning(`${product.name} ${product.localName || ''}`),
     fields: [
       { field: 'name', text: product.name }, { field: 'localName', text: product.localName || '' },
       ...(product.localAliases || []).map(text => ({ field: 'alias', text })),
@@ -146,6 +148,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
 
   return {
     match(request: MatchRequest, preferredProductId?: string): VoiceMatch<T> {
+      const requestedMeaning = groceryMeaning(request.name);
       const tokens = identity(request.name).split(' ').filter(Boolean);
       if (!tokens.length) return { product: null, confidence: 'low', reason: 'Say a product name', candidates: [] };
       const lookup = tokens.map(token => new Map(vocabulary.map(word => [word, similarity(token, word)])));
@@ -162,7 +165,9 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       const requested = namedSize ? measure(Number(namedSize[1]), namedSize[2])
         : /^(kg|g|ml|l|ltr)$/.test(request.unit || '') ? measure(request.quantity || 1, request.unit!) : null;
 
-      const ranked: VoiceCandidate<T>[] = entries.map(entry => {
+      const ranked: VoiceCandidate<T>[] = entries
+        .filter(entry => compatibleGroceryMeaning(requestedMeaning, entry.meaning))
+        .map(entry => {
         let best = { score: 0, coverage: 0, matchedField: '', missingTokens: tokens };
         let identityComplete = false;
         for (const field of entry.fields) {
