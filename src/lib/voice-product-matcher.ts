@@ -50,12 +50,6 @@ const words: Record<string, string> = {
   'बिस्किट': 'biscuit', biscuits: 'biscuit', 'जी': 'g', 'जि': 'g', 'ग': 'g', ji: 'g', jee: 'g',
   'बी': 'b', 'सी': 'c', 'डी': 'd', 'टी': 't', 'पी': 'p', 'ए': 'a',
 };
-const consonants: Record<string, string> = {
-  'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'n', 'च': 'ch', 'छ': 'ch',
-  'ज': 'j', 'झ': 'jh', 'ञ': 'n', 'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
-  'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n', 'प': 'p', 'फ': 'f', 'ब': 'b',
-  'भ': 'bh', 'म': 'm', 'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h',
-};
 const bulkRequestPattern = /\b(?:bulk|carton|wholesale)\b|बल्क|कार्टन|थोक/i;
 function hasBundleSize(text: string) {
   const count = text.match(/\b(\d+)\s*(?:pcs?|pieces?|packs?)\b/i);
@@ -72,8 +66,11 @@ export function normalizeVoiceName(text: string): string {
 }
 
 function phonetic(token: string) {
-  return [...token].map(char => consonants[char] ?? char).join('')
-    .replace(/[\u0900-\u097f]/g, '').replace(/[aeiou]/g, '')
+  // Unmapped Hindi words still contain vowels, matras and nasal marks. Dropping
+  // those characters can collapse unrelated identities (अंजीर -> jr -> jeera).
+  // Only use the Latin sound heuristic after complete transliteration.
+  if (!/^[a-z]+$/.test(token)) return '';
+  return token.replace(/[aeiou]/g, '')
     .replace(/ph/g, 'f').replace(/w/g, 'v').replace(/(.)\1+/g, '$1');
 }
 
@@ -93,6 +90,7 @@ function similarity(a: string, b: string) {
   if (/\d/.test(a + b) || a.length < 3 || b.length < 3) return 0;
   const ap = phonetic(a), bp = phonetic(b);
   if (ap.length >= 2 && ap === bp) return 0.9;
+  if (/\p{Script=Devanagari}/u.test(a) !== /\p{Script=Devanagari}/u.test(b)) return 0;
   if (Math.abs(a.length - b.length) > 2) return 0;
   const edits = distance(a, b), longest = Math.max(a.length, b.length);
   return edits <= (longest >= 7 ? 2 : 1) ? 1 - edits / longest : 0;
@@ -160,6 +158,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
     ].filter(f => f.text).map(f => ({ ...f, tokens: identity(f.text).split(' ').filter(Boolean) })),
   }));
   const vocabulary = [...new Set(entries.flatMap(e => e.fields.flatMap(f => f.tokens)))];
+  const knownTokens = new Set(vocabulary);
   const documentFrequency = new Map<string, number>();
   for (const entry of entries) for (const token of new Set(entry.fields.flatMap(f => f.tokens))) {
     documentFrequency.set(token, (documentFrequency.get(token) || 0) + 1);
@@ -170,7 +169,11 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       const requestedMeaning = groceryMeaning(request.name);
       const tokens = identity(request.name).split(' ').filter(Boolean);
       if (!tokens.length) return { product: null, confidence: 'low', reason: 'Say a product name', candidates: [] };
-      const lookup = tokens.map(token => new Map(vocabulary.map(word => [word, similarity(token, word)])));
+      // An exact catalogue word is an identity anchor, not a typo. Keep fuzzy
+      // recovery for unknown spellings without appending sound-alike products
+      // to a valid name. Resolve this before price/size/preference selection.
+      const lookup = tokens.map(token => new Map(vocabulary.map(word =>
+        [word, knownTokens.has(token) ? Number(token === word) : similarity(token, word)])));
       // Rare words (usually brand/variant) carry more weight than category words.
       const weights = tokens.map((_, i) => {
         const frequency = Math.max(1, ...vocabulary.filter(w => (lookup[i].get(w) || 0) >= 0.85).map(w => documentFrequency.get(w) || 1));

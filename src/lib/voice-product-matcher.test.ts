@@ -23,6 +23,35 @@ const products = [
 ];
 const matcher = createVoiceProductMatcher(products);
 
+test('exact catalogue tokens exclude phonetic neighbours before saved-choice and price selection', () => {
+  const catalog = [
+    { id: 'cream', name: 'Cream', price: 10 },
+    { id: 'churma', name: 'Churma', price: 20 },
+    { id: 'tea', name: 'Tea', price: 10 },
+    { id: 'tata', name: 'Tata', price: 20 },
+    { id: 'mala', name: 'Mala', price: 10 },
+    { id: 'mela', name: 'Mela', price: 20 },
+  ];
+  const engine = createVoiceProductMatcher(catalog);
+  for (const product of catalog) {
+    const other = catalog.find(p => p.id !== product.id)!;
+    assert.deepEqual(engine.match({ name: product.name }, other.id).candidates.filter(c => c.eligible).map(c => c.product.id), [product.id]);
+  }
+  assert.equal(engine.match({ name: 'Mala', requestedPrice: 20 }, 'mela').product, null);
+});
+
+test('unmapped Hindi nasal marks are not discarded into a different product identity', () => {
+  const engine = createVoiceProductMatcher([{ id: 'jeera', name: 'Jeera', localName: 'जीरा' }]);
+  // This spelling intentionally has no dictionary entry: exercise the general
+  // Unicode safeguard rather than only the known anjeer transliteration.
+  assert.equal(engine.match({ name: 'अँजीर' }, 'jeera').product, null);
+  assert.ok(engine.match({ name: 'अँजीर' }).candidates.every(c => !c.eligible));
+});
+
+test('unknown Latin spellings still recover likely typos', () => {
+  assert.equal(createVoiceProductMatcher([{ id: 'dettol', name: 'Dettol Soap' }]).match({ name: 'dettoll soap' }).product?.id, 'dettol');
+});
+
 const packagedProducts = [
   { id: 'poha-loose', name: 'Poha Khula', localName: 'पोहा खुला', price: 40, baseUnit: 'kg', baseQuantity: 1 },
   { id: 'poha-500', name: 'Poha 500g', localName: 'पोहा', price: 38, baseUnit: 'pkt', baseQuantity: 1, packetWeight: 500, packetUnit: 'g' },

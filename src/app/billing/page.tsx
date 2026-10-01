@@ -57,6 +57,7 @@ export default function BillingPage() {
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);
   const heldInputRef = useRef<number | string | null>(null);
+  const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [correctingItemIdx, setCorrectingItemIdx] = useState<number | null>(null);
   const [voiceMessage, setVoiceMessage] = useState('');
   const globalTranscriptRef = useRef("");
@@ -729,7 +730,7 @@ export default function BillingPage() {
         }
         // ── [/PROVE] ─────────────────────────────────────────────────────────
         currentBreathRef.current = "";
-        if (isListeningRef.current && heldInputRef.current !== null) {
+        if (isListeningRef.current && (heldInputRef.current !== null || releaseTimerRef.current !== null)) {
           try { recognition.start(); return; } catch (_) { stopVoiceInput(); }
         }
         recognitionRef.current = null;
@@ -774,12 +775,23 @@ export default function BillingPage() {
   };
 
   const stopVoiceInput = () => {
+    if (releaseTimerRef.current !== null) {
+      clearTimeout(releaseTimerRef.current);
+      releaseTimerRef.current = null;
+    }
     heldInputRef.current = null;
     isListeningRef.current = false;
     setIsListening(false);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
     }
+  };
+
+  const releaseVoiceInput = () => {
+    heldInputRef.current = null;
+    if (!isListeningRef.current || releaseTimerRef.current !== null) return;
+    // Keep the last half-second of speech, including results delivered after release.
+    releaseTimerRef.current = setTimeout(stopVoiceInput, 500);
   };
 
   const holdToSpeak = (correctionIdx: number | null = null) => ({
@@ -792,7 +804,7 @@ export default function BillingPage() {
       startVoiceInput(correctionIdx);
     },
     onPointerUp: (event: React.PointerEvent<HTMLElement>) => {
-      if (heldInputRef.current === event.pointerId) stopVoiceInput();
+      if (heldInputRef.current === event.pointerId) releaseVoiceInput();
     },
     onPointerCancel: (event: React.PointerEvent<HTMLElement>) => {
       if (heldInputRef.current === event.pointerId) stopVoiceInput();
@@ -814,7 +826,7 @@ export default function BillingPage() {
     onKeyUp: (event: React.KeyboardEvent<HTMLElement>) => {
       if (event.target === event.currentTarget && heldInputRef.current === event.key) {
         event.preventDefault();
-        stopVoiceInput();
+        releaseVoiceInput();
       }
     },
     onBlur: () => { if (typeof heldInputRef.current === 'string') stopVoiceInput(); },
@@ -822,19 +834,26 @@ export default function BillingPage() {
 
   useEffect(() => {
     const release = (event: PointerEvent) => {
+      if (heldInputRef.current === event.pointerId) releaseVoiceInput();
+    };
+    const cancel = (event: PointerEvent) => {
       if (heldInputRef.current === event.pointerId) stopVoiceInput();
     };
     const hide = () => { if (document.hidden) stopVoiceInput(); };
     window.addEventListener('pointerup', release);
-    window.addEventListener('pointercancel', release);
+    window.addEventListener('pointercancel', cancel);
     window.addEventListener('blur', stopVoiceInput);
     document.addEventListener('visibilitychange', hide);
     return () => {
       window.removeEventListener('pointerup', release);
-      window.removeEventListener('pointercancel', release);
+      window.removeEventListener('pointercancel', cancel);
       window.removeEventListener('blur', stopVoiceInput);
       document.removeEventListener('visibilitychange', hide);
       heldInputRef.current = null;
+      if (releaseTimerRef.current !== null) {
+        clearTimeout(releaseTimerRef.current);
+        releaseTimerRef.current = null;
+      }
       isListeningRef.current = false;
       const recognition = recognitionRef.current;
       recognitionRef.current = null;

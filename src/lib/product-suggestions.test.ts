@@ -23,6 +23,30 @@ const products = [
 const engine = createProductSuggestions(products);
 const ids = (items: { id: string }[]) => items.map(p => p.id).sort();
 
+const figProducts = [
+  { id: 'fig-loose', name: 'Anjeer Khula', localName: 'अंजीर खुला', price: 55, baseUnit: 'kg' },
+  { id: 'fig-250', name: 'Anjeer Packet 250g', localName: 'अंजीर पैकेट 250g', price: 145 },
+  { id: 'fig-500', name: 'Anjeer Packet 500g', localName: 'अंजीर पैकेट 500g', price: 280 },
+];
+
+test('anjeer suggestions contain only figs, even across a long cumin-heavy catalogue', () => {
+  const saved = JSON.parse(readFileSync('krishna-products-catalog.json', 'utf8'));
+  for (const catalog of [[...saved, ...figProducts], [...figProducts, ...saved].reverse()]) {
+    const engine = createProductSuggestions(catalog);
+    for (const name of ['अंजीर', 'अंजिर', 'anjeer']) {
+      assert.deepEqual(ids(engine.suggest({ name }).brandVariants), ids(figProducts), name);
+      assert.deepEqual(ids(engine.suggest({ name, parsedQty: 0.5, parsedUnit: 'kg' }).brandVariants), ids(figProducts), name);
+    }
+    assert.deepEqual(ids(engine.suggest({ name: 'अंजीर', saleForm: 'packet' }).brandVariants), ['fig-250', 'fig-500']);
+    assert.deepEqual(ids(engine.suggest({ name: 'अंजीर', requestedPrice: 145 }).brandVariants), ['fig-250']);
+  }
+});
+
+test('out-of-stock anjeer never falls back to cumin recommendations', () => {
+  const catalog = JSON.parse(readFileSync('krishna-products-catalog.json', 'utf8'));
+  assert.deepEqual(createProductSuggestions(catalog).suggest({ name: 'अंजीर' }).brandVariants, []);
+});
+
 test('price requests show matching-price variants rather than hiding them behind other sizes', () => {
   const catalog = Array.from({ length: 12 }, (_, i) => ({ id: `soap-${i}`, name: `Dettol Soap ${i + 1}00g`, price: i < 10 ? 68 : 42 }));
   const choices = createProductSuggestions(catalog).suggest({ name: 'Dettol Soap', requestedPrice: 42 });

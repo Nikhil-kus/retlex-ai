@@ -14,9 +14,25 @@ const compile = (start: string, end: string) => transpileModule(
 ).outputText;
 
 function setup() {
+  let now = 0;
+  let nextTimer = 0;
+  const timers = new Map<number, { at: number; callback: () => void }>();
+  const advance = (ms: number) => {
+    now += ms;
+    for (const [id, timer] of timers) {
+      if (timer.at <= now) { timers.delete(id); timer.callback(); }
+    }
+  };
   const unchanged = { name: 'Existing', productId: 'existing', quantity: 1 };
   const original = { name: 'wrong name', productId: null, quantity: 3, unit: 'pc', parsedQty: 3, parsedUnit: 'pc', hasExplicitQty: true };
   const scope: any = {
+    releaseTimerRef: { current: null },
+    setTimeout: (callback: () => void, ms: number) => {
+      const id = ++nextTimer;
+      timers.set(id, { at: now + ms, callback });
+      return id;
+    },
+    clearTimeout: (id: number) => timers.delete(id),
     reviewItems: [unchanged, original],
     recognitionRef: { current: null }, isListeningRef: { current: false },
     heldInputRef: { current: null }, baseReviewItemsRef: { current: [] },
@@ -51,7 +67,7 @@ function setup() {
     currentTarget: { setPointerCapture() {} }, target: { closest: () => interactive },
   });
   const speak = (text: string) => scope.recognitionRef.current.onresult({ results: [{ 0: { transcript: text }, isFinal: true }] });
-  return { scope, card, main, pointer, speak, listeners, unchanged, original };
+  return { scope, card, main, pointer, speak, listeners, unchanged, original, advance };
 }
 
 test('release stops the main microphone and a delayed permission grant cannot reopen it', () => {
@@ -62,6 +78,11 @@ test('release stops the main microphone and a delayed permission grant cannot re
   h.main.onPointerUp(h.pointer(2));
   assert.equal(rec.stops, 0);
   h.main.onPointerUp(h.pointer());
+  h.main.onLostPointerCapture(h.pointer());
+  h.listeners.pointerup(h.pointer());
+  h.advance(499);
+  assert.equal(rec.stops, 0);
+  h.advance(1);
   assert.equal(rec.stops, 1);
   rec.onstart();
   assert.equal(rec.aborts, 1);
@@ -77,6 +98,11 @@ test('card correction waits for release, replaces only that item, and preserves 
   assert.equal(h.scope.reviewItems[1], h.original);
   const rec = h.scope.recognitionRef.current;
   h.card.onPointerUp(h.pointer());
+  h.advance(250);
+  h.speak('lux soap');
+  assert.equal(rec.stops, 0);
+  h.advance(250);
+  assert.equal(rec.stops, 1);
   // Browsers may deliver the final transcript after stop().
   h.speak('lux soap');
   rec.onend();
@@ -93,6 +119,7 @@ test('correction honors spoken quantity; silence and multiple products leave the
     if (phrase) h.speak(phrase);
     const rec = h.scope.recognitionRef.current;
     h.card.onPointerUp(h.pointer());
+    h.advance(500);
     rec.onend();
     if (phrase.startsWith('2')) assert.equal(h.scope.reviewItems[1].quantity, 2);
     else assert.equal(h.scope.reviewItems[1], h.original);
@@ -124,7 +151,37 @@ test('controls inside the card do not open the mic; keyboard hold stops on key r
   h.main.onKeyDown({ ...key, repeat: true });
   assert.equal(rec.starts, 1);
   h.main.onKeyUp(key);
+  assert.equal(rec.stops, 0);
+  h.advance(500);
   assert.equal(rec.stops, 1);
+});
+
+test('backgrounding and unmount cancel a pending delayed stop', () => {
+  for (const action of ['blur', 'cleanup']) {
+    const h = setup();
+    h.card.onPointerDown(h.pointer());
+    const rec = h.scope.recognitionRef.current;
+    h.card.onPointerUp(h.pointer());
+    if (action === 'cleanup') h.scope.cleanup();
+    else h.listeners.blur();
+    assert.equal(rec.stops + rec.aborts, 1);
+    h.advance(500);
+    assert.equal(rec.stops + rec.aborts, 1);
+  }
+});
+
+test('recognition may restart within the release grace period but never after it', () => {
+  const h = setup();
+  h.main.onPointerDown(h.pointer());
+  const rec = h.scope.recognitionRef.current;
+  h.main.onPointerUp(h.pointer());
+  h.advance(250);
+  rec.onend();
+  assert.equal(rec.starts, 2);
+  h.advance(250);
+  assert.equal(rec.stops, 1);
+  rec.onend();
+  assert.equal(rec.starts, 2);
 });
 
 test('recognized names awaiting brand or size choices never activate card correction', () => {
