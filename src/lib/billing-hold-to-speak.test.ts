@@ -40,11 +40,11 @@ function setup() {
     currentBreathRef: { current: '' }, matchCacheRef: { current: new Map() },
     voiceMatcherRef: { current: createVoiceProductMatcher([{ id: 'lux', name: 'Lux Soap', price: 20, baseUnit: 'pc' }]) },
     _isDebug: false, parseVoiceItems, voiceQuantityForProduct, canCorrectProductByVoice,
-    mergeOverlappingStrings: (a: string, b: string) => [a, b].filter(Boolean).join(' '),
+    shop: null, openSuggestionIdxRef: { current: null },
     getSuggestions: () => ({ brandVariants: [], sizeVariants: [] }),
     useEffect: (effect: () => () => void) => { scope.cleanup = effect(); },
   };
-  for (const name of ['setCorrectingItemIdx', 'setVoiceMessage', 'setFinalTranscript', 'setSelectedBrandPerItem', 'setOpenSuggestionIdx', 'setIsListening', 'setMode']) {
+  for (const name of ['setCorrectingItemIdx', 'setVoiceMessage', 'setFinalTranscript', 'setSelectedBrandPerItem', 'setOpenSuggestionIdx', 'setIsListening', 'setMode', 'setIsReviewing', 'setPerfStats']) {
     scope[name] = (value: any) => { scope[name + 'Value'] = value; };
   }
   scope.setReviewItems = (update: any) => { scope.reviewItems = typeof update === 'function' ? update(scope.reviewItems) : update; };
@@ -58,6 +58,7 @@ function setup() {
   }
   scope.window = { ...surface, SpeechRecognition: Recognition };
   scope.document = { ...surface, hidden: false };
+  scope.joinSpeechFragments = new Function('scope', `with(scope) { ${compile('  const joinSpeechFragments =', '  const recalculateQtyAndUnit =')} return joinSpeechFragments; }`)(scope);
   scope.processVoiceTextToItems = new Function('scope', `with(scope) { ${compile('  const processVoiceTextToItems =', '  const getSuggestions =')} return processVoiceTextToItems; }`)(scope);
   const handlers = new Function('scope', `with(scope) { ${compile('  const startVoiceInput =', '  const router =')} return { holdToSpeak }; }`)(scope);
   const card = handlers.holdToSpeak(1);
@@ -209,4 +210,80 @@ test('voice correction is available for missing or low-confidence identity, not 
   assert.equal(canCorrectProductByVoice({ productId: 'lux', confidence: 'low' }), true);
   assert.equal(canCorrectProductByVoice({ productId: null, confidence: 'low', matchCandidateDetails: [] }), true);
   assert.equal(canCorrectProductByVoice({ productId: null, matchReason: 'Choose the brand or pack size' }), false);
+});
+
+function emitSegments(h: ReturnType<typeof setup>, texts: string[], isFinal = true) {
+  h.scope.recognitionRef.current.onresult({
+    results: texts.map(transcript => ({ 0: { transcript }, isFinal })),
+  });
+}
+
+test('split Hindi speech keeps the quantity on one item, including screenshot transcripts', () => {
+  for (const [texts, quantity, unit] of [
+    [['', '', 'गुड़', 'आधा किलो'], 0.5, 'kg'],
+    [['गुड़', 'ढाई किलो'], 2.5, 'kg'],
+    [['नमक', 'तीन पैकेट'], 3, 'pc'],
+    [['गुड़', 'अच्छा आधा किलो'], 0.5, 'kg'],
+    [['गुड़', 'बुलेट ढाई किलो'], 2.5, 'kg'],
+    [['नमक', 'नामक तीन पैकेट'], 3, 'pc'],
+    [['गुड़', '2.5 किलो'], 2.5, 'kg'],
+  ] as const) {
+    const h = setup();
+    h.scope.reviewItems = [];
+    h.scope.voiceMatcherRef.current = createVoiceProductMatcher([
+      { id: 'jaggery', name: 'Jaggery', localName: 'गुड़', baseUnit: 'kg', price: 45 },
+      { id: 'salt', name: 'Salt', localName: 'नमक', baseUnit: 'pc', price: 10 },
+    ]);
+    h.main.onPointerDown(h.pointer());
+    emitSegments(h, [...texts]);
+    assert.equal(h.scope.reviewItems.length, 1, texts.join(' / '));
+    assert.equal(h.scope.reviewItems[0].parsedQty, quantity);
+    assert.equal(h.scope.reviewItems[0].parsedUnit, unit);
+    assert.equal(h.scope.setFinalTranscriptValue, texts.filter(Boolean).join(' '));
+    if (!texts.some(text => /अच्छा|बुलेट|नामक/.test(text))) {
+      assert.equal(h.scope.reviewItems[0].productId, texts.some(text => text === 'नमक') ? 'salt' : 'jaggery');
+      assert.equal(h.scope.reviewItems[0].quantity, quantity);
+    }
+  }
+});
+
+test('interim revisions replace the earlier item instead of retaining it', () => {
+  const h = setup();
+  h.scope.reviewItems = [];
+  h.main.onPointerDown(h.pointer());
+  emitSegments(h, ['गुड़'], false);
+  emitSegments(h, ['नमक तीन पैकेट']);
+  assert.equal(h.scope.reviewItems.length, 1);
+  assert.equal(h.scope.reviewItems[0].parsedQty, 3);
+  assert.equal(h.scope.setFinalTranscriptValue, 'नमक तीन पैकेट');
+});
+
+test('recognition restart mid-phrase does not create a product boundary or duplicate results', () => {
+  const h = setup();
+  h.scope.reviewItems = [];
+  h.main.onPointerDown(h.pointer());
+  emitSegments(h, ['गुड़']);
+  const rec = h.scope.recognitionRef.current;
+  rec.onend();
+  emitSegments(h, ['आधा किलो']);
+  emitSegments(h, ['आधा किलो']);
+  assert.equal(h.scope.reviewItems.length, 1);
+  assert.equal(h.scope.reviewItems[0].parsedQty, 0.5);
+  h.main.onPointerUp(h.pointer());
+  h.advance(500);
+  rec.onend();
+  assert.equal(h.scope.globalTranscriptRef.current, 'गुड़ आधा किलो');
+});
+
+test('explicit conjunctions still separate products and repeated quantities are not discarded', () => {
+  const h = setup();
+  h.scope.reviewItems = [];
+  h.main.onPointerDown(h.pointer());
+  emitSegments(h, ['lux soap 2', 'and mystery widget 3']);
+  assert.equal(h.scope.reviewItems.length, 2);
+  assert.equal(h.scope.reviewItems[0].quantity, 2);
+  assert.equal(h.scope.reviewItems[1].quantity, 3);
+  emitSegments(h, ['lux soap 2', 'lux soap 2']);
+  assert.equal(h.scope.reviewItems.length, 1);
+  assert.equal(h.scope.reviewItems[0].quantity, 4);
 });
