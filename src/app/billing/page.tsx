@@ -137,6 +137,9 @@ export default function BillingPage() {
       const w1 = wordsA[0].toLowerCase();
       const w2 = wordsB[0].toLowerCase();
       if (w1 === w2) return true;
+      if (/\d/.test(w1 + w2)) return false;
+      // Existing grocery synonyms (e.g. चोला / छोले) describe the same identity.
+      if (normalizeVoiceName(w1) === normalizeVoiceName(w2)) return true;
       if (w1.length <= 3 || w2.length <= 3) return false;
       const dist = getLevenshteinDistance(w1, w2);
       // For longer words in Hindi, speech recognition variations can be larger.
@@ -145,17 +148,9 @@ export default function BillingPage() {
       return dist <= maxAllowed;
     }
     
-    // For multi-word phrases, compare the joined string edit distance.
-    // This allows one word to have a slightly larger edit distance if other words match perfectly (anchoring).
-    const s1 = wordsA.join(" ").toLowerCase();
-    const s2 = wordsB.join(" ").toLowerCase();
-    if (s1 === s2) return true;
-    
-    const dist = getLevenshteinDistance(s1, s2);
-    const maxLen = Math.max(s1.length, s2.length);
-    // Allow up to 35% character difference for the entire phrase
-    const maxAllowed = Math.floor(maxLen * 0.35);
-    return dist <= Math.max(2, maxAllowed);
+    // Shared quantities must not hide a different product name. Reconcile each
+    // token rather than letting a long matching suffix erase a short identity.
+    return wordsA.every((word, i) => arePhrasesSimilar([word], [wordsB[i]]));
   };
 
   const mergeOverlappingStrings = (s1Arg: string, s2Arg: string) => {
@@ -175,6 +170,22 @@ export default function BillingPage() {
     
     const words1 = s1.trim().split(/\s+/);
     const words2 = s2.trim().split(/\s+/);
+
+    // Repeated Hindi hypotheses may differ by one vowel mark (नमक / नामक).
+    // Recover only an adjacent boundary word supported by the catalogue. Keep
+    // consonants/nasal marks intact, and never override another known identity.
+    const previousWord = words1[words1.length - 1];
+    const nextWord = words2[0];
+    const consonants = (word: string) => word.replace(/[\u093e-\u094c]/g, '');
+    if (/^[\u0900-\u097f]+$/.test(previousWord + nextWord)
+      && consonants(previousWord).length >= 3
+      && consonants(previousWord) === consonants(nextWord)
+      && getLevenshteinDistance(previousWord, nextWord) === 1) {
+      const knownIdentity = (word: string) => voiceMatcherRef.current?.match({ name: word })
+        .candidates.some(candidate => candidate.identityComplete && candidate.eligible) || false;
+      if (knownIdentity(previousWord) && !knownIdentity(nextWord)) words2[0] = previousWord;
+      else if (knownIdentity(nextWord) && !knownIdentity(previousWord)) words1[words1.length - 1] = nextWord;
+    }
 
     let maxOverlap = 0;
     const minLen = Math.min(words1.length, words2.length);

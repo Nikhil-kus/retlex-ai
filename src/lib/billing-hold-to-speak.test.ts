@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { transpileModule, ScriptTarget } from 'typescript';
 import { parseVoiceItems } from './voice-parser';
-import { createVoiceProductMatcher, voiceQuantityForProduct } from './voice-product-matcher';
+import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct } from './voice-product-matcher';
 import { canCorrectProductByVoice } from './voice-review';
 
 // Exercise the actual page handlers with browser recognition events under our control.
@@ -39,7 +39,7 @@ function setup() {
     itemOverridesRef: { current: {} }, globalTranscriptRef: { current: '' },
     currentBreathRef: { current: '' }, matchCacheRef: { current: new Map() },
     voiceMatcherRef: { current: createVoiceProductMatcher([{ id: 'lux', name: 'Lux Soap', price: 20, baseUnit: 'pc' }]) },
-    _isDebug: false, parseVoiceItems, voiceQuantityForProduct, canCorrectProductByVoice,
+    _isDebug: false, parseVoiceItems, voiceQuantityForProduct, canCorrectProductByVoice, normalizeVoiceName,
     shop: null, openSuggestionIdxRef: { current: null },
     getSuggestions: () => ({ brandVariants: [], sizeVariants: [] }),
     useEffect: (effect: () => () => void) => { scope.cleanup = effect(); },
@@ -226,6 +226,7 @@ function orderSetup() {
     { id: 'rice', name: 'Rice', localName: 'चावल', baseUnit: 'kg' },
     { id: 'tea', name: 'Tea', localName: 'चाय पत्ती', baseUnit: 'kg' },
     { id: 'dal', name: 'Toor Dal', localName: 'तुवर दाल', baseUnit: 'kg' },
+    { id: 'chana', name: 'Kabuli Chana Khula', localName: 'काबुली चना खुला', baseUnit: 'kg' },
   ]);
   h.main.onPointerDown(h.pointer());
   const emit = (texts: string[], isFinal = true) => h.scope.recognitionRef.current.onresult({
@@ -256,7 +257,6 @@ test('unexpected recognized words are retained without an invented product separ
   for (const [name, rest, quantity] of [
     ['गुड़', 'अच्छा आधा किलो', 0.5],
     ['गुड़', 'बुलेट ढाई किलो', 2.5],
-    ['नमक', 'नामक तीन पैकेट', 3],
   ] as const) {
     const h = orderSetup();
     h.emit([name, rest]);
@@ -312,4 +312,51 @@ test('quantity continuation survives recognition restart and explicit product se
   multiple.emit(['गुड़ आधा किलो', 'और नमक तीन पैकेट']);
   assert.deepEqual(multiple.scope.reviewItems.map((item: any) => [item.productId, item.quantity]),
     [['gud', 0.5], ['salt', 3]]);
+});
+
+test('catalogue-supported short Hindi vowel revisions reconcile without duplicated names', () => {
+  for (const fragments of [['नमक', 'नामक तीन पैकेट'], ['नामक', 'नमक तीन पैकेट']]) {
+    const h = orderSetup();
+    h.emit(fragments);
+    assert.equal(h.scope.setFinalTranscriptValue, 'नमक तीन पैकेट');
+    assert.equal(h.scope.reviewItems.length, 1);
+    assert.equal(h.scope.reviewItems[0].productId, 'salt');
+    assert.equal(h.scope.reviewItems[0].quantity, 3);
+  }
+});
+
+test('equivalent pulse-name revisions retain one product with the spoken quantity', () => {
+  const h = orderSetup();
+  h.emit(['चोला', 'छोले एक किलो']);
+  assert.equal(h.scope.setFinalTranscriptValue, 'छोले एक किलो');
+  assert.equal(h.scope.reviewItems.length, 1);
+  assert.equal(h.scope.reviewItems[0].productId, 'chana');
+  assert.equal(h.scope.reviewItems[0].quantity, 1);
+});
+
+test('matching quantity suffixes cannot erase a different short product name', () => {
+  const h = orderSetup();
+  const merge = h.scope.mergeOverlappingStrings;
+  assert.equal(merge('गुड़ आधा किलो', 'अच्छा आधा किलो'), 'गुड़ आधा किलो अच्छा आधा किलो');
+  assert.equal(merge('नमक', 'चमक तीन पैकेट'), 'नमक चमक तीन पैकेट');
+  assert.equal(merge('चावल 2.5 किलो', 'चावल 3.5 किलो'), 'चावल 2.5 किलो चावल 3.5 किलो');
+  h.emit(['अच्छा आधा किलो']);
+  assert.equal(h.scope.reviewItems[0].productId, null);
+  assert.equal(h.scope.reviewItems[0].parsedQty, 0.5);
+});
+
+test('saved defaults are consulted after recognition and do not change the transcript', () => {
+  const h = orderSetup();
+  h.scope.shop = { id: 'shop' };
+  h.scope.catalog = [{ id: 'salt', name: 'Salt', localName: 'नमक', baseUnit: 'pc' }];
+  h.scope.recalculateQtyAndUnit = voiceQuantityForProduct;
+  const lookedUp: string[] = [];
+  h.scope.voicePrefsCache = { get: (_shop: string, word: string) => {
+    lookedUp.push(word);
+    return { productId: 'salt' };
+  } };
+  h.emit(['गुड़ आधा किलो']);
+  assert.equal(h.scope.setFinalTranscriptValue, 'गुड़ आधा किलो');
+  assert.equal(h.scope.reviewItems[0].productId, 'gud');
+  assert.ok(lookedUp.length > 0);
 });
