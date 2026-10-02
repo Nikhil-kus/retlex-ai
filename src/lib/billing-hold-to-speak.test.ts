@@ -40,11 +40,11 @@ function setup() {
     currentBreathRef: { current: '' }, matchCacheRef: { current: new Map() },
     voiceMatcherRef: { current: createVoiceProductMatcher([{ id: 'lux', name: 'Lux Soap', price: 20, baseUnit: 'pc' }]) },
     _isDebug: false, parseVoiceItems, voiceQuantityForProduct, canCorrectProductByVoice,
-    mergeOverlappingStrings: (a: string, b: string) => [a, b].filter(Boolean).join(' '),
+    shop: null, openSuggestionIdxRef: { current: null },
     getSuggestions: () => ({ brandVariants: [], sizeVariants: [] }),
     useEffect: (effect: () => () => void) => { scope.cleanup = effect(); },
   };
-  for (const name of ['setCorrectingItemIdx', 'setVoiceMessage', 'setFinalTranscript', 'setSelectedBrandPerItem', 'setOpenSuggestionIdx', 'setIsListening', 'setMode']) {
+  for (const name of ['setCorrectingItemIdx', 'setVoiceMessage', 'setFinalTranscript', 'setSelectedBrandPerItem', 'setOpenSuggestionIdx', 'setIsListening', 'setMode', 'setIsReviewing', 'setPerfStats']) {
     scope[name] = (value: any) => { scope[name + 'Value'] = value; };
   }
   scope.setReviewItems = (update: any) => { scope.reviewItems = typeof update === 'function' ? update(scope.reviewItems) : update; };
@@ -58,6 +58,12 @@ function setup() {
   }
   scope.window = { ...surface, SpeechRecognition: Recognition };
   scope.document = { ...surface, hidden: false };
+  // Use the production merger, including overlap detection, rather than a join stub.
+  scope.mergeOverlappingStrings = new Function('scope', `with(scope) {
+    ${compile('const getLevenshteinDistance =', 'export default function BillingPage()')}
+    ${compile('  const areWordsSimilar =', '  const recalculateQtyAndUnit =')}
+    return mergeOverlappingStrings;
+  }`)(scope);
   scope.processVoiceTextToItems = new Function('scope', `with(scope) { ${compile('  const processVoiceTextToItems =', '  const getSuggestions =')} return processVoiceTextToItems; }`)(scope);
   const handlers = new Function('scope', `with(scope) { ${compile('  const startVoiceInput =', '  const router =')} return { holdToSpeak }; }`)(scope);
   const card = handlers.holdToSpeak(1);
@@ -209,4 +215,101 @@ test('voice correction is available for missing or low-confidence identity, not 
   assert.equal(canCorrectProductByVoice({ productId: 'lux', confidence: 'low' }), true);
   assert.equal(canCorrectProductByVoice({ productId: null, confidence: 'low', matchCandidateDetails: [] }), true);
   assert.equal(canCorrectProductByVoice({ productId: null, matchReason: 'Choose the brand or pack size' }), false);
+});
+
+function orderSetup() {
+  const h = setup();
+  h.scope.reviewItems = [];
+  h.scope.voiceMatcherRef.current = createVoiceProductMatcher([
+    { id: 'gud', name: 'Jaggery', localName: 'गुड़', baseUnit: 'kg' },
+    { id: 'salt', name: 'Salt', localName: 'नमक', baseUnit: 'pc' },
+    { id: 'rice', name: 'Rice', localName: 'चावल', baseUnit: 'kg' },
+    { id: 'tea', name: 'Tea', localName: 'चाय पत्ती', baseUnit: 'kg' },
+    { id: 'dal', name: 'Toor Dal', localName: 'तुवर दाल', baseUnit: 'kg' },
+  ]);
+  h.main.onPointerDown(h.pointer());
+  const emit = (texts: string[], isFinal = true) => h.scope.recognitionRef.current.onresult({
+    resultIndex: 0,
+    results: texts.map(transcript => ({ 0: { transcript }, isFinal })),
+  });
+  return { ...h, emit };
+}
+
+test('Hindi product and quantity fragments stay together without losing decimal weights', () => {
+  for (const [name, quantityText, id, quantity, unit] of [
+    ['गुड़', 'आधा किलो', 'gud', 0.5, 'kg'],
+    ['गुड़', 'ढाई किलो', 'gud', 2.5, 'kg'],
+    ['गुड़', '2.5 किलो', 'gud', 2.5, 'kg'],
+    ['नमक', 'तीन पैकेट', 'salt', 3, 'pc'],
+  ] as const) {
+    const h = orderSetup();
+    h.emit(['', name], false);
+    h.emit(['', name, quantityText]);
+    assert.equal(h.scope.reviewItems.length, 1);
+    assert.equal(h.scope.reviewItems[0].productId, id);
+    assert.equal(h.scope.reviewItems[0].quantity, quantity);
+    assert.equal(h.scope.reviewItems[0].unit, unit);
+  }
+});
+
+test('unexpected recognized words are retained without an invented product separator', () => {
+  for (const [name, rest, quantity] of [
+    ['गुड़', 'अच्छा आधा किलो', 0.5],
+    ['गुड़', 'बुलेट ढाई किलो', 2.5],
+    ['नमक', 'नामक तीन पैकेट', 3],
+  ] as const) {
+    const h = orderSetup();
+    h.emit([name, rest]);
+    assert.equal(h.scope.setFinalTranscriptValue, `${name} ${rest}`);
+    assert.equal(h.scope.reviewItems.length, 1);
+    assert.equal(h.scope.reviewItems[0].parsedQty, quantity);
+  }
+});
+
+test('growing Android hypotheses converge to one sentence rather than multiplying orders', () => {
+  const h = orderSetup();
+  const hypotheses = [
+    'चावल', 'चावल 2', 'चावल 2 किलो', 'चावल 2 किलो',
+    'चावल 2 किलो चाय', 'चावल 2 किलो चाय पत्ती',
+    'चावल 2 किलो चाय पत्ती 500', 'चावल 2 किलो चाय पत्ती 500 ग्राम',
+    'चावल 2 किलो चाय पत्ती 500 ग्राम',
+    'चावल 2 किलो चाय पत्ती 500 ग्राम तुवर',
+    'चावल 2 किलो चाय पत्ती 500 ग्राम तुवर दाल',
+    'चावल 2 किलो चाय पत्ती 500 ग्राम तुवर दाल 2 किलो',
+  ];
+  for (let i = 0; i < hypotheses.length; i++) {
+    h.emit(hypotheses.slice(0, i + 1), i === hypotheses.length - 1);
+    assert.equal(h.scope.setFinalTranscriptValue, hypotheses[i]);
+  }
+  assert.deepEqual(h.scope.reviewItems.map((item: any) => [item.productId, item.quantity]),
+    [['rice', 2], ['tea', 0.5], ['dal', 2]]);
+  h.emit(hypotheses);
+  assert.equal(h.scope.reviewItems.length, 3);
+});
+
+test('overlap survives recognition restart; later interim updates replace the same result', () => {
+  const h = orderSetup();
+  h.emit(['चावल 2 किलो']);
+  h.scope.recognitionRef.current.onend();
+  h.emit(['चावल 2 किलो चाय पत्ती'], false);
+  h.emit(['चावल 2 किलो चाय पत्ती 500 ग्राम']);
+  assert.equal(h.scope.setFinalTranscriptValue, 'चावल 2 किलो चाय पत्ती 500 ग्राम');
+  assert.equal(h.scope.reviewItems.length, 2);
+  h.main.onPointerUp(h.pointer());
+  h.advance(500);
+  h.scope.recognitionRef.current.onend();
+  assert.equal(h.scope.globalTranscriptRef.current, 'चावल 2 किलो चाय पत्ती 500 ग्राम');
+});
+
+test('quantity continuation survives recognition restart and explicit product separators still work', () => {
+  const h = orderSetup();
+  h.emit(['गुड़']);
+  h.scope.recognitionRef.current.onend();
+  h.emit(['आधा किलो']);
+  assert.equal(h.scope.reviewItems.length, 1);
+  assert.equal(h.scope.reviewItems[0].quantity, 0.5);
+  const multiple = orderSetup();
+  multiple.emit(['गुड़ आधा किलो', 'और नमक तीन पैकेट']);
+  assert.deepEqual(multiple.scope.reviewItems.map((item: any) => [item.productId, item.quantity]),
+    [['gud', 0.5], ['salt', 3]]);
 });

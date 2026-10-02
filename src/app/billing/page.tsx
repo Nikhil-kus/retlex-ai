@@ -164,9 +164,9 @@ export default function BillingPage() {
     if (!s1) return s2;
     if (!s2) return s1;
     
-    // Strip Android auto-punctuation to fix overlap matching
-    s1 = s1.replace(/[.,!?।]/g, '');
-    s2 = s2.replace(/[.,!?।]/g, '');
+    // Ignore sentence punctuation for overlap matching, but keep decimal quantities.
+    s1 = s1.replace(/[!?।]|(?<!\d)\.|\.(?!\d)/g, '');
+    s2 = s2.replace(/[!?।]|(?<!\d)\.|\.(?!\d)/g, '');
 
     const s1Lower = s1.trim().toLowerCase();
     const s2Lower = s2.trim().toLowerCase();
@@ -191,7 +191,7 @@ export default function BillingPage() {
     if (_isDebug && (/[\u0900-\u097F]/.test(s1 + s2))) {
       const _mergeResult = maxOverlap > 0
         ? words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ")
-        : s1.trim() + " | " + s2.trim();
+        : s1.trim() + " " + s2.trim();
       const _s1t = s1.trim(), _s2t = s2.trim();
       const _longerIn = Math.max(_s1t.length, _s2t.length);
       const _truncation = maxOverlap > 0 && _mergeResult.length < _s1t.length;
@@ -214,7 +214,10 @@ export default function BillingPage() {
     if (maxOverlap > 0) {
         return words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ");
     }
-    return s1.trim() + " | " + s2.trim();
+    // No overlap means continuation, not necessarily another product. Let the
+    // parser use spoken quantities/conjunctions to determine item boundaries.
+    // Keep overlap reconciliation above: Android can repeat growing hypotheses.
+    return s1.trim() + " " + s2.trim();
   };
 
   const recalculateQtyAndUnit = voiceQuantityForProduct;
