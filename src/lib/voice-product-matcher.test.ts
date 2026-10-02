@@ -23,6 +23,96 @@ const products = [
 ];
 const matcher = createVoiceProductMatcher(products);
 
+test('catalogue-backed Hindi recovery handles consonants and speech-inserted spaces', () => {
+  const catalog = [
+    { id: 'ghee', name: 'Ghee', baseUnit: 'kg', price: 500 },
+    { id: 'jeeravan', name: 'Jeeravan 100g', baseUnit: 'pc', price: 40 },
+    { id: 'jeera', name: 'Jeera 100g', localName: 'जीरा', price: 35 },
+    { id: 'fig', name: 'Anjeer', localName: 'अंजीर', price: 200 },
+  ];
+  const engine = createVoiceProductMatcher(catalog);
+  for (const spoken of ['गी 1 किलो', 'घी 1 किलो', 'जीरावण 2 पैकेट', 'जी रावण 2 पैकेट', 'जीरावन 2 पैकेट']) {
+    const parsed = parseVoiceItems(spoken);
+    assert.equal(parsed.length, 1, spoken);
+    const result = engine.match(parsed[0]);
+    assert.equal(result.product?.id, spoken.includes('किलो') ? 'ghee' : 'jeeravan', spoken);
+    const choices = createProductSuggestions(catalog).suggest({ name: parsed[0].name,
+      sourceRawText: parsed[0].rawText, parsedQty: parsed[0].quantity, parsedUnit: parsed[0].unit });
+    assert.deepEqual(choices.brandVariants.map(p => p.id), [result.product!.id], spoken);
+  }
+  assert.equal(engine.match({ name: 'जीरा' }).product?.id, 'jeera');
+  assert.equal(engine.match({ name: 'अंजीर' }).product?.id, 'fig');
+  assert.equal(createVoiceProductMatcher(catalog.slice(2)).match({ name: 'जी रावण' }).product, null);
+});
+
+test('Hindi sound recovery is general, bounded and preserves exact identities', () => {
+  for (const [spoken, stored] of [['धनिया', 'दनिया'], ['साबुन', 'साबुण'], ['हल्दी', 'हल्धी'], ['काजू', 'खाजू']]) {
+    const engine = createVoiceProductMatcher([{ id: 'local', name: stored }]);
+    assert.equal(engine.match({ name: spoken }).product?.id, 'local', `${spoken} -> ${stored}`);
+  }
+  const engine = createVoiceProductMatcher([
+    { id: 'gi', name: 'गी' }, { id: 'ghee', name: 'घी' },
+    { id: 'n', name: 'जीरावन' }, { id: 'retroflex', name: 'जीरावण' },
+  ]);
+  for (const [name, id] of [['गी', 'gi'], ['घी', 'ghee'], ['जीरावन', 'n'], ['जीरावण', 'retroflex']]) {
+    assert.equal(engine.match({ name }).product?.id, id);
+  }
+  // A split pronunciation compatible with two distinct catalogue identities is not a correction.
+  assert.equal(engine.match({ name: 'जी रावण', saleForm: 'packet', requestedPrice: 10 }, 'n').product, null);
+  assert.equal(createVoiceProductMatcher([{ id: 'ghee', name: 'Ghee' }]).match({ name: 'ग' }).product, null);
+});
+
+test('recovered generic names still require a brand choice, even with price, pack or saved preference', () => {
+  const catalog = [{ id: 'amul', name: 'Amul Ghee 1kg', price: 500 }, { id: 'other', name: 'Other Ghee 1kg', price: 500 }];
+  const engine = createVoiceProductMatcher(catalog);
+  for (const extra of [{}, { saleForm: 'packet' as const }, { requestedPrice: 500 }, { quantity: 1, unit: 'kg' }]) {
+    const result = engine.match({ name: 'गी', ...extra }, 'amul');
+    assert.equal(result.product, null);
+    assert.equal(result.candidates.filter(c => c.eligible).length, 2);
+  }
+  assert.equal(engine.match({ name: 'अमूल गी', quantity: 1, unit: 'kg' }).product?.id, 'amul');
+  assert.equal(engine.match({ name: 'अनजान गी', requestedPrice: 500 }).product, null);
+  assert.equal(engine.match({ name: 'अमूल गी', requestedPrice: 1 }).product, null);
+  assert.equal(engine.match({ name: 'अमूल गी', quantity: 1, unit: 'l' }).product, null);
+});
+
+test('relative Hindi and Hinglish packs select and suggest by size, preserving packet counts', () => {
+  const catalog = [
+    { id: 'large', name: 'Acme Tea 1kg', price: 90 },
+    { id: 'small', name: 'Acme Tea 100g', price: 100 },
+    { id: 'middle', name: 'Acme Tea 500g', price: 80 },
+    { id: 'other', name: 'Other Tea 50g', price: 5 },
+    { id: 'loose', name: 'Acme Tea Loose', baseUnit: 'kg', price: 40 },
+  ];
+  for (const phrase of ['chhota pack', 'chota size', 'chhota wala', 'chhota packet', 'छोटा पैकेट', 'छोटी साइज',
+    'bada size', 'bada wala', 'bada packet', 'bada pack', 'बड़ा पैकेट', 'बड़ा वाला', 'medium size', 'midium size', 'मीडियम पैकेट']) {
+    const expected = /^(b|ब)/u.test(phrase) ? ['large', 'middle', 'small']
+      : /^(m|म)/u.test(phrase) ? ['middle', 'small', 'large'] : ['small', 'middle', 'large'];
+    for (const spoken of [`Acme Tea ${phrase}`, `2 ${phrase} Acme Tea`]) {
+      const requests = parseVoiceItems(spoken);
+      assert.equal(requests.length, 1, spoken);
+      const request = requests[0];
+      const result = createVoiceProductMatcher(catalog).match(request, 'large');
+      assert.equal(result.product?.id, expected[0], spoken);
+      assert.equal(result.packetCount, spoken.startsWith('2') ? 2 : 1, spoken);
+      assert.deepEqual(result.candidates.filter(c => c.eligible).map(c => c.product.id), expected, spoken);
+      const suggestions = createProductSuggestions(catalog).suggest({ productId: result.product?.id,
+        spokenWord: request.name, sourceRawText: request.rawText, parsedQty: request.quantity, parsedUnit: request.unit });
+      assert.deepEqual(suggestions.sizeVariants.map(p => p.id), expected.slice(1), spoken);
+    }
+  }
+});
+
+test('relative sizes fall back to prices and medium uses the lower distinct middle size', () => {
+  const catalog = [10, 20, 30, 40].map(price => ({ id: String(price), name: 'Acme Soap', price }));
+  for (const [size, expected] of [['chota', '10'], ['bada', '40'], ['midium', '20']]) {
+    assert.equal(createVoiceProductMatcher(catalog).match({ name: `Acme Soap ${size} wala` }).product?.id, expected);
+  }
+  const measured = [100, 100, 200, 300, 400].map((weight, i) => ({ id: String(i), name: `Acme Tea ${weight}g` }));
+  assert.equal(createVoiceProductMatcher(measured).match({ name: 'Acme Tea medium size' }).product?.id, '2');
+  assert.equal(createVoiceProductMatcher(measured).match({ name: 'Acme Tea bada pack', packSize: { quantity: 100, unit: 'g' } }).product?.id, '0');
+});
+
 const basmatiProducts = [
   { id: 'rice-5', name: 'Basmati Chawal 5kg', localName: 'बासमती चावल 5 किलो', baseUnit: 'pkt', price: 460 },
   { id: 'rice-half', name: 'Basmati Chawal 500g', baseUnit: 'pkt', price: 50 },

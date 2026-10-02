@@ -1,6 +1,7 @@
 import { createVoiceProductMatcher, normalizeVoiceName, type VoiceProduct } from './voice-product-matcher';
 import { groceryMeaning } from './grocery-meaning';
 import { productSaleForm } from './product-packaging';
+import { relativePackSize } from './relative-pack-size';
 
 type Product = VoiceProduct & { category?: string; price?: number };
 type ReviewItem = { productId?: string | null; name?: string; spokenWord?: string; sourceRawText?: string; parsedQty?: number; parsedUnit?: string; requestedPrice?: number; saleForm?: 'loose' | 'packet'; packSize?: { quantity: number; unit: string }; packetCount?: number };
@@ -34,7 +35,7 @@ const ingredients: [string, RegExp][] = [
   ['coriander', /\bcoriander\b|\bdhaniya\b|धनिया/iu],
   ['turmeric', /\bturmeric\b|\bhaldi\b|हल्दी/iu],
   ['chilli', /\bchill?i\b|मिर्च|मिर्ची/iu],
-  ['cumin', /\bcumin\b|\bjeera\b|जीरा/iu],
+  ['cumin', /\bcumin\b|\bjeera\b|(?<![\p{L}\p{M}])जीरा(?![\p{L}\p{M}])/iu],
   ['coconut', /\bcoconut\b|नारियल/iu],
   ['mustard', /\bmustard\b|सरसों/iu],
   ['sunflower', /\bsunflower\b|सूरजमुखी/iu],
@@ -79,7 +80,8 @@ export function createProductSuggestions<T extends Product>(catalog: T[]) {
       // same order as matching. Family/brand grouping would hide pack choices.
       const quantityRequest = Boolean(item.parsedQty && /^(kg|g|ml|l|ltr)$/.test(item.parsedUnit || '')
         && !item.packSize && item.saleForm !== 'packet');
-      if (!seed || quantityRequest) {
+      const relativeRequest = relativePackSize(`${item.spokenWord || item.name || ''} ${item.sourceRawText || ''}`);
+      if (!seed || quantityRequest || relativeRequest) {
         // Re-evaluate the actual utterance, never expand from an arbitrary seed
         // or trust stale/partial debug candidates as display recommendations.
         const name = item.spokenWord || item.name || '';
@@ -93,7 +95,8 @@ export function createProductSuggestions<T extends Product>(catalog: T[]) {
             return (!intent.kind || candidate.kind === intent.kind)
               && (!intent.ingredients || candidate.ingredients === intent.ingredients);
           }).map(c => c.product).filter(p => p.id !== seed?.product.id);
-        return { brandVariants: choices, sizeVariants: [] };
+        return relativeRequest && seed ? { brandVariants: [], sizeVariants: choices }
+          : { brandVariants: choices, sizeVariants: [] };
       }
       const sizeVariants = sizes(seed.product);
       // Unknown kinds get exact-family sizes only. A broad category, shared

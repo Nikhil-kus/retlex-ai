@@ -1,6 +1,8 @@
 import { transliterateHindiToHinglish } from './transliterate';
 import { compatibleGroceryMeaning, groceryMeaning, normalizePulseNames } from './grocery-meaning';
 import { productSaleForm, requestedSaleForm, stripSaleWords } from './product-packaging';
+import { relativePackSize, stripRelativePackSize } from './relative-pack-size';
+import { createHindiCatalogRecovery } from './hindi-catalog-recovery';
 
 export interface VoiceProduct {
   id: string;
@@ -186,6 +188,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
   }));
   const vocabulary = [...new Set(entries.flatMap(e => e.fields.flatMap(f => f.tokens)))];
   const knownTokens = new Set(vocabulary);
+  const recoverHindi = createHindiCatalogRecovery(entries.flatMap(e => e.fields.map(f => f.text)), identity);
   const documentFrequency = new Map<string, number>();
   for (const entry of entries) for (const token of new Set(entry.fields.flatMap(f => f.tokens))) {
     documentFrequency.set(token, (documentFrequency.get(token) || 0) + 1);
@@ -193,8 +196,17 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
 
   return {
     match(request: MatchRequest, preferredProductId?: string): VoiceMatch<T> {
-      const requestedMeaning = groceryMeaning(request.name);
-      const tokens = identity(request.name).split(' ').filter(Boolean);
+      const literalIdentity = identity(request.name);
+      const exactNamedSize = relativePackSize(request.name) && entries.some(entry => entry.fields.some(field =>
+        field.field !== 'alias' && field.tokens.join(' ') === literalIdentity));
+      const relativeSize = exactNamedSize ? undefined : relativePackSize(`${request.name} ${request.rawText || ''}`);
+      const originalName = relativeSize ? stripRelativePackSize(request.name) : request.name;
+      const originalIdentity = identity(originalName);
+      const exactIdentity = entries.some(entry => entry.fields.some(field => field.tokens.join(' ') === originalIdentity));
+      const recovery = exactIdentity ? { text: originalName, changed: false } : recoverHindi(originalName);
+      const requestName = recovery.text;
+      const requestedMeaning = groceryMeaning(requestName);
+      const tokens = identity(requestName).split(' ').filter(Boolean);
       if (!tokens.length) return { product: null, confidence: 'low', reason: 'Say a product name', candidates: [] };
       // An exact catalogue word is an identity anchor, not a typo. Keep fuzzy
       // recovery for unknown spellings without appending sound-alike products
@@ -208,7 +220,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       });
       const totalWeight = weights.reduce((a, b) => a + b, 0);
       const bulkRequested = bulkRequestPattern.test(`${request.name} ${request.rawText || ''}`) || hasBundleSize(request.name);
-      const saleForm = request.saleForm || (request.packSize ? 'packet' : requestedSaleForm(`${request.name} ${request.rawText || ''}`));
+      const saleForm = request.saleForm || (request.packSize || relativeSize ? 'packet' : requestedSaleForm(`${request.name} ${request.rawText || ''}`));
       const namedSize = request.name.match(measurePattern);
       const requested = request.packSize ? measure(request.packSize.quantity, request.packSize.unit)
         : namedSize ? measure(Number(namedSize[1]), namedSize[2])
@@ -277,9 +289,28 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
         || (saleForm === 'packet' && requested ? (a.packSizeAmount ?? Infinity) - (b.packSizeAmount ?? Infinity) : 0)
         || a.product.id.localeCompare(b.product.id));
 
+      // Rank relative sizes only within the best matching identity, after all
+      // explicit price/quantity constraints. Never let a saved choice override it.
+      const relativeActive = Boolean(relativeSize && !requested && saleForm === 'packet');
+      if (relativeActive) {
+        const eligibleSizes = ranked.filter(c => c.eligible && Math.abs(c.score - ranked[0].score) < 1e-8);
+        const measures = eligibleSizes.map(c => productMeasure(c.product));
+        const useMeasure = measures.length > 0 && measures.every(m => m && m.dimension === measures[0]?.dimension);
+        const value = (c: VoiceCandidate<T>) => useMeasure ? productMeasure(c.product)?.amount
+          : c.product.price && Number.isFinite(c.product.price) && c.product.price > 0 ? c.product.price : undefined;
+        const values = [...new Set(eligibleSizes.map(value).filter((v): v is number => v !== undefined))].sort((a, b) => a - b);
+        const middle = values[Math.floor((values.length - 1) / 2)];
+        const order = (c: VoiceCandidate<T>) => {
+          const v = value(c);
+          return v === undefined ? Infinity : relativeSize === 'large' ? -v : relativeSize === 'medium' ? Math.abs(values.indexOf(v) - values.indexOf(middle)) : v;
+        };
+        ranked.sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.score - a.score
+          || order(a) - order(b) || (value(a) ?? Infinity) - (value(b) ?? Infinity) || a.product.id.localeCompare(b.product.id));
+      }
       const eligible = ranked.filter(c => c.eligible);
       const top = eligible[0], next = eligible[1];
-      const preferred = eligible.find(c => c.product.id === preferredProductId && top.score - c.score <= 0.15
+      const recoveryUncertain = recovery.changed && (!top?.identityComplete || Boolean(next && top.score - next.score < 0.06));
+      const preferred = relativeActive || recoveryUncertain ? undefined : eligible.find(c => c.product.id === preferredProductId && top.score - c.score <= 0.15
         && c.quantityRank === top.quantityRank && c.fulfillmentCount === top.fulfillmentCount
         && c.sizeDistance === top.sizeDistance);
       // For price requests, select the best eligible name match automatically.
@@ -290,7 +321,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       const betterQuantity = totalRequested && top && next && (top.quantityRank !== next.quantityRank
         || top.fulfillmentCount !== next.fulfillmentCount);
       const totalPacketsSelected = totalRequested && top?.fulfillmentCount;
-      const clear = top && (totalPacketsSelected || betterQuantity || priceSelected || packetSelected || !next || (top.identityComplete && top.score - next.score >= 0.06));
+      const clear = top && !recoveryUncertain && (totalPacketsSelected || betterQuantity || priceSelected || packetSelected || !next || (top.identityComplete && top.score - next.score >= 0.06));
       const selected = preferred || (clear ? top : undefined);
       const isApproximateSize = Boolean(selected?.sizeDistance && selected.sizeDistance > 0);
       const selectedSize = selected ? productMeasure(selected.product) : null;
