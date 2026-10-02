@@ -26,6 +26,30 @@ const cleanProductName = (name: string) => {
     .trim();
 };
 
+const getLevenshteinDistance = (a: string, b: string): number => {
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+};
+
 export default function BillingPage() {
   const { pName, hindiMode, toggleHindi, catName, setIsSearching, headerVisible, setHeaderVisible } = useHindi();
   const [isListening, setIsListening] = useState(false);
@@ -63,7 +87,7 @@ export default function BillingPage() {
   const _isDebug = process.env.NEXT_PUBLIC_DEBUG === 'true';
 
   // ── Trace helpers (debug only) ────────────────────────────────────────────
-  // Tag the current merge call site so the probe inside joinSpeechFragments
+  // Tag the current merge call site so the probe inside mergeOverlappingStrings
   // can label which part of the pipeline produced each merge.
   const _mergeCallSiteRef = useRef<string>('unknown');
   const _onresultIndexRef  = useRef(0);
@@ -92,26 +116,105 @@ export default function BillingPage() {
   const openSuggestionIdxRef = useRef<number | null>(null);
   useEffect(() => { openSuggestionIdxRef.current = openSuggestionIdx; }, [openSuggestionIdx]);
 
-  const joinSpeechFragments = (s1: string, s2: string) => {
-    // Result indexes are consecutive speech fragments, not product boundaries.
-    // Rebuild each event from its current results so interim revisions replace
-    // earlier hypotheses. Never fuzzy-deduplicate words or invent separators:
-    // both can change product identities and quantities (including decimals).
-    const result = [s1.trim(), s2.trim()].filter(Boolean).join(" ");
-    if (_isDebug && s1 && s2) {
+  const areWordsSimilar = (w1: string, w2: string): boolean => {
+    const val1 = w1.trim().toLowerCase();
+    const val2 = w2.trim().toLowerCase();
+    if (val1 === val2) return true;
+    
+    // Short words must match exactly to prevent false overlaps (numbers/units like do, to, 1, 2, kg, pc)
+    if (val1.length <= 3 || val2.length <= 3) return false;
+    
+    const dist = getLevenshteinDistance(val1, val2);
+    const maxAllowedDist = val1.length >= 6 ? 2 : 1;
+    return dist <= maxAllowedDist;
+  };
+
+  const arePhrasesSimilar = (wordsA: string[], wordsB: string[]): boolean => {
+    if (wordsA.length !== wordsB.length) return false;
+    
+    // For single-word comparison, follow word-specific rules
+    if (wordsA.length === 1) {
+      const w1 = wordsA[0].toLowerCase();
+      const w2 = wordsB[0].toLowerCase();
+      if (w1 === w2) return true;
+      if (w1.length <= 3 || w2.length <= 3) return false;
+      const dist = getLevenshteinDistance(w1, w2);
+      // For longer words in Hindi, speech recognition variations can be larger.
+      // E.g. "पारले-जी" (8) and "परले-ग" (6) has distance 3.
+      const maxAllowed = Math.max(w1.length, w2.length) >= 6 ? 3 : 1;
+      return dist <= maxAllowed;
+    }
+    
+    // For multi-word phrases, compare the joined string edit distance.
+    // This allows one word to have a slightly larger edit distance if other words match perfectly (anchoring).
+    const s1 = wordsA.join(" ").toLowerCase();
+    const s2 = wordsB.join(" ").toLowerCase();
+    if (s1 === s2) return true;
+    
+    const dist = getLevenshteinDistance(s1, s2);
+    const maxLen = Math.max(s1.length, s2.length);
+    // Allow up to 35% character difference for the entire phrase
+    const maxAllowed = Math.floor(maxLen * 0.35);
+    return dist <= Math.max(2, maxAllowed);
+  };
+
+  const mergeOverlappingStrings = (s1Arg: string, s2Arg: string) => {
+    let s1 = s1Arg || "";
+    let s2 = s2Arg || "";
+    if (!s1) return s2;
+    if (!s2) return s1;
+    
+    // Strip Android auto-punctuation to fix overlap matching
+    s1 = s1.replace(/[.,!?।]/g, '');
+    s2 = s2.replace(/[.,!?।]/g, '');
+
+    const s1Lower = s1.trim().toLowerCase();
+    const s2Lower = s2.trim().toLowerCase();
+    
+    if (s1Lower === s2Lower) return s1.trim();
+    
+    const words1 = s1.trim().split(/\s+/);
+    const words2 = s2.trim().split(/\s+/);
+
+    let maxOverlap = 0;
+    const minLen = Math.min(words1.length, words2.length);
+    
+    for (let i = 1; i <= minLen; i++) {
+        const slice1 = words1.slice(-i);
+        const slice2 = words2.slice(0, i);
+        if (arePhrasesSimilar(slice1, slice2)) {
+            maxOverlap = i;
+        }
+    }
+    
+    // ── [PROVE] write merge trace entry to debugDataRef ────────────────────
+    if (_isDebug && (/[\u0900-\u097F]/.test(s1 + s2))) {
+      const _mergeResult = maxOverlap > 0
+        ? words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ")
+        : s1.trim() + " | " + s2.trim();
+      const _s1t = s1.trim(), _s2t = s2.trim();
+      const _longerIn = Math.max(_s1t.length, _s2t.length);
+      const _truncation = maxOverlap > 0 && _mergeResult.length < _s1t.length;
+      const _detail = _truncation
+        ? `s1 "${_s1t}" (${_countGraphemes(_s1t)} graphemes) → result "${_mergeResult}" (${_countGraphemes(_mergeResult)} graphemes) — ${_s1t.length - _mergeResult.length} chars lost`
+        : '';
       _addTrace({
         kind: 'merge',
         merge: {
           callSite: _mergeCallSiteRef.current,
-          s1, s2,
-          s1Len: _countGraphemes(s1), s2Len: _countGraphemes(s2),
-          maxOverlap: 0,
-          result, resultLen: _countGraphemes(result),
-          truncation: false, truncationDetail: '',
+          s1: _s1t, s2: _s2t,
+          s1Len: _countGraphemes(_s1t), s2Len: _countGraphemes(_s2t),
+          maxOverlap,
+          result: _mergeResult, resultLen: _countGraphemes(_mergeResult),
+          truncation: _truncation, truncationDetail: _detail,
         }
       });
     }
-    return result;
+    // ── [/PROVE] ─────────────────────────────────────────────────────────────
+    if (maxOverlap > 0) {
+        return words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ");
+    }
+    return s1.trim() + " | " + s2.trim();
   };
 
   const recalculateQtyAndUnit = voiceQuantityForProduct;
@@ -408,12 +511,12 @@ export default function BillingPage() {
             const text = event.results[i][0].transcript.trim();
             if (!text) continue;
             if (_isDebug) _mergeCallSiteRef.current = `onresult-inner[${i}]`;
-            merged = joinSpeechFragments(merged, text);
+            merged = mergeOverlappingStrings(merged, text);
         }
 
         currentBreathRef.current = merged;
         if (_isDebug) _mergeCallSiteRef.current = 'onresult-global';
-        const fullText = joinSpeechFragments(globalTranscriptRef.current, merged);
+        const fullText = mergeOverlappingStrings(globalTranscriptRef.current, merged);
 
         // ── [PROVE] write onresult trace entry ────────────────────────────────
         if (_isDebug) {
@@ -604,7 +707,7 @@ export default function BillingPage() {
         const _endBreath       = _isDebug ? currentBreathRef.current   : '';
         // ── [/PROVE] ─────────────────────────────────────────────────────────
         if (_isDebug) _mergeCallSiteRef.current = 'onend';
-        globalTranscriptRef.current = joinSpeechFragments(globalTranscriptRef.current, currentBreathRef.current);
+        globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
         // ── [PROVE] write onend trace entry ───────────────────────────────────
         if (_isDebug) {
           const _endAfter = globalTranscriptRef.current;
