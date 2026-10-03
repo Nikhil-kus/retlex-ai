@@ -60,6 +60,13 @@ export const parseVoiceItems = (text: string) => {
       pc: "pc", pcs: "pc", piece: "pc", pieces: "pc", packet: "pc", packets: "pc", pkt: "pc", pack: "pc", packs: "pc", 'पैकेट': "pc", 'पीस': "pc"
     };
 
+    const originalWords = [...words];
+    // A clipped "दो" is recoverable only in an explicit quantity position.
+    // Do not turn a standalone द, a brand initial, or a currency phrase into 2.
+    for (let index = 0; index < words.length - 1; index++) {
+      if (words[index] === 'द' && unitMap[words[index + 1]]) words[index] = '2';
+    }
+
     const numMap: any = {
       'एक': 1, 'ek': 1, 'do': 2, 'दो': 2, 'dui': 2, 'दुई': 2, 'teen': 3, 'तीन': 3, 'char': 4, 'चार': 4, 'paanch': 5, 'पांच': 5, 'पाँच': 5,
       'che': 6, 'छह': 6, 'chhe': 6, 'chay': 6, 'छय': 6, 'saat': 7, 'सात': 7, 'aath': 8, 'आठ': 8, 'nau': 9, 'नौ': 9, 'das': 10, 'दस': 10,
@@ -175,7 +182,7 @@ export const parseVoiceItems = (text: string) => {
           }
       }
 
-      itemWords.push(word);
+      itemWords.push(originalWords[i]);
 
       if (isSizeQualifier(word)) { i++; continue; }
 

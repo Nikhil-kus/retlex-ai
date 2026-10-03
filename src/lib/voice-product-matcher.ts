@@ -203,7 +203,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       const originalName = relativeSize ? stripRelativePackSize(request.name) : request.name;
       const originalIdentity = identity(originalName);
       const exactIdentity = entries.some(entry => entry.fields.some(field => field.tokens.join(' ') === originalIdentity));
-      const recovery = exactIdentity ? { text: originalName, changed: false } : recoverHindi(originalName);
+      const recovery = exactIdentity ? { text: originalName, changed: false, suggestionOnly: false } : recoverHindi(originalName);
       const requestName = recovery.text;
       const requestedMeaning = groceryMeaning(requestName);
       const tokens = identity(requestName).split(' ').filter(Boolean);
@@ -309,7 +309,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       }
       const eligible = ranked.filter(c => c.eligible);
       const top = eligible[0], next = eligible[1];
-      const recoveryUncertain = recovery.changed && (!top?.identityComplete || Boolean(next && top.score - next.score < 0.06));
+      const recoveryUncertain = recovery.suggestionOnly || (recovery.changed && (!top?.identityComplete || Boolean(next && top.score - next.score < 0.06)));
       const preferred = relativeActive || recoveryUncertain ? undefined : eligible.find(c => c.product.id === preferredProductId && top.score - c.score <= 0.15
         && c.quantityRank === top.quantityRank && c.fulfillmentCount === top.fulfillmentCount
         && c.sizeDistance === top.sizeDistance);

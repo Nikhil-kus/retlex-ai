@@ -12,7 +12,8 @@ function closeSound(a: string, b: string) {
   let changes = 0;
   for (let i = 0; i < a.length; i++) {
     if (a[i] === b[i]) continue;
-    if (consonantGroup.get(a[i]) === undefined || consonantGroup.get(a[i]) !== consonantGroup.get(b[i])) return false;
+    const baVa = (a[i] === 'ब' && b[i] === 'व') || (a[i] === 'व' && b[i] === 'ब');
+    if (!baVa && (consonantGroup.get(a[i]) === undefined || consonantGroup.get(a[i]) !== consonantGroup.get(b[i]))) return false;
     if (++changes > 1) return false;
   }
   return changes === 1;
@@ -33,6 +34,7 @@ export function createHindiCatalogRecovery(texts: string[], normalize: (text: st
   return (text: string) => {
     const words = tokenize(text);
     let changed = false;
+    let suggestionOnly = false;
     const recovered: string[] = [];
     for (let i = 0; i < words.length; i++) {
       let replacement: string | undefined;
@@ -46,12 +48,15 @@ export function createHindiCatalogRecovery(texts: string[], normalize: (text: st
         const identities = new Set(choices.map(normalize));
         if (identities.size !== 1) continue;
         replacement = choices[0];
+        // ब/व can change the actual product (सेब/सेव). Require selection.
+        suggestionOnly ||= [...joined].some((char, index) =>
+          (char === 'ब' && replacement![index] === 'व') || (char === 'व' && replacement![index] === 'ब'));
         consumed = count;
         break;
       }
       recovered.push(replacement ?? words[i]);
       if (replacement !== undefined) { changed = true; i += consumed - 1; }
     }
-    return { text: changed ? recovered.join(' ') : text, changed };
+    return { text: changed ? recovered.join(' ') : text, changed, suggestionOnly };
   };
 }

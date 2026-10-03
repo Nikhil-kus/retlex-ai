@@ -23,6 +23,60 @@ const products = [
 ];
 const matcher = createVoiceProductMatcher(products);
 
+test('screenshot: seb recovers sev only when apple is not a catalogue identity', () => {
+  const sev = { id: 'sev', name: 'Sev 200g', localName: 'सेव', baseUnit: 'pkt', price: 40 };
+  const apple = { id: 'apple', name: 'Apple', baseUnit: 'kg', price: 100 };
+  const engine = createVoiceProductMatcher([sev]);
+  for (const extra of [{}, { saleForm: 'packet' as const }, { requestedPrice: 40 }, { quantity: 200, unit: 'g' }]) {
+    assert.equal(engine.match({ name: 'सेब', ...extra }, 'sev').product, null);
+  }
+  for (const spoken of ['सेब', 'सेव द पैकेट', 'सेब द पैकेट', 'द पैकेट सेव', 'सेव दो पैकेट']) {
+    const parsed = parseVoiceItems(spoken);
+    assert.equal(parsed.length, 1, spoken);
+    const result = engine.match(parsed[0]);
+    assert.equal(result.product?.id, spoken.includes('सेब') ? undefined : 'sev', spoken);
+    assert.equal(parsed[0].quantity, spoken === 'सेब' ? 1 : 2, spoken);
+    const billed = voiceQuantityForProduct(parsed[0].quantity, parsed[0].unit, sev, result.packetCount);
+    assert.equal(billed.quantity, spoken === 'सेब' ? 1 : 2, spoken);
+    assert.equal(billed.unit, 'pkt', spoken);
+    assert.deepEqual(createProductSuggestions([sev]).suggest({ name: parsed[0].name, sourceRawText: parsed[0].rawText,
+      parsedQty: parsed[0].quantity, parsedUnit: parsed[0].unit }).brandVariants.map(p => p.id), ['sev']);
+  }
+  for (const catalog of [[sev, apple], [apple, sev]]) {
+    const both = createVoiceProductMatcher(catalog);
+    assert.equal(both.match({ name: 'सेब' }).product?.id, 'apple');
+    assert.equal(both.match({ name: 'सेव' }).product?.id, 'sev');
+    assert.equal(both.match({ name: 'सेब', saleForm: 'packet' }, 'sev').product, null);
+    assert.equal(both.match({ name: 'सेब', requestedPrice: 40 }, 'sev').product, null);
+  }
+  const brands = [{ ...sev, id: 'a', name: 'Acme Sev', localName: 'एक्मी सेव' },
+    { ...sev, id: 'b', name: 'Other Sev', localName: 'अन्य सेव' }];
+  assert.equal(createVoiceProductMatcher(brands).match({ name: 'सेब', saleForm: 'packet' }, 'a').product, null);
+  assert.deepEqual(createProductSuggestions(brands).suggest({ name: 'सेब' }).brandVariants.map(p => p.id), ['a', 'b']);
+});
+
+test('clipped do is a quantity only directly before a unit and stays on its own item', () => {
+  for (const spoken of ['सेव द पैकेट', 'द पैकेट सेव', 'सेव द packet', 'सेव द किलो']) {
+    const [item] = parseVoiceItems(spoken);
+    assert.equal(item.quantity, 2, spoken);
+    assert.equal(item.name, 'सेव', spoken);
+    assert.ok(item.rawText.includes('द'), spoken);
+  }
+  for (const spoken of ['द', 'द सेव', 'सेव द', 'दाबर तेल', 'द रुपये सेव']) {
+    const items = parseVoiceItems(spoken);
+    assert.ok(items.every(item => item.quantity === 1), spoken);
+    assert.ok(items.some(item => item.name.includes('द')), spoken);
+  }
+  const items = parseVoiceItems('सेव द पैकेट और नमकीन तीन पैकेट');
+  assert.deepEqual(items.map(item => [item.name, item.quantity]), [['सेव', 2], ['नमकीन', 3]]);
+  const [sized] = parseVoiceItems('सेव 200 ग्राम वाला द पैकेट');
+  assert.deepEqual(sized.packSize, { quantity: 200, unit: 'g' });
+  assert.equal(sized.packetCount, 2);
+  const [priced] = parseVoiceItems('सेव 40 रुपये द पैकेट');
+  assert.equal(priced.requestedPrice, 40);
+  assert.equal(priced.quantity, 2);
+});
+
 test('catalogue-backed Hindi recovery handles consonants and speech-inserted spaces', () => {
   const catalog = [
     { id: 'ghee', name: 'Ghee', baseUnit: 'kg', price: 500 },

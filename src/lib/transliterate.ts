@@ -175,6 +175,8 @@ export const HINDI_TO_HINGLISH_MAP: Record<string, string> = {
   'बेसन': 'besan',
   'घी': 'ghee',
   'जीरावन': 'jeeravan',
+  'सेव': 'sev',
+  'सेब': 'apple',
   'चना': 'chana',
   'साबुत': 'sabut',
   'हरी': 'hari',
