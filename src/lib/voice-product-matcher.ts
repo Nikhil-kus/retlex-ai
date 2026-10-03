@@ -195,7 +195,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
   }
 
   return {
-    match(request: MatchRequest, preferredProductId?: string): VoiceMatch<T> {
+    match(request: MatchRequest, preferredProductId?: string, allowHindiRecovery = true): VoiceMatch<T> {
       const literalIdentity = identity(request.name);
       const exactNamedSize = relativePackSize(request.name) && entries.some(entry => entry.fields.some(field =>
         field.field !== 'alias' && field.tokens.join(' ') === literalIdentity));
@@ -203,8 +203,27 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       const originalName = relativeSize ? stripRelativePackSize(request.name) : request.name;
       const originalIdentity = identity(originalName);
       const exactIdentity = entries.some(entry => entry.fields.some(field => field.tokens.join(' ') === originalIdentity));
-      const recovery = exactIdentity ? { text: originalName, changed: false, suggestionOnly: false } : recoverHindi(originalName);
-      const requestName = recovery.text;
+      const recovery = !allowHindiRecovery || exactIdentity ? { alternatives: [], changed: false } : recoverHindi(originalName);
+      if (recovery.changed) {
+        // Every interpretation still passes the normal identity, brand, price,
+        // size and packaging checks. Never auto-select a phonetic recovery.
+        const choices = new Map<string, VoiceCandidate<T>>();
+        for (const name of recovery.alternatives) {
+          const result = this.match({ ...request, name }, undefined, false);
+          for (const candidate of result.candidates) {
+            if (candidate.missingTokens.length || candidate.coverage < 0.85
+              || (!candidate.eligible && !/pack size|Pack weight/.test(candidate.reason))) continue;
+            const previous = choices.get(candidate.product.id);
+            if (!previous || candidate.score > previous.score) choices.set(candidate.product.id, candidate);
+          }
+        }
+        const candidates = [...choices.values()].sort((a, b) => Number(b.eligible) - Number(a.eligible)
+          || b.score - a.score || a.product.id.localeCompare(b.product.id)).slice(0, 8);
+        return { product: null, confidence: 'low', candidates,
+          reason: candidates.length ? 'Similar-sounding products found; choose the intended product'
+            : 'No reliable match; choose a product or repeat its name' };
+      }
+      const requestName = originalName;
       const requestedMeaning = groceryMeaning(requestName);
       const tokens = identity(requestName).split(' ').filter(Boolean);
       if (!tokens.length) return { product: null, confidence: 'low', reason: 'Say a product name', candidates: [] };
@@ -309,8 +328,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       }
       const eligible = ranked.filter(c => c.eligible);
       const top = eligible[0], next = eligible[1];
-      const recoveryUncertain = recovery.suggestionOnly || (recovery.changed && (!top?.identityComplete || Boolean(next && top.score - next.score < 0.06)));
-      const preferred = relativeActive || recoveryUncertain ? undefined : eligible.find(c => c.product.id === preferredProductId && top.score - c.score <= 0.15
+      const preferred = relativeActive ? undefined : eligible.find(c => c.product.id === preferredProductId && top.score - c.score <= 0.15
         && c.quantityRank === top.quantityRank && c.fulfillmentCount === top.fulfillmentCount
         && c.sizeDistance === top.sizeDistance);
       // For price requests, select the best eligible name match automatically.
@@ -321,7 +339,7 @@ export function createVoiceProductMatcher<T extends VoiceProduct>(products: T[])
       const betterQuantity = totalRequested && top && next && (top.quantityRank !== next.quantityRank
         || top.fulfillmentCount !== next.fulfillmentCount);
       const totalPacketsSelected = totalRequested && top?.fulfillmentCount;
-      const clear = top && !recoveryUncertain && (totalPacketsSelected || betterQuantity || priceSelected || packetSelected || !next || (top.identityComplete && top.score - next.score >= 0.06));
+      const clear = top && (totalPacketsSelected || betterQuantity || priceSelected || packetSelected || !next || (top.identityComplete && top.score - next.score >= 0.06));
       const selected = preferred || (clear ? top : undefined);
       const isApproximateSize = Boolean(selected?.sizeDistance && selected.sizeDistance > 0);
       const selectedSize = selected ? productMeasure(selected.product) : null;

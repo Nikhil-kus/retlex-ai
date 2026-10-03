@@ -23,6 +23,32 @@ const products = [
 ];
 const matcher = createVoiceProductMatcher(products);
 
+test('future Hindi names produce selectable pronunciation alternatives without a product dictionary', () => {
+  const catalog = [
+    { id: 'a', name: 'FutureBrand A', localName: 'झुमणा', price: 40 },
+    { id: 'b', name: 'FutureBrand B', localName: 'झूमना', price: 40 },
+    { id: 'wrong', name: 'Unrelated', localName: 'नमक', price: 40 },
+  ];
+  for (const products of [catalog, [...catalog].reverse()]) {
+    const engine = createVoiceProductMatcher(products);
+    for (const extra of [{}, { saleForm: 'packet' as const }, { requestedPrice: 40 }]) {
+      const result = engine.match({ name: 'झुमना', ...extra }, 'a');
+      assert.equal(result.product, null);
+      assert.equal(result.confidence, 'low');
+      assert.deepEqual(result.candidates.map(c => c.product.id), ['a', 'b']);
+    }
+    assert.deepEqual(createProductSuggestions(products).suggest({ name: 'झुमना' }).brandVariants.map(p => p.id), ['a', 'b']);
+    assert.equal(engine.match({ name: 'झुमणा' }).product?.id, 'a');
+    assert.deepEqual(engine.match({ name: 'झुमना', requestedPrice: 90 }).candidates, []);
+    assert.deepEqual(engine.match({ name: 'अनजान झुमना' }).candidates, []);
+  }
+  for (const [spoken, name] of [['धपला', 'दपला'], ['सिराना', 'शिराना'], ['बिरुणा', 'विरुणा'], ['झु मणा', 'झुमणा']]) {
+    const result = createVoiceProductMatcher([{ id: 'new', name }]).match({ name: spoken });
+    assert.equal(result.product, null, spoken);
+    assert.deepEqual(result.candidates.map(c => c.product.id), ['new'], spoken);
+  }
+});
+
 test('screenshot: seb recovers sev only when apple is not a catalogue identity', () => {
   const sev = { id: 'sev', name: 'Sev 200g', localName: 'सेव', baseUnit: 'pkt', price: 40 };
   const apple = { id: 'apple', name: 'Apple', baseUnit: 'kg', price: 100 };
@@ -89,10 +115,12 @@ test('catalogue-backed Hindi recovery handles consonants and speech-inserted spa
     const parsed = parseVoiceItems(spoken);
     assert.equal(parsed.length, 1, spoken);
     const result = engine.match(parsed[0]);
-    assert.equal(result.product?.id, spoken.includes('किलो') ? 'ghee' : 'jeeravan', spoken);
+    const expected = spoken.includes('किलो') ? 'ghee' : 'jeeravan';
+    const exact = spoken.startsWith('घी') || spoken.startsWith('जीरावन');
+    assert.equal(result.product?.id, exact ? expected : undefined, spoken);
     const choices = createProductSuggestions(catalog).suggest({ name: parsed[0].name,
       sourceRawText: parsed[0].rawText, parsedQty: parsed[0].quantity, parsedUnit: parsed[0].unit });
-    assert.deepEqual(choices.brandVariants.map(p => p.id), [result.product!.id], spoken);
+    assert.deepEqual(choices.brandVariants.map(p => p.id), [expected], spoken);
   }
   assert.equal(engine.match({ name: 'जीरा' }).product?.id, 'jeera');
   assert.equal(engine.match({ name: 'अंजीर' }).product?.id, 'fig');
@@ -102,7 +130,8 @@ test('catalogue-backed Hindi recovery handles consonants and speech-inserted spa
 test('Hindi sound recovery is general, bounded and preserves exact identities', () => {
   for (const [spoken, stored] of [['धनिया', 'दनिया'], ['साबुन', 'साबुण'], ['हल्दी', 'हल्धी'], ['काजू', 'खाजू']]) {
     const engine = createVoiceProductMatcher([{ id: 'local', name: stored }]);
-    assert.equal(engine.match({ name: spoken }).product?.id, 'local', `${spoken} -> ${stored}`);
+    assert.equal(engine.match({ name: spoken }).product, null);
+    assert.deepEqual(engine.match({ name: spoken }).candidates.map(c => c.product.id), ['local'], `${spoken} -> ${stored}`);
   }
   const engine = createVoiceProductMatcher([
     { id: 'gi', name: 'गी' }, { id: 'ghee', name: 'घी' },
@@ -124,7 +153,8 @@ test('recovered generic names still require a brand choice, even with price, pac
     assert.equal(result.product, null);
     assert.equal(result.candidates.filter(c => c.eligible).length, 2);
   }
-  assert.equal(engine.match({ name: 'अमूल गी', quantity: 1, unit: 'kg' }).product?.id, 'amul');
+  assert.equal(engine.match({ name: 'अमूल गी', quantity: 1, unit: 'kg' }).product, null);
+  assert.deepEqual(engine.match({ name: 'अमूल गी', quantity: 1, unit: 'kg' }).candidates.map(c => c.product.id), ['amul']);
   assert.equal(engine.match({ name: 'अनजान गी', requestedPrice: 500 }).product, null);
   assert.equal(engine.match({ name: 'अमूल गी', requestedPrice: 1 }).product, null);
   assert.equal(engine.match({ name: 'अमूल गी', quantity: 1, unit: 'l' }).product, null);

@@ -1,8 +1,9 @@
 import { HINDI_TO_HINGLISH_MAP, HINGLISH_TO_HINDI_MAP } from './transliterate';
 
-// Deliberately keep vowels, matras, word length and consonant order. These
-// are bounded fallback confusions, never global spelling equivalences.
-const groups = ['कख', 'गघ', 'चछ', 'जझ', 'टठ', 'डढ', 'तथ', 'दध', 'पफ', 'बभ', 'नण', 'शष'];
+// Preserve character order and length, allowing only one listed sound change
+// per word (including short/long i and u). Never erase vowels or nasal marks.
+// These are suggestion rules, never global spelling equivalences.
+const groups = ['कख', 'गघ', 'चछ', 'जझ', 'टठ', 'डढ', 'तथ', 'दध', 'पफ', 'बभ', 'नण', 'शषस', 'िी', 'ुू'];
 const consonantGroup = new Map(groups.flatMap((group, i) => [...group].map(c => [c, i] as const)));
 const hindiWord = /^[\p{Script=Devanagari}\p{M}]+$/u;
 const tokenize = (text: string) => text.normalize('NFC').match(/[\p{L}\p{M}\p{N}]+/gu) || [];
@@ -34,10 +35,9 @@ export function createHindiCatalogRecovery(texts: string[], normalize: (text: st
   return (text: string) => {
     const words = tokenize(text);
     let changed = false;
-    let suggestionOnly = false;
-    const recovered: string[] = [];
+    let alternatives: string[][] = [[]];
     for (let i = 0; i < words.length; i++) {
-      let replacement: string | undefined;
+      let replacements: string[] | undefined;
       let consumed = 1;
       for (let count = Math.min(3, words.length - i); count >= 1; count--) {
         const span = words.slice(i, i + count);
@@ -45,18 +45,17 @@ export function createHindiCatalogRecovery(texts: string[], normalize: (text: st
         if (!span.every(word => hindiWord.test(word)) || span.every(word => known.has(normalize(word)))) continue;
         const joined = span.join('');
         const choices = (byLength.get(joined.length) || []).filter(word => word === joined || closeSound(joined, word));
-        const identities = new Set(choices.map(normalize));
-        if (identities.size !== 1) continue;
-        replacement = choices[0];
-        // ब/व can change the actual product (सेब/सेव). Require selection.
-        suggestionOnly ||= [...joined].some((char, index) =>
-          (char === 'ब' && replacement![index] === 'व') || (char === 'व' && replacement![index] === 'ब'));
+        if (!choices.length) continue;
+        replacements = [...new Set(choices.map(normalize))].sort();
         consumed = count;
         break;
       }
-      recovered.push(replacement ?? words[i]);
-      if (replacement !== undefined) { changed = true; i += consumed - 1; }
+      alternatives = alternatives.flatMap(prefix => (replacements ?? [words[i]]).map(word => [...prefix, word]));
+      // Fail closed on unusually ambiguous input rather than choosing an
+      // arbitrary subset. The normal product picker remains available.
+      if (alternatives.length > 64) return { alternatives: [], changed: false };
+      if (replacements !== undefined) { changed = true; i += consumed - 1; }
     }
-    return { text: changed ? recovered.join(' ') : text, changed, suggestionOnly };
+    return { alternatives: changed ? alternatives.map(words => words.join(' ')) : [], changed };
   };
 }
