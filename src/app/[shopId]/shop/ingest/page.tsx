@@ -212,7 +212,7 @@ export default function IngestPage() {
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href={`/${shopId}/products`} className="text-slate-400 hover:text-slate-600 transition">
+        <Link href={`/${shopId}/billing`} className="text-slate-400 hover:text-slate-600 transition">
           <ArrowLeft size={20} />
         </Link>
         <div>
@@ -547,10 +547,10 @@ export default function IngestPage() {
               <Upload size={16} /> Ingest More Images
             </button>
             <Link
-              href={`/${shopId}/products`}
+              href={`/${shopId}/billing`}
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition"
             >
-              <Package size={16} /> View Products
+              <Package size={16} /> View in Billing
             </Link>
           </div>
         </div>

@@ -8,12 +8,13 @@ import { canCorrectProductByVoice } from '@/lib/voice-review';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package, Store } from 'lucide-react';
+import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package, Store, Pencil } from 'lucide-react';
 import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier, formatProductPackSize } from '@/lib/bill-utils';
 import { transliterateHinglishToHindi } from '@/lib/transliterate';
+import ProductEditor from '@/components/ProductEditor';
 import BillDetails from '@/components/BillDetails';
 import DebugPanel, { makeEmptyDebugData, type DebugData, type TraceEntry } from '@/components/DebugPanel';
 
@@ -879,6 +880,10 @@ export default function BillingPage() {
   const router = useRouter();
   const [shop, setShop] = useState<any>(null);
   const [catalog, setCatalog] = useState<any[]>([]);
+  const [manageProducts, setManageProducts] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [productEditor, setProductEditor] = useState<{ product: any | null } | null>(null);
   const [mode, setMode] = useState<'MANUAL' | 'OCR' | 'PENDING'>('MANUAL');
 
   // Rebuild the voice product index whenever the catalog changes (page load, background
@@ -919,6 +924,19 @@ export default function BillingPage() {
   const [showMoreCompleted, setShowMoreCompleted] = useState(false);
   const [showMoreUnpaid, setShowMoreUnpaid] = useState(false);
 
+  const toggleManagedProduct = (id: string) => setSelectedProducts(previous => { const next = new Set(previous); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const deleteSelectedProducts = async () => {
+    if (!selectedProducts.size || !confirm(`Delete ${selectedProducts.size} products? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    try {
+      const response = await fetch('/api/products/bulk-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopId: shop.id, productIds: [...selectedProducts] }) });
+      if (!response.ok) throw new Error('Could not delete products. Please try again.');
+      setSelectedProducts(new Set()); setManageProducts(false);
+      catalogCache.clear(); await fetchCatalog(shop.id);
+    } catch (error) { alert(error instanceof Error ? error.message : 'Could not delete products.'); }
+    finally { setBulkDeleting(false); }
+  };
+
   // AI/OCR state
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -941,11 +959,11 @@ export default function BillingPage() {
   // Push a history entry whenever a sub-view opens so the browser back button
   // closes it instead of navigating away from the page.
   useEffect(() => {
-    const anySubViewOpen = selectedCategory || selectedBill || isReviewing;
+    const anySubViewOpen = selectedCategory || selectedBill || isReviewing || productEditor;
     if (anySubViewOpen) {
       window.history.pushState({ subView: true }, '');
     }
-  }, [selectedCategory, selectedBill, isReviewing]);
+  }, [selectedCategory, selectedBill, isReviewing, productEditor]);
 
   // Push a separate history entry when manual search becomes active so the
   // Android back button clears the search instead of closing the app.
@@ -958,6 +976,7 @@ export default function BillingPage() {
 
   useEffect(() => {
     const handlePopState = () => {
+      if (productEditor) { setProductEditor(null); return; }
       // Close sub-views in priority order: search > bill modal > review > category
       if (search.length > 0) {
         setSearch('');
@@ -978,7 +997,7 @@ export default function BillingPage() {
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [search, selectedBill, isReviewing, selectedCategory]);
+  }, [search, selectedBill, isReviewing, selectedCategory, productEditor]);
   // ─────────────────────────────────────────────────────────────────────────
 
   const modeIndex = mode === 'MANUAL' ? 0 : mode === 'PENDING' ? 1 : 2;
@@ -1510,6 +1529,16 @@ export default function BillingPage() {
               onScroll={(e) => { const t = (e.currentTarget as HTMLDivElement).scrollTop; if (search.length > 0) searchInputRef.current?.blur(); setActiveSuggestionId(null); handleScrollDirection(t); }}
             >
 
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 bg-white">
+                <div><h2 className="text-sm font-bold text-slate-900">Your products</h2><p className="text-[11px] text-slate-400">Tap a card to add to the bill</p></div>
+                <button disabled={bulkDeleting} onClick={() => { setManageProducts(!manageProducts); setSelectedProducts(new Set()); }} className="ml-auto rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">{manageProducts ? 'Done' : 'Select'}</button>
+                <button onClick={() => setProductEditor({ product: null })} className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"><Plus size={15} /> Add product</button>
+              </div>
+              {manageProducts && <div className="flex flex-wrap items-center gap-3 px-4 py-2 bg-indigo-50 text-xs">
+                <span className="font-semibold text-indigo-700">{selectedProducts.size} selected</span>
+                <button disabled={bulkDeleting} onClick={() => setSelectedProducts(selectedProducts.size === catalog.length ? new Set() : new Set(catalog.map(p => p.id)))} className="text-indigo-600 font-semibold">{selectedProducts.size === catalog.length ? 'Clear all' : 'Select all products'}</button>
+                <button disabled={bulkDeleting || !selectedProducts.size} onClick={deleteSelectedProducts} className="ml-auto rounded-lg bg-rose-600 px-3 py-2 text-white font-semibold disabled:opacity-50">{bulkDeleting ? 'Deleting…' : 'Delete selected'}</button>
+              </div>}
               {/* ── Category full-page view ── */}
               {selectedCategory ? (
                 <div className="flex flex-col flex-1">
@@ -1532,7 +1561,7 @@ export default function BillingPage() {
                       const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
                       const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
                       return (
-                        <ProductCard key={p.id} p={p} qty={qty}
+                        <ProductCard key={p.id} p={p} qty={qty} onEdit={() => setProductEditor({ product: p })} selectionMode={manageProducts} selected={selectedProducts.has(p.id)} onSelect={() => { if (!bulkDeleting) toggleManagedProduct(p.id); }}
                           onAdd={() => addToCart(p)}
                           onInc={() => updateCartItem(cartIdx, 'quantity', qty + (Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1))}
                           onDec={() => { const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1; cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
@@ -1654,7 +1683,7 @@ export default function BillingPage() {
                             const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
                             const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
                             return (
-                              <ProductCard key={p.id} p={p} qty={qty}
+                              <ProductCard key={p.id} p={p} qty={qty} onEdit={() => setProductEditor({ product: p })} selectionMode={manageProducts} selected={selectedProducts.has(p.id)} onSelect={() => { if (!bulkDeleting) toggleManagedProduct(p.id); }}
                                 onAdd={() => addToCart(p)}
                                 onInc={() => updateCartItem(cartIdx, 'quantity', qty + (Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1))}
                                 onDec={() => { const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1; cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
@@ -1696,7 +1725,7 @@ export default function BillingPage() {
                                   key={p.id}
                                   className={`transition-all duration-200 scale-[0.93] origin-top ${isActive ? 'scale-[0.98]' : ''}`}
                                 >
-                                  <ProductCard p={p} qty={qty} mini
+                                  <ProductCard p={p} qty={qty} mini onEdit={() => setProductEditor({ product: p })} selectionMode={manageProducts} selected={selectedProducts.has(p.id)} onSelect={() => { if (!bulkDeleting) toggleManagedProduct(p.id); }}
                                     onAdd={() => addToCart(p)}
                                     onInc={() => updateCartItem(cartIdx, 'quantity', qty + step)}
                                     onDec={() => { cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
@@ -2331,6 +2360,7 @@ export default function BillingPage() {
         />
       )}
 
+      {productEditor && <ProductEditor product={productEditor.product} products={catalog} shop={shop} onClose={() => setProductEditor(null)} onSaved={async () => { catalogCache.clear(); await fetchCatalog(shop.id); }} />}
       {selectedBill && <BillDetails bill={selectedBill} shop={shop} onClose={() => setSelectedBill(null)} />}
 
       {/* Quantity Selector Sheet — opens when user taps quantity pill in review list */}
@@ -2870,8 +2900,10 @@ function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomer
   );
 }
 
-function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, suggestedInCart, onQtyPicker }: {
+function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, suggestedInCart, onQtyPicker, onEdit, selectionMode = false, selected = false, onSelect }: {
   p: any; qty: number; mini?: boolean;
+  selectionMode?: boolean; selected?: boolean; onSelect?: () => void;
+  onEdit: () => void;
   onAdd: () => void; onInc: () => void; onDec: () => void;
   onSuggest?: () => void;
   suggestedInCart?: any | null;
@@ -2890,16 +2922,19 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, sug
 
   return (
     <div
+      onClick={selectionMode ? onSelect : inCart ? onInc : handlePress}
       className={`relative bg-white border rounded-2xl overflow-hidden shadow-sm transition-all select-none ${
         mini ? 'flex-shrink-0 w-28' : ''
-      } ${inCart ? 'border-indigo-400 shadow-indigo-100' : 'border-slate-200'}`}
+      } ${(selectionMode ? selected : inCart) ? 'border-indigo-400 shadow-indigo-100' : 'border-slate-200'}`}
     >
       {/* Image area — tappable: adds when not in cart, increments when in cart */}
       <div
         className="relative w-full bg-slate-100 overflow-hidden"
         style={{ paddingBottom: '100%' }}
-        onClick={inCart ? onInc : handlePress}
       >
+        <button aria-label={`${selectionMode ? selected ? 'Deselect' : 'Select' : 'Add to bill:'} ${pName(p.name, p.localName)}`} aria-pressed={selectionMode ? selected : undefined} onClick={e => { e.stopPropagation(); selectionMode ? onSelect?.() : inCart ? onInc() : handlePress(); }} className="absolute inset-0 z-[1] focus-visible:outline-2 focus-visible:outline-indigo-500">
+          <span className="absolute top-1.5 right-1.5 rounded-full border border-white/60 bg-white/55 px-2 py-0.5 text-[10px] font-bold text-indigo-800 backdrop-blur-[2px]">{selectionMode ? selected ? '✓ Selected' : 'Select' : '+ Add'}</span>
+        </button>
         {/* Product image */}
         {p.imageUrl
           ? <img src={p.imageUrl} alt={p.name} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
@@ -2931,10 +2966,10 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, sug
         )}
 
         {/* ── BigBasket-style corner control ── */}
-        {inCart ? (
+        {inCart && !selectionMode && (
           /* Qty stepper pill — bottom-right corner, bigger when in cart */
           <div
-            className="absolute bottom-1.5 right-1.5 flex items-center bg-indigo-600 rounded-full shadow-lg overflow-hidden scale-110 origin-bottom-right"
+            className="absolute bottom-10 right-1.5 z-[2] flex items-center bg-indigo-600 rounded-full shadow-lg overflow-hidden scale-110 origin-bottom-right"
             onClick={e => e.stopPropagation()}
           >
             <button
@@ -2950,15 +2985,8 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, sug
               className="w-7 h-7 flex items-center justify-center text-white font-bold text-lg active:bg-indigo-700 transition"
             >+</button>
           </div>
-        ) : (
-          /* Add pill — bottom-right corner, BigBasket style */
-          <button
-            onClick={e => { e.stopPropagation(); handlePress(); }}
-            className={`absolute bottom-1.5 right-1.5 bg-white border-2 border-indigo-600 text-indigo-600 rounded-full font-black shadow-md hover:bg-indigo-50 active:scale-90 transition-all flex items-center justify-center gap-0.5 ${mini ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'}`}
-          >
-            <Plus size={mini ? 10 : 11} strokeWidth={3} /> Add
-          </button>
         )}
+        <button onClick={e => { e.stopPropagation(); onEdit(); }} aria-label={`Edit ${pName(p.name, p.localName)}`} className={`absolute bottom-1.5 right-1.5 z-[2] bg-white border-2 border-indigo-600 text-indigo-600 rounded-full font-black shadow-md hover:bg-indigo-50 active:scale-90 transition-all flex items-center justify-center gap-0.5 ${mini ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'}`}><Pencil size={11} /> Edit</button>
       </div>
 
       {/* Info — name, unit, price + optional suggest arrow */}

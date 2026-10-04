@@ -9,7 +9,6 @@ import { useHindi } from '@/lib/hindi-context';
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/billing', label: 'Billing', icon: Receipt },
-  { href: '/products', label: 'Products', icon: Package },
   { href: '/analytics', label: 'Analytics', icon: ChartColumn },
   { href: '/shop/setup', label: 'Shop Setup', icon: Store },
 ];

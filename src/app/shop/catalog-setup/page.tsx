@@ -121,7 +121,7 @@ export default function CatalogSetupPage() {
       const data = await res.json();
       if (res.ok) {
         alert(`✅ Imported ${data.imported} products! (${data.skipped} already existed)`);
-        router.push('/products');
+        router.push('/billing');
       } else {
         alert('❌ Import failed: ' + (data.error || 'Unknown error'));
       }
@@ -143,7 +143,7 @@ export default function CatalogSetupPage() {
       const data = await res.json();
       if (res.ok) {
         alert(`✅ Imported ${data.count} kirana products!`);
-        router.push('/products');
+        router.push('/billing');
       } else {
         alert('❌ Failed to import kirana products');
       }
@@ -169,7 +169,7 @@ export default function CatalogSetupPage() {
       });
       if (res.ok) {
         alert(`✅ Imported ${itemsToImport.length} items!`);
-        router.push('/products');
+        router.push('/billing');
       } else {
         alert('❌ Failed to import items');
       }

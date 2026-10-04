@@ -34,7 +34,6 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
 
   const navItems = [
     { href: `${base}/billing`,        label: 'Billing',        icon: Receipt },
-    { href: `${base}/products`,       label: 'Products',       icon: Package },
     { href: `${base}/shop/ingest`,    label: 'AI Ingest',      icon: Sparkles },
     { href: `${base}/analytics`,      label: 'Analytics',      icon: ChartColumn },
     { href: `${base}/worker`,         label: 'Worker View',    icon: Users },

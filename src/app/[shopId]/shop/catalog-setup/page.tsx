@@ -25,10 +25,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useShop } from '@/lib/shop-context';
 import {
-  Package, Search, ArrowLeft, ChevronDown, ChevronRight,
+  Package, Search, ArrowLeft, Plus,
   Check, Loader2, RefreshCw, ShoppingBag, CheckSquare, Square,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useHindi, CATEGORY_IMAGES } from '@/lib/hindi-context';
+import { formatProductPackSize } from '@/lib/bill-utils';
 
 interface CatalogProduct {
   id: string;
@@ -43,6 +45,7 @@ interface CatalogProduct {
 
 export default function CatalogSetupPage() {
   const router = useRouter();
+  const { pName, catName } = useHindi();
   const { shop, shopId, loading: shopLoading } = useShop();
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -56,7 +59,7 @@ export default function CatalogSetupPage() {
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
 
@@ -68,9 +71,7 @@ export default function CatalogSetupPage() {
       if (res.ok) {
         const data: CatalogProduct[] = await res.json();
         setCatalog(data);
-        // Auto-expand all categories on first load
-        const cats = new Set(data.map(p => p.category || 'Uncategorized'));
-        setExpandedCategories(cats);
+
       }
     } catch {}
     setLoadingCatalog(false);
@@ -140,7 +141,7 @@ export default function CatalogSetupPage() {
     (grouped.get(cat) || []).filter(p => !isAlreadyAdded(p));
 
   const allSelectableProducts = catalog.filter(p => !isAlreadyAdded(p));
-  const allSelectableInFiltered = filtered.filter(p => !isAlreadyAdded(p));
+  const allSelectableInFiltered = filtered.filter(p => !isAlreadyAdded(p) && (!activeCategory || (p.category || 'Uncategorized') === activeCategory));
 
   // ── Selection helpers ─────────────────────────────────────────────────────
   const toggleProduct = (id: string) => {
@@ -174,14 +175,6 @@ export default function CatalogSetupPage() {
       } else {
         allSelectableInFiltered.forEach(p => n.add(p.id));
       }
-      return n;
-    });
-  };
-
-  const toggleCategoryExpand = (cat: string) => {
-    setExpandedCategories(prev => {
-      const n = new Set(prev);
-      if (n.has(cat)) n.delete(cat); else n.add(cat);
       return n;
     });
   };
@@ -225,7 +218,7 @@ export default function CatalogSetupPage() {
     allSelectableInFiltered.every(p => selected.has(p.id));
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col">
       {/* ── Sticky header ─────────────────────────────────────────────────── */}
       <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 py-4">
@@ -266,14 +259,15 @@ export default function CatalogSetupPage() {
           )}
 
           {/* Search + select all */}
-          <div className="flex gap-2">
-            <div className="relative flex-1">
+          <div className="flex flex-wrap gap-2">
+            <div className="relative min-w-[180px] flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
+                aria-label="Search catalog"
                 placeholder="Search products or Hindi names…"
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => { setSearch(e.target.value); setActiveCategory(null); }}
                 className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50"
               />
             </div>
@@ -281,6 +275,7 @@ export default function CatalogSetupPage() {
             {!isLoading && allSelectableInFiltered.length > 0 && (
               <button
                 onClick={toggleAll}
+                disabled={importing}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition whitespace-nowrap ${
                   allFilteredSelected
                     ? 'bg-indigo-600 text-white border-indigo-600'
@@ -292,6 +287,7 @@ export default function CatalogSetupPage() {
               </button>
             )}
             <button
+              disabled={importing || isLoading}
               onClick={() => { loadCatalog(); loadShopProducts(); }}
               className="p-2 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition"
               title="Refresh catalog"
@@ -314,9 +310,7 @@ export default function CatalogSetupPage() {
             <Package size={40} className="opacity-30" />
             <p className="font-medium">No products in catalog yet.</p>
             <p className="text-sm text-center max-w-xs">
-              Add products to any shop first, or run{' '}
-              <code className="bg-slate-100 px-1 rounded text-xs">node scripts/db-migrate.mjs</code>{' '}
-              to seed from your main shop.
+              Products will appear here once they are available in the shared catalog.
             </p>
           </div>
         ) : filtered.length === 0 ? (
@@ -339,165 +333,80 @@ export default function CatalogSetupPage() {
                   )}
                 </div>
                 <button
-                  onClick={() => router.push(`/${shopId}/products`)}
+                  onClick={() => router.push(`/${shopId}/billing`)}
                   className="text-xs text-emerald-700 font-bold hover:underline"
                 >
-                  View Products →
+                  View in Billing →
                 </button>
               </div>
             )}
 
-            {/* Category groups */}
-            <div className="space-y-3">
-              {categories.map(cat => {
-                const products = grouped.get(cat) || [];
-                const selectable = products.filter(p => !isAlreadyAdded(p));
-                const alreadyAdded = products.filter(p => isAlreadyAdded(p));
-                const selectedInCat = selectable.filter(p => selected.has(p.id)).length;
-                const allCatSelected = selectable.length > 0 && selectedInCat === selectable.length;
-                const isExpanded = expandedCategories.has(cat);
-
-                return (
-                  <div key={cat} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                    {/* Category header */}
-                    <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-100">
-                      {/* Category checkbox */}
-                      {selectable.length > 0 && (
-                        <button
-                          onClick={e => { e.stopPropagation(); toggleCategory(cat); }}
-                          className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition ${
-                            allCatSelected
-                              ? 'bg-indigo-600 border-indigo-600'
-                              : selectedInCat > 0
-                                ? 'bg-indigo-200 border-indigo-400'
-                                : 'border-slate-300 hover:border-indigo-400'
-                          }`}
-                          title={allCatSelected ? 'Deselect category' : 'Select all in category'}
-                        >
-                          {allCatSelected && <Check size={12} className="text-white" />}
-                          {!allCatSelected && selectedInCat > 0 && (
-                            <div className="w-2 h-2 bg-indigo-500 rounded-sm" />
-                          )}
-                        </button>
-                      )}
-
-                      {/* Category name + counts */}
-                      <button
-                        onClick={() => toggleCategoryExpand(cat)}
-                        className="flex-1 flex items-center gap-2 text-left"
-                      >
-                        <span className="font-bold text-slate-800 text-sm">{cat}</span>
-                        <span className="text-xs text-slate-400">
-                          {products.length} products
-                        </span>
-                        {alreadyAdded.length > 0 && (
-                          <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium">
-                            {alreadyAdded.length} added
-                          </span>
-                        )}
-                        {selectedInCat > 0 && (
-                          <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-medium">
-                            {selectedInCat} selected
-                          </span>
-                        )}
-                        <span className="ml-auto text-slate-400">
-                          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        </span>
+            {!activeCategory && !search.trim() ? (
+              <section className="rounded-2xl bg-gradient-to-b from-indigo-50 via-violet-50 to-slate-50 px-4 pt-4 pb-6">
+                <div className="mb-4"><h2 className="text-sm font-bold text-slate-900">Browse by category</h2><p className="mt-1 text-xs text-slate-500">Choose products for your shop. Select a whole category or pick items individually.</p></div>
+                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {categories.map(cat => {
+                    const products = grouped.get(cat) || [];
+                    const available = selectableInCategory(cat);
+                    const count = available.filter(p => selected.has(p.id)).length;
+                    const image = CATEGORY_IMAGES[cat] || products.find(p => p.imageUrl)?.imageUrl;
+                    return <div key={cat} className={`min-w-0 rounded-2xl border transition ${count ? 'border-indigo-300 bg-white shadow-sm' : 'border-white/80 bg-white/70'}`}>
+                      <button onClick={() => setActiveCategory(cat)} className="flex w-full flex-col items-center gap-2 px-2 pt-4 pb-3 rounded-2xl hover:bg-white transition focus-visible:outline-indigo-500">
+                        <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-indigo-100 to-violet-100 ring-2 ring-indigo-100 shadow-sm">
+                          <Package size={26} className="text-indigo-400" />
+                          {image && <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover" onError={e => { e.currentTarget.style.display = 'none'; }} />}
+                        </div>
+                        <div className="text-center"><p className="text-xs font-bold leading-tight text-slate-800 line-clamp-2">{catName(cat)}</p><p className="mt-1 text-[10px] text-slate-400">{products.length} items · {available.length} new</p></div>
                       </button>
-                    </div>
-
-                    {/* Products grid */}
-                    {isExpanded && (
-                      <div className="p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                        {products.map(p => {
-                          const added = isAlreadyAdded(p);
-                          const isSelected = selected.has(p.id);
-
-                          return (
-                            <button
-                              key={p.id}
-                              onClick={() => !added && toggleProduct(p.id)}
-                              disabled={added}
-                              className={`relative flex flex-col rounded-xl border-2 overflow-hidden text-left transition ${
-                                added
-                                  ? 'border-emerald-200 bg-emerald-50/50 opacity-70 cursor-default'
-                                  : isSelected
-                                    ? 'border-indigo-500 bg-indigo-50/40 shadow-md shadow-indigo-100'
-                                    : 'border-slate-200 bg-white hover:border-indigo-300 hover:shadow-sm active:scale-[0.98]'
-                              }`}
-                            >
-                              {/* Selection indicator */}
-                              <div className={`absolute top-1.5 right-1.5 w-5 h-5 rounded-full border-2 flex items-center justify-center z-10 ${
-                                added
-                                  ? 'bg-emerald-500 border-emerald-500'
-                                  : isSelected
-                                    ? 'bg-indigo-600 border-indigo-600'
-                                    : 'bg-white border-slate-300'
-                              }`}>
-                                {(added || isSelected) && <Check size={11} className="text-white" />}
-                              </div>
-
-                              {/* Product image */}
-                              <div className="w-full aspect-square bg-slate-100 overflow-hidden">
-                                {p.imageUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={p.imageUrl}
-                                    alt={p.name}
-                                    className="w-full h-full object-cover"
-                                    onError={e => { e.currentTarget.style.display = 'none'; }}
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
-                                    <Package size={24} className="text-slate-300" />
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Product info */}
-                              <div className="p-2">
-                                <p className="text-xs font-semibold text-slate-800 line-clamp-2 leading-tight">
-                                  {p.name}
-                                </p>
-                                {p.localName && (
-                                  <p className="text-[10px] text-slate-400 mt-0.5 truncate">{p.localName}</p>
-                                )}
-                                <div className="flex items-center justify-between mt-1">
-                                  <span className="text-[10px] text-slate-500">{p.baseUnit || 'pc'}</span>
-                                  {p.price != null && p.price > 0 && (
-                                    <span className="text-[10px] font-bold text-emerald-600">₹{p.price}</span>
-                                  )}
-                                </div>
-                                {added && (
-                                  <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">✓ In your shop</p>
-                                )}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                      <button disabled={!available.length || importing} onClick={() => toggleCategory(cat)} aria-pressed={available.length > 0 && count === available.length} className="flex w-full items-center justify-center gap-1 border-t border-indigo-50 px-1 py-2 text-[10px] font-semibold text-indigo-600 disabled:text-slate-400 hover:bg-indigo-50 rounded-b-2xl">
+                        {count > 0 ? <CheckSquare size={12} /> : <Plus size={12} />}{!available.length ? 'Already added' : count === available.length ? 'Selected' : count ? count + ' selected' : 'Select category'}
+                      </button>
+                    </div>;
+                  })}
+                </div>
+              </section>
+            ) : (
+              <div>
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-4">
+                  <button onClick={() => { setActiveCategory(null); setSearch(''); }} aria-label="Back to categories" className="rounded-full bg-slate-100 p-2 text-slate-600 hover:bg-slate-200"><ArrowLeft size={16} /></button>
+                  <div className="min-w-0"><h2 className="text-base font-bold text-slate-900">{activeCategory ? catName(activeCategory) : 'Search results'}</h2><p className="text-xs text-slate-400">{activeCategory ? grouped.get(activeCategory)?.length || 0 : filtered.length} products · {allSelectableInFiltered.length} available</p></div>
+                </div>
+                {(activeCategory ? [activeCategory] : categories).map(cat => <section key={cat} className="mb-5">
+                  {!activeCategory && <div className="flex justify-between gap-3 mb-3"><h3 className="text-sm font-semibold text-slate-700">{catName(cat)}</h3><button disabled={importing} onClick={() => toggleCategory(cat)} className="text-xs text-indigo-600 font-semibold">Select category</button></div>}
+                  <div className="grid grid-cols-3 gap-3">
+                    {(grouped.get(cat) || []).map(p => {
+                      const added = isAlreadyAdded(p); const isSelected = selected.has(p.id);
+                      return <button key={p.id} disabled={added || importing} aria-pressed={isSelected} aria-label={`${added ? 'Already added' : isSelected ? 'Deselect' : 'Select'} ${pName(p.name, p.localName)}`} onClick={() => toggleProduct(p.id)} className={`relative min-w-0 overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all focus-visible:outline-indigo-500 ${added ? 'border-emerald-200' : isSelected ? 'border-indigo-400 shadow-indigo-100 ring-1 ring-indigo-400' : 'border-slate-200 hover:shadow-md active:scale-[0.98]'}`}>
+                        <div className="relative w-full aspect-square bg-slate-100">
+                          <div className="absolute inset-0 flex items-center justify-center"><Package size={28} className="text-slate-300" /></div>
+                          {p.imageUrl && <img src={p.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" onError={e => { e.currentTarget.style.display = 'none'; }} />}
+                          {isSelected && <div className="absolute inset-0 bg-indigo-600/10" />}
+                          <span className={`absolute bottom-1.5 right-1.5 flex items-center gap-0.5 rounded-full border-2 px-2 py-1 text-[10px] font-bold shadow-sm ${added ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-indigo-600 text-indigo-600'}`}>{added || isSelected ? <Check size={11} /> : <Plus size={11} />}{added ? 'Added' : isSelected ? 'Selected' : 'Select'}</span>
+                        </div>
+                        <div className="p-2"><p className="line-clamp-2 text-xs font-semibold leading-tight text-slate-900">{pName(p.name, p.localName)}</p><p className="mt-0.5 text-[10px] text-slate-400">{formatProductPackSize(p)}</p>{p.price != null && p.price > 0 && <p className="mt-0.5 text-sm font-bold tabular-nums text-slate-900 [overflow-wrap:anywhere]">₹{Number(p.price).toLocaleString('en-IN')}</p>}</div>
+                      </button>;
+                    })}
                   </div>
-                );
-              })}
-            </div>
+                </section>)}
+              </div>
+            )}
           </>
         )}
       </div>
 
       {/* ── Sticky import footer ───────────────────────────────────────────── */}
       {!isLoading && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 shadow-lg">
-          <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="fixed bottom-0 left-0 md:left-64 right-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 shadow-lg pb-[env(safe-area-inset-bottom)]">
+          <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
             {/* Summary */}
-            <div className="flex-1 min-w-0">
+            <div className="w-full sm:w-auto sm:flex-1 min-w-0">
               {selected.size > 0 ? (
                 <p className="text-sm font-semibold text-slate-800">
                   {selected.size} product{selected.size !== 1 ? 's' : ''} selected
                 </p>
               ) : (
                 <p className="text-sm text-slate-400">
-                  Tap products or category checkboxes to select
+                  Select products to build your catalog
                 </p>
               )}
               {selected.size > 0 && (
@@ -508,17 +417,19 @@ export default function CatalogSetupPage() {
             </div>
 
             {/* Quick actions */}
-            {selected.size === 0 && totalSelectable > 0 && (
+            {selected.size === 0 && allSelectableInFiltered.length > 0 && (
               <button
+                disabled={importing}
                 onClick={toggleAll}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:border-indigo-300 hover:text-indigo-600 transition whitespace-nowrap"
               >
-                Select All ({totalSelectable})
+                Select All ({allSelectableInFiltered.length})
               </button>
             )}
 
             {selected.size > 0 && (
               <button
+                disabled={importing}
                 onClick={() => setSelected(new Set())}
                 className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-500 hover:bg-slate-50 transition"
               >
@@ -529,7 +440,7 @@ export default function CatalogSetupPage() {
             <button
               onClick={handleImport}
               disabled={selected.size === 0 || importing}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition whitespace-nowrap"
+              className="flex flex-1 sm:flex-none justify-center items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition whitespace-nowrap"
             >
               {importing ? (
                 <><Loader2 size={16} className="animate-spin" /> Importing…</>
