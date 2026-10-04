@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Store, Package, Receipt, History, ChartColumn, Menu, X, FileText } from 'lucide-react';
+import { LayoutDashboard, Store, Package, Receipt, ChartColumn, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useHindi } from '@/lib/hindi-context';
 
@@ -10,8 +10,6 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/billing', label: 'Billing', icon: Receipt },
   { href: '/products', label: 'Products', icon: Package },
-  { href: '/history', label: 'Bill History', icon: History },
-  { href: '/unpaid', label: 'Unpaid Bills', icon: FileText },
   { href: '/analytics', label: 'Analytics', icon: ChartColumn },
   { href: '/shop/setup', label: 'Shop Setup', icon: Store },
 ];

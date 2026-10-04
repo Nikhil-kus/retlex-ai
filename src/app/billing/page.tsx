@@ -14,6 +14,7 @@ import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier, formatProductPackSize } from '@/lib/bill-utils';
 import { transliterateHinglishToHindi } from '@/lib/transliterate';
+import BillDetails from '@/components/BillDetails';
 import DebugPanel, { makeEmptyDebugData, type DebugData, type TraceEntry } from '@/components/DebugPanel';
 
 const cleanProductName = (name: string) => {
@@ -2330,103 +2331,7 @@ export default function BillingPage() {
         />
       )}
 
-      {/* Bill Detail Modal */}
-      {selectedBill && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            {/* Header */}
-            <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-slate-900">Bill Details</h2>
-              <button
-                onClick={() => setSelectedBill(null)}
-                className="text-slate-500 hover:text-slate-700 text-2xl"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Bill Content */}
-            <div className="p-8 space-y-6">
-              {/* Shop Header */}
-              <div className="text-center pb-6 border-b border-slate-200 border-dashed">
-                <h1 className="text-3xl font-bold text-slate-900">{selectedBill.shop?.name || 'Kirana Store'}</h1>
-                <p className="text-slate-500 mt-1">{selectedBill.shop?.address}</p>
-                <p className="text-slate-500">Mobile: {selectedBill.shop?.mobile}</p>
-              </div>
-
-              {/* Bill Info */}
-              <div className="flex justify-between py-6 border-b border-slate-200 border-dashed">
-                <div>
-                  <p className="text-xs text-slate-400 uppercase font-semibold">Bill To</p>
-                  <p className="font-medium text-slate-900 mt-1">{selectedBill.customerName || 'Cash Customer'}</p>
-                  {selectedBill.customerPhone && <p className="text-slate-600 text-sm">{selectedBill.customerPhone}</p>}
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-slate-400 uppercase font-semibold">Bill Info</p>
-                  <p className="font-medium text-slate-900 mt-1">{getBillNumber(selectedBill)}</p>
-                  <p className="text-slate-600 text-sm">{new Date(selectedBill.createdAt).toLocaleString()}</p>
-                  <p className={`text-xs mt-1 font-bold ${selectedBill.status === 'PAID' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    {selectedBill.status}
-                  </p>
-                </div>
-              </div>
-
-              {/* Items Table */}
-              <div className="py-6">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="text-slate-400 text-xs uppercase border-b border-slate-200">
-                      <th className="pb-3 font-semibold">Item</th>
-                      <th className="pb-3 font-semibold text-center">Qty</th>
-                      <th className="pb-3 font-semibold text-right">Price</th>
-                      <th className="pb-3 font-semibold text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {selectedBill.items?.map((item: any, idx: number) => (
-                      <tr key={idx}>
-                        <td className="py-3">
-                          <p className="font-medium text-slate-800">
-                            {pName(item.name, item.localName)}
-                          </p>
-                        </td>
-                        <td className="py-3 text-center text-slate-600">
-                          {item.quantity} {item.unit}
-                        </td>
-                        <td className="py-3 text-right text-slate-600">
-                          ₹{(item.price || item.sellingPrice || 0).toFixed(2)}
-                        </td>
-                        <td className="py-3 text-right font-medium text-slate-800">
-                          ₹{(item.total || 0).toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Total */}
-              <div className="pt-4 flex flex-col items-end border-t border-slate-200 border-dashed">
-                <div className="flex justify-between w-full max-w-xs text-lg font-bold">
-                  <span className="text-slate-600">Total:</span>
-                  <span className="text-slate-900">₹{(selectedBill.totalAmount || 0).toFixed(2)}</span>
-                </div>
-                <p className="text-xs text-slate-400 mt-4 text-center w-full">Thank you for shopping with us!</p>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="border-t border-slate-200 p-6 flex gap-3 justify-end">
-              <button
-                onClick={() => setSelectedBill(null)}
-                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 transition"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {selectedBill && <BillDetails bill={selectedBill} shop={shop} onClose={() => setSelectedBill(null)} />}
 
       {/* Quantity Selector Sheet — opens when user taps quantity pill in review list */}
       {qtyPickerIdx !== null && reviewItems[qtyPickerIdx] && (
