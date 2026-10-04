@@ -71,13 +71,19 @@ export default function BillDetails({ bill, shop, onClose }: { bill: any; shop?:
             </div>
           </section>
           <div className="mb-3 mt-6 flex items-center justify-between"><h3 className="text-sm font-bold text-slate-900">Items purchased</h3><span className="text-xs text-slate-500">{items.length} items</span></div>
-          <ol className="space-y-3">
+          <ol className="space-y-1.5">
             {items.map((item: any, index: number) => (
-              <li key={item.id || index} className="bill-item rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-start gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-bold text-slate-400">{index + 1}</span><p className="min-w-0 text-sm font-semibold leading-relaxed text-slate-800 [overflow-wrap:anywhere]">{pName(item.name, item.localName)}</p></div>
-                <div className="mt-3 grid min-w-0 grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-xs">
-                  <div className="min-w-0"><p className="mb-1 text-[10px] text-slate-400">Quantity × price</p><p className="tabular-nums leading-relaxed text-slate-600 [overflow-wrap:anywhere]">{item.quantity} {item.unit || 'pc'} × {money(price(item))}</p></div>
-                  <div className="min-w-0 text-right"><p className="mb-1 text-[10px] text-slate-400">Amount</p><p className="text-sm font-bold tabular-nums leading-relaxed text-slate-900 [overflow-wrap:anywhere]">{money(total(item))}</p></div>
+              <li key={item.id || index} className="bill-item grid grid-cols-[minmax(0,1fr)_minmax(0,0.65fr)] items-center gap-x-3 rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold leading-snug text-slate-800 [overflow-wrap:anywhere]">{pName(item.name, item.localName)}</p>
+                  <p className="mt-1 text-[11px] leading-snug tabular-nums text-slate-500 [overflow-wrap:anywhere]">
+                    <span className="font-medium text-slate-600">{item.quantity} {item.unit || 'pc'}</span>
+                    <span className="mx-1 text-slate-300">×</span>{money(price(item))}
+                  </p>
+                </div>
+                <div className="min-w-0 text-right">
+                  <span className="sr-only">Amount: </span>
+                  <p className="text-[13px] font-bold tabular-nums leading-snug text-indigo-950 [overflow-wrap:anywhere]">{money(total(item))}</p>
                 </div>
               </li>
             ))}
