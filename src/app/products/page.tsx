@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Package, Search, Plus, Pencil, Trash, X, ChevronDown, CheckSquare, Square, Camera, Sparkles, Upload } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash, X, ArrowLeft, CheckSquare, Square, Camera, Sparkles, Upload } from 'lucide-react';
 import Image from 'next/image';
-import { useHindi } from '@/lib/hindi-context';
+import { useHindi, CATEGORY_IMAGES } from '@/lib/hindi-context';
 
 import { shopCache } from '@/lib/session-cache';
 import { formatProductPackSize } from '@/lib/bill-utils';
@@ -23,7 +23,7 @@ const standardCategories = [
 ];
 
 export default function ProductsPage() {
-  const { pName } = useHindi();
+  const { pName, catName } = useHindi();
   const [products, setProducts] = useState<any[]>([]);
   const [shop, setShop] = useState<any>(null);
   const [search, setSearch] = useState('');
@@ -31,7 +31,7 @@ export default function ProductsPage() {
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [updatingPriceId, setUpdatingPriceId] = useState<string | null>(null);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
 
   // Modal states
@@ -93,11 +93,6 @@ export default function ProductsPage() {
     if (res.ok) {
       const data = await res.json();
       setProducts(data);
-      // Auto-expand first category
-      if (data.length > 0) {
-        const firstCategory = data[0].category || 'Uncategorized';
-        setExpandedCategories(new Set([firstCategory]));
-      }
     }
     setLoading(false);
   };
@@ -371,15 +366,8 @@ export default function ProductsPage() {
 
   const categories = Object.keys(groupedProducts).sort();
 
-  const toggleCategory = (category: string) => {
-    const next = new Set(expandedCategories);
-    if (next.has(category)) next.delete(category);
-    else next.add(category);
-    setExpandedCategories(next);
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-white">
       {/* Header */}
       <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-4">
@@ -389,7 +377,7 @@ export default function ProductsPage() {
                 <Package className="text-indigo-600" size={28} />
                 Products
               </h1>
-              <p className="text-slate-500 text-sm mt-1">Manage your inventory</p>
+              <p className="text-slate-500 text-sm mt-1">Browse categories and manage your products</p>
             </div>
             <div className="flex gap-2 flex-wrap">
               {selectionMode && selectedProducts.size > 0 && (
@@ -406,7 +394,7 @@ export default function ProductsPage() {
                 disabled={!shop}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 font-medium disabled:opacity-50 text-sm"
               >
-                <Plus size={16} /> Add
+                <Plus size={16} /> Add product
               </button>
             </div>
           </div>
@@ -419,8 +407,8 @@ export default function ProductsPage() {
                 type="text"
                 placeholder="Search products..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm placeholder-slate-500"
+                onChange={(e) => { setSearch(e.target.value); setSelectedCategory(null); }}
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:bg-white focus:outline-none text-sm placeholder-slate-400 transition"
               />
             </div>
             <button
@@ -442,7 +430,7 @@ export default function ProductsPage() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 md:px-6 py-8">
+      <div className="max-w-7xl mx-auto px-2 md:px-6 py-4">
         {!shop && !loading && (
           <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-xl mb-6">
             <strong>Database Error:</strong> Could not connect to Firebase. Please configure your environment variables.
@@ -460,36 +448,64 @@ export default function ProductsPage() {
           <div className="text-center py-16">
             <Package className="mx-auto text-slate-300 mb-4" size={48} />
             <p className="text-slate-500 text-lg">No products found</p>
-            <p className="text-slate-400 text-sm mt-1">Add your first product to get started</p>
+            <p className="text-slate-400 text-sm mt-1">{search ? 'Try a different product name.' : 'Add your first product to get started'}</p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {categories.map((category) => (
+          <div className="space-y-4">
+            {!selectedCategory && !search.trim() && (
+              <section className="px-4 pt-4 pb-6 bg-gradient-to-b from-indigo-50 via-violet-50 to-slate-50 rounded-2xl mx-2 mt-1">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <h2 className="text-sm font-bold text-slate-900">🛒 Shop by Category</h2>
+                  <span className="text-xs text-slate-500">{categories.length} categories</span>
+                </div>
+                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  {categories.map(category => {
+                    const items = groupedProducts[category];
+                    const image = CATEGORY_IMAGES[category] || items.find((p: any) => p.imageUrl)?.imageUrl;
+                    return (
+                      <button key={category} onClick={() => setSelectedCategory(category)} className="group flex flex-col items-center gap-2 py-4 px-2 bg-white/70 rounded-2xl hover:bg-white hover:shadow-md active:scale-95 transition-all focus-visible:outline-2 focus-visible:outline-indigo-500">
+                        <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden ring-2 ring-indigo-100 bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center shadow-sm group-hover:ring-indigo-300 transition">
+                          <Package className="text-indigo-400" size={26} />
+                          {image && <img src={image} alt="" className="absolute inset-0 w-full h-full object-cover" onError={e => { e.currentTarget.style.display = 'none'; }} />}
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight">{catName(category)}</p>
+                          <p className="text-[10px] text-slate-400 mt-1">{items.length} items</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+            {(selectedCategory || search.trim()) && (
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
+                <button onClick={() => { setSelectedCategory(null); setSearch(''); }} aria-label="Back to categories" className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition"><ArrowLeft size={16} /></button>
+                <h2 className="font-bold text-slate-900 text-base">{selectedCategory ? catName(selectedCategory) : 'Search results'}</h2>
+                <span className="ml-auto text-xs text-slate-400">{selectedCategory ? (groupedProducts[selectedCategory]?.length || 0) : products.length} items</span>
+              </div>
+            )}
+            {selectedCategory && !groupedProducts[selectedCategory] && (
+              <p className="py-10 text-center text-sm text-slate-500">No products in this category. Choose another category or add a product.</p>
+            )}
+            {(selectedCategory ? categories.filter(category => category === selectedCategory) : search.trim() ? categories : []).map((category) => (
               <div key={category}>
                 {/* Category Header */}
-                <button
-                  onClick={() => toggleCategory(category)}
-                  className="w-full px-4 py-3 flex items-center justify-between bg-white rounded-lg border border-slate-200 hover:border-slate-300 transition mb-4"
-                >
+                {!selectedCategory && <div className="px-4 py-2 mb-2">
                   <div className="flex items-center gap-3">
-                    <ChevronDown
-                      size={18}
-                      className={`text-slate-600 transition ${expandedCategories.has(category) ? 'rotate-180' : ''}`}
-                    />
-                    <h2 className="font-semibold text-slate-900 text-sm md:text-base">{category}</h2>
+                    <h2 className="font-semibold text-slate-900 text-sm">{catName(category)}</h2>
                     <span className="bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full text-xs font-semibold">
                       {groupedProducts[category].length}
                     </span>
                   </div>
-                </button>
+                </div>}
 
                 {/* Products Grid */}
-                {expandedCategories.has(category) && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 min-[380px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 p-4">
                     {groupedProducts[category].map((p: any) => (
                       <div
                         key={p.id}
-                        className={`bg-white rounded-lg border-2 overflow-hidden transition hover:shadow-lg ${
+                        className={`relative flex flex-col bg-white rounded-2xl border overflow-hidden shadow-sm transition hover:shadow-md ${
                           selectedProducts.has(p.id)
                             ? 'border-indigo-500 shadow-md'
                             : 'border-slate-200 hover:border-slate-300'
@@ -500,6 +516,7 @@ export default function ProductsPage() {
                           <div className="absolute top-2 left-2 z-10">
                             <input
                               type="checkbox"
+                              aria-label={`Select ${p.name}`}
                               checked={selectedProducts.has(p.id)}
                               onChange={() => toggleProductSelection(p.id)}
                               className="w-5 h-5 rounded border-slate-300 cursor-pointer"
@@ -508,13 +525,14 @@ export default function ProductsPage() {
                         )}
 
                         {/* Product Image */}
-                        <div className="relative w-full h-32 bg-slate-100 overflow-hidden">
+                        <div className="relative w-full aspect-square bg-slate-100 overflow-hidden">
                           {p.imageUrl ? (
                             <Image
                               src={p.imageUrl}
                               alt={p.name}
                               fill
-                              className="object-contain hover:scale-105 transition"
+                              sizes="(max-width: 379px) 50vw, (max-width: 767px) 33vw, (max-width: 1023px) 25vw, 16vw"
+                              className="object-cover hover:scale-105 transition"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
                               }}
@@ -527,25 +545,24 @@ export default function ProductsPage() {
                         </div>
 
                         {/* Product Info */}
-                        <div className="p-3">
+                        <div className="p-2 flex flex-col flex-1">
                           {/* Name */}
-                          <h3 className="font-semibold text-slate-900 text-sm line-clamp-2 mb-1">
+                          <h3 className="font-semibold text-slate-900 text-xs leading-tight line-clamp-2 mb-0.5">
                             {pName(p.name, p.localName)}
                           </h3>
-                          {p.localName && (
-                            <p className="text-xs text-slate-500 mb-2 line-clamp-1">{p.localName}</p>
-                          )}
+                          <p className="text-[10px] text-slate-400 mb-0.5">{formatProductPackSize(p)}</p>
 
                           {/* Price */}
                           <div className="mb-2">
                             {quickPriceEdit && quickPriceEdit.id === p.id ? (
-                              <div className="flex gap-1">
+                              <div className="flex flex-wrap gap-1">
                                 <input
                                   type="number"
                                   step="0.01"
                                   value={quickPriceEdit.price}
                                   onChange={(e) => setQuickPriceEdit({ id: p.id, price: e.target.value })}
-                                  className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs"
+                                  aria-label="Selling price"
+                                  className="w-full min-w-0 border border-slate-300 rounded px-2 py-1 text-xs"
                                   autoFocus
                                 />
                                 <button
@@ -561,23 +578,24 @@ export default function ProductsPage() {
                                 onClick={() => setQuickPriceEdit({ id: p.id, price: p.price?.toString() || '' })}
                                 className="w-full text-left hover:opacity-70 transition"
                               >
-                                <div className="text-lg font-bold text-emerald-600">₹{(p.price || 0).toFixed(2)}</div>
-                                <div className="text-xs text-slate-500">{formatProductPackSize(p)}</div>
+                                <div className="text-sm font-bold text-slate-900">₹{(p.price || 0).toFixed(2)}</div>
                               </button>
                             )}
                           </div>
 
                           {/* Actions */}
-                          <div className="flex gap-2 pt-2 border-t border-slate-100">
+                          <div className="flex flex-wrap gap-1 pt-2 mt-auto border-t border-slate-100">
                             <button
                               onClick={() => handleOpenEdit(p)}
-                              className="flex-1 p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition flex items-center justify-center gap-1 text-xs"
+                              aria-label={`Edit ${p.name}`}
+                              className="flex-1 px-2 py-2 border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-full transition flex items-center justify-center gap-1 text-[11px] font-bold"
                             >
                               <Pencil size={14} /> Edit
                             </button>
                             <button
                               onClick={() => handleDelete(p.id)}
-                              className="flex-1 p-1.5 text-rose-600 hover:bg-rose-50 rounded transition flex items-center justify-center gap-1 text-xs"
+                              aria-label={`Delete ${p.name}`}
+                              className="flex-1 px-2 py-2 border border-rose-100 text-rose-600 hover:bg-rose-50 rounded-full transition flex items-center justify-center gap-1 text-[11px] font-bold"
                             >
                               <Trash size={14} /> Delete
                             </button>
@@ -586,7 +604,6 @@ export default function ProductsPage() {
                       </div>
                     ))}
                   </div>
-                )}
               </div>
             ))}
           </div>
