@@ -2933,7 +2933,7 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, sug
         style={{ paddingBottom: '100%' }}
       >
         <button aria-label={`${selectionMode ? selected ? 'Deselect' : 'Select' : 'Add to bill:'} ${pName(p.name, p.localName)}`} aria-pressed={selectionMode ? selected : undefined} onClick={e => { e.stopPropagation(); selectionMode ? onSelect?.() : inCart ? onInc() : handlePress(); }} className="absolute inset-0 z-[1] focus-visible:outline-2 focus-visible:outline-indigo-500">
-          <span className="absolute top-1.5 right-1.5 rounded-full border border-white/60 bg-white/55 px-2 py-0.5 text-[10px] font-bold text-indigo-800 backdrop-blur-[2px]">{selectionMode ? selected ? '✓ Selected' : 'Select' : '+ Add'}</span>
+          <span className={`absolute bottom-1.5 right-1.5 rounded-full border-2 border-indigo-600 bg-white text-indigo-600 shadow-md font-black ${mini ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'}`}>{selectionMode ? selected ? '✓ Selected' : 'Select' : '+ Add'}</span>
         </button>
         {/* Product image */}
         {p.imageUrl
@@ -2951,9 +2951,9 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, sug
           <div className="absolute inset-0 bg-indigo-400/20 animate-ping rounded-2xl pointer-events-none" />
         )}
 
-        {/* Suggested-product badge — top-left, shows which suggestion was added */}
+        {/* Suggested-product badge — top-right, shows which suggestion was added */}
         {suggestedInCart && (
-          <div className="absolute top-1.5 left-1.5 w-9 h-9 rounded-full border-2 border-indigo-400 shadow-lg z-10 pointer-events-none" style={{overflow:'hidden'}}>
+          <div className="absolute top-1.5 right-1.5 w-9 h-9 rounded-full border-2 border-indigo-400 shadow-lg z-10 pointer-events-none" style={{overflow:'hidden'}}>
             <div className="relative w-full h-full">
               {suggestedInCart.imageUrl
                 ? <img src={suggestedInCart.imageUrl} alt={suggestedInCart.name} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
@@ -2986,7 +2986,7 @@ function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, sug
             >+</button>
           </div>
         )}
-        <button onClick={e => { e.stopPropagation(); onEdit(); }} aria-label={`Edit ${pName(p.name, p.localName)}`} className={`absolute bottom-1.5 right-1.5 z-[2] bg-white border-2 border-indigo-600 text-indigo-600 rounded-full font-black shadow-md hover:bg-indigo-50 active:scale-90 transition-all flex items-center justify-center gap-0.5 ${mini ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'}`}><Pencil size={11} /> Edit</button>
+        <button onClick={e => { e.stopPropagation(); onEdit(); }} aria-label={`Edit ${pName(p.name, p.localName)}`} title="Edit product" className="absolute top-1.5 left-1.5 z-[2] h-8 w-8 bg-white/90 border border-indigo-100 text-indigo-600 rounded-full shadow-sm hover:bg-indigo-50 active:scale-90 transition-all flex items-center justify-center"><Pencil size={14} /></button>
       </div>
 
       {/* Info — name, unit, price + optional suggest arrow */}
