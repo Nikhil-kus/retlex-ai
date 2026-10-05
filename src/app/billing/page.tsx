@@ -15,6 +15,7 @@ import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils'
 import { getBillLabel, getBillNumber, getBillIdentifier, formatProductPackSize } from '@/lib/bill-utils';
 import { transliterateHinglishToHindi } from '@/lib/transliterate';
 import ProductEditor from '@/components/ProductEditor';
+import VoiceEngineControl, { useVoiceEngine } from '@/components/VoiceEngineControl';
 import BillDetails from '@/components/BillDetails';
 import DebugPanel, { makeEmptyDebugData, type DebugData, type TraceEntry } from '@/components/DebugPanel';
 
@@ -459,7 +460,7 @@ export default function BillingPage() {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
+    if (voiceEngine.engine === 'browser' && !SpeechRecognition) {
       heldInputRef.current = null;
       alert("Speech Recognition not supported");
       return;
@@ -493,7 +494,10 @@ export default function BillingPage() {
     setIsListening(true);
     setMode('OCR');
 
-    const recognition = new SpeechRecognition();
+    // Preserve the browser implementation; the experiment supplies compatible events.
+    const recognition = voiceEngine.engine === 'vosk'
+      ? voiceEngine.createRecognition()
+      : new SpeechRecognition();
     recognition.lang = "hi-IN";
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -885,6 +889,14 @@ export default function BillingPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [productEditor, setProductEditor] = useState<{ product: any | null } | null>(null);
   const [mode, setMode] = useState<'MANUAL' | 'OCR' | 'PENDING'>('OCR');
+  const voiceEngine = useVoiceEngine(catalog);
+  const restoreCurrentRecognition = () => {
+    stopVoiceInput();
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    try { recognition?.abort(); } catch (_) {}
+    voiceEngine.restore();
+  };
 
   // Rebuild the voice product index whenever the catalog changes (page load, background
   // refresh, or inline price edit). This avoids rebuilding it on every speech event.
@@ -1462,6 +1474,7 @@ export default function BillingPage() {
 
       {/* Main Panel — fills full height, voice button floats over the bottom */}
       <div className="flex-1 flex flex-col min-h-0">
+        <VoiceEngineControl voice={voiceEngine} busy={isListening} onRestore={restoreCurrentRecognition} />
         <div className="bg-white overflow-hidden flex flex-col flex-1 min-h-0">
           {/* Tab bar — pill style, hides on scroll-down, reveals on scroll-up */}
           {!(mode === 'MANUAL' && search.length > 0) && (

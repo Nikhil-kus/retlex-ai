@@ -35,6 +35,7 @@ function setup() {
     clearTimeout: (id: number) => timers.delete(id),
     reviewItems: [unchanged, original],
     recognitionRef: { current: null }, isListeningRef: { current: false },
+    voiceEngine: { engine: 'browser' },
     heldInputRef: { current: null }, baseReviewItemsRef: { current: [] },
     itemOverridesRef: { current: {} }, globalTranscriptRef: { current: '' },
     currentBreathRef: { current: '' }, matchCacheRef: { current: new Map() },
