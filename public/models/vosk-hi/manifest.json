@@ -2,8 +2,8 @@
   "name": "vosk-model-small-hi-0.22",
   "source": "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip",
   "license": "Apache-2.0",
-  "bytes": 44367011,
-  "sha256": "2e80eeb73e54b36fc8a71631ad4dee6066130de892c4d0456ada57303dc9af22",
+  "bytes": 44367158,
+  "sha256": "88bb791cff53a26d2b347dc2a114a80f5660ba34b0dcb02f290803c2f0f1cdb9",
   "archive": "model.tar.gz",
   "vocabulary": "words.json"
 }

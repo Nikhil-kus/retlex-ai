@@ -48,3 +48,4 @@ next-env.d.ts
 # Local recovery archive and reproducibly downloaded speech model
 /pre-vosk-2026-10-06.bundle
 /public/models/vosk-hi/*.tar.gz
+/public/voice/vosk-browser-0.0.8.js

@@ -81,7 +81,7 @@ export default function VoiceEngineControl({ voice, busy, onRestore }: {
   voice: ReturnType<typeof useVoiceEngine>; busy: boolean; onRestore: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  return <div className="shrink-0 border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs">
+  return <div className="min-w-0 shrink-0 border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs">
     <button type="button" onClick={() => setExpanded(value => !value)} aria-expanded={expanded}
       aria-controls="voice-engine-settings" className="flex w-full items-center justify-between py-1 text-left font-semibold text-slate-700">
       <span>Voice: {voice.engine === 'browser' ? 'Current recognition' : 'Vosk offline · experimental'}</span>

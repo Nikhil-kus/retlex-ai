@@ -457,6 +457,11 @@ export default function BillingPage() {
       heldInputRef.current = null;
       return;
     }
+    if (voiceEngine.engine === 'vosk' && (!voiceEngine.resources?.model.ready || !voiceEngine.grammar?.productPhrases)) {
+      heldInputRef.current = null;
+      setVoiceMessage('Prepare Vosk and check inventory name coverage, or select Current recognition.');
+      return;
+    }
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -1470,7 +1475,7 @@ export default function BillingPage() {
 
   return (
     <>
-    <div className="flex flex-col max-w-7xl mx-auto h-full bg-white" data-searching={search.length > 0 ? 'true' : undefined}>
+    <div className="flex flex-col w-full min-w-0 max-w-7xl mx-auto h-full bg-white" data-searching={search.length > 0 ? 'true' : undefined}>
 
       {/* Main Panel — fills full height, voice button floats over the bottom */}
       <div className="flex-1 flex flex-col min-h-0">

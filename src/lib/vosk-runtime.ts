@@ -3,7 +3,7 @@ import { acceptedVoskText } from './vosk-grammar';
 
 export type LoadProgress = { stage: string; percent?: number };
 export type VoskResources = { model: Model; vocabulary: Set<string>; workletUrl: string; dispose: () => void };
-const CACHE = 'retlex-vosk-hi-0.22-v1';
+const CACHE = 'retlex-vosk-hi-0.22-v3';
 const BASE = '/models/vosk-hi/';
 
 async function cachedDownload(url: string, signal: AbortSignal, progress?: (received: number, total: number) => void): Promise<Blob> {
@@ -30,11 +30,38 @@ async function cachedDownload(url: string, signal: AbortSignal, progress?: (rece
   return blob;
 }
 
+async function loadLibrary(signal: AbortSignal): Promise<{ Model: typeof Model }> {
+  const surface = window as Window & { Vosk?: { Model: typeof Model } };
+  if (surface.Vosk) return surface.Vosk;
+  // Generated from the pinned npm package by predev/prebuild. Cache this too so
+  // preparing Vosk again in an already-open app does not need an internet request.
+  const library = await cachedDownload('/voice/vosk-browser-0.0.8.js', signal);
+  signal.throwIfAborted();
+  const url = URL.createObjectURL(new Blob([library], { type: 'text/javascript' }));
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    const cleanup = () => { signal.removeEventListener('abort', abort); script.remove(); URL.revokeObjectURL(url); };
+    const abort = () => { cleanup(); reject(new DOMException('Cancelled', 'AbortError')); };
+    script.src = url;
+    script.onload = () => { cleanup(); resolve(); };
+    script.onerror = () => { cleanup(); reject(new Error('Speech engine could not load. Check browser support and retry.')); };
+    signal.addEventListener('abort', abort, { once: true });
+    document.head.appendChild(script);
+    if (signal.aborted) abort();
+  });
+  if (!surface.Vosk) throw new Error('Speech engine is unavailable. Please retry.');
+  return surface.Vosk;
+}
+
 export async function loadVosk(signal: AbortSignal, progress: (value: LoadProgress) => void): Promise<VoskResources> {
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('Voice needs HTTPS or localhost and microphone support.');
   if (typeof WebAssembly === 'undefined' || !window.AudioWorkletNode) throw new Error('This browser does not support offline voice. Use Current recognition.');
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key.startsWith('retlex-vosk-hi-') && key !== CACHE).map(key => caches.delete(key)));
+  } catch { /* Persistence is optional; do not block recognition in private mode. */ }
   progress({ stage: 'Loading speech engine…' });
-  const { Model } = await import('vosk-browser');
+  const { Model } = await loadLibrary(signal);
   signal.throwIfAborted();
   const manifestBlob = await cachedDownload(BASE + 'manifest.json', signal);
   const manifest = JSON.parse(await manifestBlob.text()) as { bytes: number; sha256: string };
@@ -50,7 +77,7 @@ export async function loadVosk(signal: AbortSignal, progress: (value: LoadProgre
   const digest = await crypto.subtle.digest('SHA-256', await archive.arrayBuffer());
   const hash = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
   if (hash !== manifest.sha256 || archive.size !== manifest.bytes) {
-    await caches.delete(CACHE).catch(() => false);
+    try { await caches.delete(CACHE); } catch { /* Cache API may be unavailable. */ }
     throw new Error('Speech download was incomplete. Please prepare Vosk again.');
   }
   signal.throwIfAborted();
@@ -62,6 +89,9 @@ export async function loadVosk(signal: AbortSignal, progress: (value: LoadProgre
     progress({ stage: 'Starting Hindi model…' });
     model = new Model(modelUrl, -1);
     const loadingModel = model;
+    loadingModel.addEventListener('diagnostic', event => {
+      console.warn('Vosk worker:', (event as CustomEvent<{ message: string }>).detail.message);
+    });
     await new Promise<void>((resolve, reject) => {
       const finish = (error?: Error) => {
         clearTimeout(timeout);
@@ -72,7 +102,10 @@ export async function loadVosk(signal: AbortSignal, progress: (value: LoadProgre
       const timeout = setTimeout(() => finish(new Error('Model initialization timed out. Try again or use Current recognition.')), 120000);
       signal.addEventListener('abort', abort, { once: true });
       loadingModel.on('load', event => finish(event.event === 'load' && event.result ? undefined : new Error('Hindi model could not start.')));
-      loadingModel.on('error', () => finish(new Error('Offline speech engine failed to load.')));
+      loadingModel.on('error', event => {
+        console.error('Vosk model initialization:', JSON.stringify(event));
+        finish(new Error('Offline speech engine failed to load.'));
+      });
       if (signal.aborted) abort();
     });
     signal.throwIfAborted();
@@ -151,7 +184,9 @@ export class VoskRecognition {
       const recognizer = new this.resources.model.KaldiRecognizer(16000, JSON.stringify(this.grammar));
       this.recognizer = recognizer;
       recognizer.setWords(true); // Metadata only; grammar is passed in the constructor.
-      recognizer.on('error', event => this.fail('audio-capture', event.event === 'error' ? event.error : 'Speech engine failed'));
+      recognizer.on('error', event => {
+        if (this.active && generation === this.generation) this.fail('audio-capture', event.event === 'error' ? event.error : 'Speech engine failed');
+      });
       recognizer.on('partialresult', event => {
         if (!this.active || generation !== this.generation || event.event !== 'partialresult') return;
         this.pending = Math.max(0, this.pending - 1);
@@ -177,8 +212,11 @@ export class VoskRecognition {
       node.port.onmessage = event => {
         if (!this.active || generation !== this.generation) return;
         if (event.data.audio) {
+          // Bound the queued audio on slower phones instead of growing memory forever.
+          if (this.pending >= 80) { this.fail('audio-capture', 'This device is processing speech too slowly. Try a shorter phrase or Current recognition.'); return; }
           this.pending++;
-          recognizer.acceptWaveformFloat(event.data.audio, 16000);
+          try { recognizer.acceptWaveformFloat(event.data.audio, 16000); }
+          catch { this.fail('audio-capture', 'Could not process microphone audio. Please retry.'); return; }
         }
         if (event.data.flushed) {
           this.flushed = true;
@@ -237,7 +275,7 @@ export class VoskRecognition {
     this.node?.disconnect();
     this.node?.port.close();
     this.node = undefined;
-    void this.context?.close().catch(() => undefined);
+    if (this.context && this.context.state !== 'closed') void this.context.close().catch(() => undefined);
     this.context = undefined;
   }
 

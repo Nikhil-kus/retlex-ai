@@ -64,6 +64,17 @@ def main():
             output = DEST / 'model.tar.gz'
             temporary = Path(temp) / 'model.tar.gz'
             with tarfile.open(temporary, 'w:gz') as target:
+                # The WASM libarchive build needs explicit directory headers.
+                directories = {'model'}
+                for path in entries:
+                    for parent in Path('model/' + path[len(NAME) + 1:]).parents:
+                        if parent.as_posix() != '.':
+                            directories.add(parent.as_posix())
+                for directory in sorted(directories, key=lambda value: (value.count('/'), value)):
+                    info = tarfile.TarInfo(directory + '/')
+                    info.type = tarfile.DIRTYPE
+                    info.mode = 0o755
+                    target.addfile(info)
                 for path, entry in sorted(entries.items()):
                     relative = Path(path)
                     if relative.is_absolute() or '..' in relative.parts or not path.startswith(NAME + '/'):

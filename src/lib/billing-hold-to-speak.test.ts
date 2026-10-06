@@ -77,6 +77,38 @@ function setup() {
   return { scope, card, main, pointer, speak, listeners, unchanged, original, advance };
 }
 
+test('Vosk can use the existing billing flow when browser recognition is unavailable', () => {
+  const h = setup();
+  const offline = { starts: 0, stops: 0, aborts: 0,
+    start() { this.starts++; }, stop() { this.stops++; }, abort() { this.aborts++; } };
+  h.scope.window.SpeechRecognition = undefined;
+  h.scope.voiceMatcherRef.current = createVoiceProductMatcher([
+    { id: 'lux', name: 'Lux Soap', localName: 'लक्स साबुन', price: 20, baseUnit: 'pc' },
+  ]);
+  h.scope.voiceEngine = { engine: 'vosk', resources: { model: { ready: true } },
+    grammar: { productPhrases: 1 }, createRecognition: () => offline };
+  h.main.onPointerDown(h.pointer());
+  assert.equal(h.scope.recognitionRef.current, offline);
+  assert.equal(offline.starts, 1);
+  h.speak('लक्स साबुन दो पीस');
+  assert.equal(h.scope.reviewItems.at(-1).productId, 'lux');
+  assert.equal(h.scope.reviewItems.at(-1).quantity, 2);
+  h.main.onPointerUp(h.pointer());
+  h.advance(500);
+  assert.equal(offline.stops, 1);
+  h.scope.recognitionRef.current.onend();
+  assert.equal(h.scope.recognitionRef.current, null);
+});
+
+test('an unprepared or unsupported Vosk catalog cannot start an order session', () => {
+  const h = setup();
+  h.scope.voiceEngine = { engine: 'vosk', resources: null, grammar: null };
+  h.main.onPointerDown(h.pointer());
+  assert.equal(h.scope.recognitionRef.current, null);
+  assert.equal(h.scope.heldInputRef.current, null);
+  assert.match(h.scope.setVoiceMessageValue, /Prepare Vosk/);
+});
+
 test('release stops the main microphone and a delayed permission grant cannot reopen it', () => {
   const h = setup();
   h.main.onPointerDown(h.pointer());
