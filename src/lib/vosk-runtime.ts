@@ -12,7 +12,10 @@ async function cachedDownload(url: string, signal: AbortSignal, progress?: (rece
   const cached = await cache?.match(url);
   if (cached) return cached.blob();
   const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error(`Speech files are unavailable (${response.status}). Run the model setup before deployment.`);
+  if (!response.ok) {
+    console.error(`Vosk asset request failed: ${url} (${response.status})`);
+    throw new Error(`Offline voice files are unavailable (${response.status}). Please use Current recognition while the site is updated.`);
+  }
   const total = Number(response.headers.get('content-length')) || 0;
   const reader = response.body?.getReader();
   if (!reader) throw new Error('This browser cannot stream the speech model download.');
@@ -33,7 +36,7 @@ async function cachedDownload(url: string, signal: AbortSignal, progress?: (rece
 async function loadLibrary(signal: AbortSignal): Promise<{ Model: typeof Model }> {
   const surface = window as Window & { Vosk?: { Model: typeof Model } };
   if (surface.Vosk) return surface.Vosk;
-  // Generated from the pinned npm package by predev/prebuild. Cache this too so
+  // Generated from the pinned npm package during dev/build. Cache this too so
   // preparing Vosk again in an already-open app does not need an internet request.
   const library = await cachedDownload('/voice/vosk-browser-0.0.8.js', signal);
   signal.throwIfAborted();

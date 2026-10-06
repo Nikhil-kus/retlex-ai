@@ -18,11 +18,15 @@ voice flows continue to use their existing engines.
   IndexedDB filesystem persistence; the app caches the model in Cache Storage.
   Recognition and the bundled WebAssembly code are unchanged. Upgrades must review
   this checked transformation before changing the pinned version.
-- Run **`npm run setup:vosk` before a deployment build** on any fresh checkout.
-  This requires Python 3 and downloads the official `vosk-model-small-hi-0.22`
-  archive from Alpha Cephei. It creates `public/models/vosk-hi/model.tar.gz`,
-  `words.json`, and `manifest.json`. The large generated model archive is ignored
-  by Git; **it must be included in the deployment's public assets**.
+- The model archive, vocabulary, manifest, capture worklet, and prepared browser
+  runtime are included in Git so fresh checkouts include all public assets.
+  **`npm run build` regenerates the runtime and verifies every required asset and
+  the model checksum before running Next.js.** Hosting builds need no Python or
+  model download. A missing asset fails the build instead of producing a site
+  whose Prepare button returns 404.
+- `npm run setup:vosk` is only needed to regenerate the model during maintenance.
+  It requires Python 3 and downloads the official `vosk-model-small-hi-0.22`
+  archive from Alpha Cephei. Commit its archive, vocabulary, and manifest together.
 - The model is about 42 MB compressed; runtime memory is substantially larger.
   Static files are served from `/models/vosk-hi/`. Keep the archive, vocabulary,
   and manifest together. The manifest contains a SHA-256 checksum checked by the

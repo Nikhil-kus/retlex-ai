@@ -6,9 +6,8 @@
     "test:voice": "node --import tsx --test src/lib/voice-product-matcher.test.ts src/lib/product-suggestions.test.ts src/lib/billing-hold-to-speak.test.ts src/lib/vosk-runtime.test.ts",
     "setup:vosk": "python scripts/setup-vosk-model.py",
     "predev": "node scripts/prepare-vosk-browser.mjs",
-    "prebuild": "node scripts/prepare-vosk-browser.mjs",
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/prepare-vosk-browser.mjs && node scripts/verify-vosk-assets.mjs && next build",
     "start": "next start",
     "lint": "next lint"
   },
