@@ -8,10 +8,13 @@ import { canCorrectProductByVoice } from '@/lib/voice-review';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package, Store, Pencil } from 'lucide-react';
+import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package, Store, Pencil, Mic, ArrowRight } from 'lucide-react';
+import ScanHome from '@/components/billing/ScanHome';
+import BillingNavigation from '@/components/billing/BillingNavigation';
+import CheckoutPanel from '@/components/billing/CheckoutPanel';
+import billingStyles from '@/components/billing/billing.module.css';
 import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
-import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
 import { getBillLabel, getBillNumber, getBillIdentifier, formatProductPackSize } from '@/lib/bill-utils';
 import { transliterateHinglishToHindi } from '@/lib/transliterate';
 import ProductEditor from '@/components/ProductEditor';
@@ -918,6 +921,33 @@ export default function BillingPage() {
   const [cart, setCart] = useState<any[]>([]);
   const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' });
   const [savingBill, setSavingBill] = useState(false);
+  const saveInFlight = useRef(false);
+  const [checkoutError, setCheckoutError] = useState('');
+  const [dataError, setDataError] = useState('');
+  const [savedBill, setSavedBill] = useState<any>(null);
+  const [draftShop, setDraftShop] = useState<string | null>(null);
+
+  // Keep an unfinished checkout through refreshes and navigation in this tab.
+  useEffect(() => {
+    if (!shop?.id) return;
+    try {
+      const raw = sessionStorage.getItem(`retlex_checkout_${shop.id}`);
+      const draft = raw ? JSON.parse(raw) : null;
+      if (draft && Array.isArray(draft.cart) && draft.cart.every((item: any) => item && typeof item.name === 'string' && Number.isFinite(item.quantity) && Number.isFinite(item.price))) {
+        setCart(draft.cart);
+        if (draft.customer && typeof draft.customer.name === 'string' && typeof draft.customer.phone === 'string') setCustomerInfo(draft.customer);
+      }
+    } catch { /* Storage may be unavailable in private browsing. */ }
+    setDraftShop(shop.id);
+  }, [shop?.id]);
+
+  useEffect(() => {
+    if (!shop?.id || draftShop !== shop.id) return;
+    try {
+      if (cart.length) sessionStorage.setItem(`retlex_checkout_${shop.id}`, JSON.stringify({ cart, customer: customerInfo }));
+      else sessionStorage.removeItem(`retlex_checkout_${shop.id}`);
+    } catch { /* Checkout remains usable without browser storage. */ }
+  }, [cart, customerInfo, draftShop, shop?.id]);
 
   // Manual Mode state
   const [search, setSearch] = useState('');
@@ -1077,25 +1107,29 @@ export default function BillingPage() {
       } else {
         setShop({ error: true });
       }
-    });
+    }).catch(() => setShop({ error: true }));
   }, []);
 
   const fetchCatalog = async (shopId: string) => {
     const cached = catalogCache.get(shopId);
     if (cached) { setCatalog(cached); }
     // Always refresh from server in background to pick up product edits (unit changes, price changes, etc.)
+    try {
     const res = await fetch(`/api/products?shopId=${shopId}`);
+    if (!res.ok) throw new Error('Catalog unavailable');
     if (res.ok) {
       const data = await res.json();
       catalogCache.set(shopId, data);
       setCatalog(data);
     }
+    } catch { setDataError('Could not refresh your catalog. Check your connection and retry.'); }
   };
 
   const fetchBills = async (shopId: string) => {
     try {
       setLoadingBills(true);
       const res = await fetch(`/api/bills?shopId=${shopId}`);
+      if (!res.ok) throw new Error('Bills unavailable');
       if (res.ok) {
         const allBills = await res.json();
         const pending = allBills.filter((b: any) => b.orderStatus === 'PENDING');
@@ -1113,6 +1147,7 @@ export default function BillingPage() {
         setShowMoreUnpaid(false);
       }
     } catch (error) {
+      setDataError('Could not refresh your bills. Check your connection and retry.');
       console.error('Failed to fetch bills:', error);
     } finally {
       setLoadingBills(false);
@@ -1307,61 +1342,46 @@ export default function BillingPage() {
 
   const totalAmount = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
 
-  const handleGenerateBill = async (overrideInfo?: any) => {
-    // Determine if overrideInfo is a valid object (and not a React click event)
-    const infoToUse = (overrideInfo && !overrideInfo.type) ? overrideInfo : customerInfo;
-
-    if (cart.length === 0) return alert('Cart is empty!');
-
-    // Generate WhatsApp message if customer phone is available
-    if (infoToUse.phone) {
-      // Calculate total amount
-      const totalAmount = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
-      
-      // Prepare cart items with calculated totals for message
-      const cartItemsForMessage = cart.map(item => ({
-        ...item,
-        itemTotal: calculateItemTotal(item)
-      }));
-      
-      // Generate the WhatsApp message
-      const whatsappMessage = generateWhatsAppMessage(
-        shop.name || 'Kirana Store',
-        cartItemsForMessage,
-        totalAmount
-      );
-      
-      // Open WhatsApp chat with pre-filled message (as fast as possible)
-      openWhatsAppChat(infoToUse.phone, whatsappMessage);
+  const handleGenerateBill = async (overrideInfo?: typeof customerInfo) => {
+    const infoToUse = overrideInfo || customerInfo;
+    if (saveInFlight.current || cart.length === 0) return;
+    setCheckoutError('');
+    if (infoToUse.phone && !/^[0-9]{10}$/.test(infoToUse.phone)) {
+      setCheckoutError('Enter a 10-digit mobile number, or leave it blank.');
+      return;
     }
-
-    const payload = {
-      shopId: shop.id,
-      items: cart,
-      ...infoToUse,
-    };
-
-    // Instantly update UI without waiting for save
-    setCart([]);
-    setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' });
-    setMode('PENDING'); // Switch to pending orders instead of history page
-
-    // Save in background
-    fetch('/api/bills', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).then(res => {
-      if (res.ok) {
-        // Refresh bills to show the new one in the pending tab
-        fetchBills(shop.id);
-      } else {
-        alert('Failed to save bill on server.');
-      }
-    }).catch(err => {
-      console.error("Failed to save bill", err);
-      alert('Network error while saving bill.');
-    });
+    if (cart.some(item => !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isFinite(Number(item.price)) || Number(item.price) < 0)) {
+      setCheckoutError('Check item quantities and prices before saving.');
+      return;
+    }
+    saveInFlight.current = true;
+    setSavingBill(true);
+    try {
+      const response = await fetch('/api/bills', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId: shop.id, items: cart,
+          customerName: infoToUse.name.trim(), customerPhone: infoToUse.phone,
+          paymentMethod: infoToUse.paymentMethod, status: infoToUse.status }),
+      });
+      if (!response.ok) throw new Error('The bill could not be saved. Your items are still here. Please try again.');
+      const bill = await response.json();
+      setSavedBill(bill);
+      setSelectedBill(bill);
+      setCart([]);
+      setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' });
+      setShowCartSheet(false);
+      setIsSearching(false);
+      setMode('PENDING');
+      void fetchBills(shop.id);
+    } catch (error) {
+      setCheckoutError(error instanceof TypeError
+        ? 'Connection interrupted. Your bill is still here. Check Bills before retrying if the request may have reached the server.'
+        : error instanceof Error ? error.message : 'Could not save your bill. Your items are still here.');
+    } finally {
+      saveInFlight.current = false;
+      setSavingBill(false);
+    }
   };
 
   // AI & OCR Common Logic
@@ -1462,47 +1482,26 @@ export default function BillingPage() {
     }
   };
 
-  if (!shop) return <div className="p-8 text-center mt-20">Loading...</div>;
+  if (!shop) return <div className="w-full p-8" role="status" aria-label="Loading billing workspace"><div className="animate-pulse space-y-6"><div className="h-7 w-64 rounded-lg bg-slate-200" /><div className="grid grid-cols-3 gap-4">{[1, 2, 3].map(i => <div key={i} className="h-24 rounded-2xl bg-slate-100" />)}</div><div className="h-80 rounded-2xl bg-slate-100" /></div><p className="mt-5 text-sm text-slate-400">Getting your counter ready…</p></div>;
   if (shop.error) return (
     <div className="p-8 max-w-lg mx-auto mt-20 text-center space-y-6">
       <div className="bg-rose-50 border border-rose-200 text-rose-700 p-6 rounded-xl text-left shadow-sm">
-        <h2 className="text-xl font-bold mb-2">Database Error / Shop Not Found</h2>
-        <p>Could not connect to Firebase, or you haven't set up a shop yet.</p>
-        <p className="mt-2 text-sm text-rose-600">Please make sure you have configured your Firebase environment variables in <code className="bg-rose-100 px-1 py-0.5 rounded">.env</code> and completed the shop setup!</p>
+        <h2 className="text-xl font-bold mb-2">We couldn’t open your shop</h2>
+        <p className="text-sm leading-relaxed">Check your connection and try again. If this is your first visit, open shop setup to get started.</p>
+        <div className="mt-5 flex gap-3"><button className="rounded-lg bg-rose-600 px-4 py-2 text-sm text-white" onClick={() => window.location.reload()}>Try again</button><button className="rounded-lg border border-rose-200 px-4 py-2 text-sm" onClick={() => router.push('/shop/setup')}>Shop setup</button></div>
       </div>
     </div>
   );
 
   return (
     <>
-    <div className="flex flex-col w-full min-w-0 max-w-7xl mx-auto h-full bg-white" data-searching={search.length > 0 ? 'true' : undefined}>
+    <div className={`${billingStyles.workspace} flex flex-col w-full min-w-0 mx-auto h-full`} data-top-navigation data-searching={search.length > 0 ? 'true' : undefined}>
+      <BillingNavigation mode={mode} onChange={setMode} disabled={savingBill} />
+      {savedBill && <div className={billingStyles.success} role="status"><CheckCircle size={16} /><span>{getBillNumber(savedBill)} saved successfully.</span><button onClick={() => setSelectedBill(savedBill)}>View receipt</button><button onClick={() => setSavedBill(null)} aria-label="Dismiss saved bill message"><X size={14} /></button></div>}
 
       {/* Main Panel — fills full height, voice button floats over the bottom */}
-      <div className="flex-1 flex flex-col min-h-0">
-        <VoiceEngineControl voice={voiceEngine} busy={isListening} onRestore={restoreCurrentRecognition} />
-        <div className="bg-white overflow-hidden flex flex-col flex-1 min-h-0">
-          {/* Tab bar — pill style, hides on scroll-down, reveals on scroll-up */}
-          {!(mode === 'MANUAL' && search.length > 0) && (
-          <div
-            className="flex-shrink-0 flex items-center justify-between px-4 transition-all duration-300 ease-in-out overflow-hidden"
-            style={{ maxHeight: headerVisible ? '64px' : '0px', opacity: headerVisible ? 1 : 0, paddingTop: headerVisible ? '10px' : '0', paddingBottom: headerVisible ? '10px' : '0' }}
-          >
-            {/* Shop logo — left */}
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-sm flex-shrink-0">
-              <Store size={20} className="text-white" />
-            </div>
-
-            {/* Three-tab pill — fills remaining width */}
-            <div className="flex items-center bg-slate-100 rounded-full p-1 flex-1 ml-3">
-              <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan" />
-              <div className="w-px h-5 bg-slate-300 flex-shrink-0" />
-              <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Bills" />
-              <div className="w-px h-5 bg-slate-300 flex-shrink-0" />
-              <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Search" />
-            </div>
-          </div>
-          )}
-
+      <div className="flex-1 flex flex-col min-h-0" inert={savingBill}>
+        <div className={`${billingStyles.panel} overflow-hidden flex flex-col flex-1 min-h-0`}>
           {/* Swipeable slider - 3 panels side by side */}
           <div className="overflow-hidden flex-1" style={{minHeight: 0}}>
           <div
@@ -1542,77 +1541,32 @@ export default function BillingPage() {
             }}
           >
             {/* Slide 0 - Speak your order / Review */}
-            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}
+            <div ref={slide2Ref} id="billing-panel-OCR" role="tabpanel" aria-labelledby="billing-tab-OCR" inert={mode !== 'OCR'} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}
               onScroll={(e) => handleScrollDirection((e.currentTarget as HTMLDivElement).scrollTop)}
             >
               {!isReviewing ? (
-                /* ── IDLE STATE: Upload / Voice prompt ── */
-                <div className="flex flex-col gap-4 p-5">
-                  {/* Voice hint banner */}
-                  {isListening ? (
-                    <div className="relative overflow-hidden rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50">
-                      <div className="h-1 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400 animate-pulse" />
-                      <div className="p-4 flex items-start gap-3">
-                        <span className="relative flex h-3 w-3 mt-0.5 shrink-0">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold uppercase tracking-widest text-rose-500 mb-1">Listening…</p>
-                          <p className="text-slate-700 text-sm leading-relaxed break-words">{finalTranscript || 'Say items like "2 kg sugar, 1 packet salt…"'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 flex items-center gap-3">
-                      <span className="text-2xl">🎤</span>
-                      <div>
-                        <p className="text-sm font-semibold text-indigo-700">Speak your order</p>
-                        <p className="text-xs text-indigo-500 mt-0.5">Tap "Start Speaking" below and say items</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Divider */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-px bg-slate-200" />
-                    <span className="text-xs text-slate-400 font-medium">or upload a slip</span>
-                    <div className="flex-1 h-px bg-slate-200" />
-                  </div>
-
-                  {/* Upload area */}
-                  <div
-                    className="border-2 border-dashed border-indigo-200 rounded-2xl bg-indigo-50/40 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
-                    style={{minHeight: '120px'}}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleFileChange} />
-                    {previewUrl
-                      ? <img src={previewUrl} alt="Preview" className="max-h-48 rounded-xl shadow-sm object-contain" />
-                      : (
-                        <div className="flex flex-col items-center gap-2 py-6 text-indigo-500">
-                          <Camera size={36} />
-                          <span className="font-semibold text-sm">Tap to capture or upload</span>
-                          <span className="text-xs text-indigo-400">Photo of handwritten / printed list</span>
-                        </div>
-                      )
-                    }
-                  </div>
-
-                  {file && (
-                    <button
-                      disabled={isProcessing}
-                      onClick={processImage}
-                      className="w-full bg-indigo-600 text-white font-semibold py-3.5 rounded-xl hover:bg-indigo-700 active:bg-indigo-800 transition flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
+                <>
+                  {!isListening && mode === 'OCR' ? (
+                    <ScanHome
+                      shopName={shop.name} catalogCount={catalog.length}
+                      pendingCount={allPendingBills.length}
+                      unpaidAmount={allUnpaidBills.reduce((sum, bill) => sum + Number(bill.totalAmount || 0), 0)}
+                      loading={loadingBills} error={dataError}
+                      previewUrl={previewUrl} processing={isProcessing}
+                      onRefresh={() => { setDataError(''); fetchCatalog(shop.id); fetchBills(shop.id); }}
+                      onOrders={() => setMode('PENDING')} onCatalog={() => setMode('MANUAL')}
+                      onUpload={() => fileInputRef.current?.click()} onProcess={processImage}
                     >
-                      {isProcessing ? (
-                        <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Analyzing…</>
-                      ) : (
-                        <><Camera size={16} />Analyze Image</>
-                      )}
-                    </button>
-                  )}
-                </div>
+                      <VoiceEngineControl voice={voiceEngine} busy={isListening} onRestore={restoreCurrentRecognition} />
+                    </ScanHome>
+                  ) : isListening ? (
+                    <div role="status" className="m-5 rounded-2xl border border-rose-200 bg-rose-50 p-5">
+                      <p className="text-sm font-semibold text-rose-600">Listening…</p>
+                      <p className="mt-2 text-sm text-slate-600">{finalTranscript || 'Say your items, then release to review.'}</p>
+                    </div>
+                  ) : null}
+                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleFileChange} />
+                </>
               ) : (
                 /* ── REVIEW STATE: Detected items list ── */
                 <div className="flex flex-col" style={{height: '100%'}}>
@@ -1978,7 +1932,7 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 1 - Pending Bills */}
-            <div ref={slide1Ref} className="w-full shrink-0 p-6 space-y-8 overflow-y-auto"
+            <div ref={slide1Ref} id="billing-panel-PENDING" role="tabpanel" aria-labelledby="billing-tab-PENDING" inert={mode !== 'PENDING'} className="w-full shrink-0 p-6 space-y-8 overflow-y-auto"
               onScroll={(e) => handleScrollDirection((e.currentTarget as HTMLDivElement).scrollTop)}
             >
               <div>
@@ -2052,7 +2006,7 @@ export default function BillingPage() {
             </div>
 
             {/* Slide 2 - Manual Search */}
-            <div ref={slide0Ref} className="w-full shrink-0 overflow-y-auto flex flex-col"
+            <div ref={slide0Ref} id="billing-panel-MANUAL" role="tabpanel" aria-labelledby="billing-tab-MANUAL" inert={mode !== 'MANUAL'} className="w-full shrink-0 overflow-y-auto flex flex-col"
               onTouchStart={() => { if (search.length > 0) searchInputRef.current?.blur(); }}
               onScroll={(e) => { const t = (e.currentTarget as HTMLDivElement).scrollTop; if (search.length > 0) searchInputRef.current?.blur(); setActiveSuggestionId(null); handleScrollDirection(t); }}
             >
@@ -2225,11 +2179,11 @@ export default function BillingPage() {
                   ) : (
                     /* ── HOME: Top selling + Categories ── */
                     <>
-                      {/* Top Selling — grid layout */}
+                      {/* Quick catalog picks — grid layout */}
                       {catalog.length > 0 && (
-                        <div className="pt-4 pb-2 bg-gradient-to-b from-amber-50 via-orange-50/50 to-yellow-50/30 rounded-2xl mx-2 mb-1">
+                        <div className="pt-4 pb-2 bg-slate-50 rounded-2xl mx-2 mb-1">
                           <div className="flex items-center px-4 mb-3">
-                            <h2 className="text-sm font-bold text-slate-900">⚡ Top Selling</h2>
+                            <h2 className="text-sm font-semibold text-slate-700">Quick picks</h2>
                           </div>
 
                           {/* Product grid */}
@@ -2278,8 +2232,8 @@ export default function BillingPage() {
                       <div className="h-2 bg-slate-100 my-1" />
 
                       {/* Categories grid */}
-                      <div className="px-4 pt-4 pb-6 bg-gradient-to-b from-indigo-50 via-violet-50 to-slate-50 rounded-2xl mx-2 mt-1">
-                        <h2 className="text-sm font-bold text-slate-900 mb-3">🛒 Shop by Category</h2>
+                      <div className="px-4 pt-4 pb-6 bg-slate-50 rounded-2xl mx-2 mt-1">
+                        <h2 className="text-sm font-semibold text-slate-700 mb-3">Browse by category</h2>
                         {(() => {
                           const cats = Array.from(new Set(catalog.map(p => p.category || 'Uncategorized'))).sort();
                           // Pick a representative image per category
@@ -2360,9 +2314,10 @@ export default function BillingPage() {
       {/* Cart Bottom Sheet — shown after "Add items to Bill" on mobile */}
       {/* Cart Bottom Sheet — mini bar when collapsed, full sheet when expanded */}
       {(showCartSheet || cart.length > 0) && (
-        <CartBottomSheet
+        <CheckoutPanel
           cart={cart}
           catalog={catalog}
+          error={checkoutError}
           totalAmount={totalAmount}
           customerInfo={customerInfo}
           setCustomerInfo={setCustomerInfo}
@@ -2374,7 +2329,7 @@ export default function BillingPage() {
           expanded={showCartSheet}
           onExpand={() => { setShowCartSheet(true); setIsSearching(true); }}
           onCollapse={() => { setShowCartSheet(false); setIsSearching(false); }}
-          onClearCart={() => { setCart([]); setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' }); setShowCartSheet(false); setIsSearching(false); }}
+          onClearCart={() => { setCart([]); setCheckoutError(''); setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' }); setShowCartSheet(false); setIsSearching(false); }}
           onPriceUpdate={handlePriceUpdate}
         />
       )}
@@ -2551,370 +2506,6 @@ export default function BillingPage() {
     {_isDebug && (
       <DebugPanel dataRef={debugDataRef} updateTick={debugTick} />
     )}
-    </>
-  );
-}
-
-function TabButton({ active, onClick, icon, label }: any) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
-        active
-          ? 'bg-indigo-100 text-indigo-700 border border-indigo-500 shadow-sm'
-          : 'text-slate-500 hover:text-slate-700'
-      }`}
-    >
-      {icon}
-    </button>
-  );
-}
-
-function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomerInfo, savingBill, calculateItemTotal, updateCartItem, removeFromCart, handleGenerateBill, expanded, onExpand, onCollapse, onClearCart, onPriceUpdate }: any) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const dragStartY = useRef(0);
-  const dragCurrentY = useRef(0);
-  const isDragging = useRef(false);
-  const { pName } = useHindi();
-
-  // Price edit state
-  const [editingPriceIdx, setEditingPriceIdx] = useState<number | null>(null);
-  const [editingPriceValue, setEditingPriceValue] = useState('');
-  const priceInputRef = useRef<HTMLInputElement>(null);
-
-  const openPriceEdit = (idx: number) => {
-    setEditingPriceValue(String(cart[idx].price || 0));
-    setEditingPriceIdx(idx);
-    setTimeout(() => { priceInputRef.current?.select(); }, 80);
-  };
-
-  const confirmPriceEdit = () => {
-    if (editingPriceIdx === null) return;
-    const newPrice = parseFloat(editingPriceValue);
-    if (!isNaN(newPrice) && newPrice >= 0) {
-      updateCartItem(editingPriceIdx, 'price', newPrice);
-      // Also persist to the product database
-      const productId = cart[editingPriceIdx]?.productId;
-      if (productId && onPriceUpdate) {
-        onPriceUpdate(productId, newPrice);
-      }
-    }
-    setEditingPriceIdx(null);
-  };
-
-  // Bill-only: updates cart price without touching the product catalog
-  const confirmPriceEditBillOnly = () => {
-    if (editingPriceIdx === null) return;
-    const newPrice = parseFloat(editingPriceValue);
-    if (!isNaN(newPrice) && newPrice >= 0) {
-      updateCartItem(editingPriceIdx, 'price', newPrice);
-    }
-    setEditingPriceIdx(null);
-  };
-
-  // Full sheet height vs mini bar height (~64px)
-  const MINI_HEIGHT = 64;
-  const FULL_HEIGHT_VH = 96;
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    dragStartY.current = e.touches[0].clientY;
-    dragCurrentY.current = 0;
-    isDragging.current = true;
-    if (sheetRef.current) sheetRef.current.style.transition = 'none';
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging.current) return;
-    const dy = e.touches[0].clientY - dragStartY.current;
-    if (expanded && dy < 0) return;   // can't drag up when already expanded
-    if (!expanded && dy > 0) return;  // can't drag down when already mini
-    dragCurrentY.current = dy;
-    if (sheetRef.current) {
-      sheetRef.current.style.transform = `translateY(${dy}px)`;
-    }
-  };
-
-  const handleTouchEnd = () => {
-    isDragging.current = false;
-    if (sheetRef.current) sheetRef.current.style.transition = 'transform 220ms ease-out';
-    const dy = dragCurrentY.current;
-    if (expanded && dy > 100) {
-      // Collapse to mini
-      if (sheetRef.current) sheetRef.current.style.transform = 'translateY(0)';
-      onCollapse();
-    } else if (!expanded && dy < -60) {
-      // Expand to full
-      if (sheetRef.current) sheetRef.current.style.transform = 'translateY(0)';
-      onExpand();
-    } else {
-      // Snap back
-      if (sheetRef.current) sheetRef.current.style.transform = 'translateY(0)';
-    }
-    dragCurrentY.current = 0;
-  };
-
-  return (
-    <>
-      {/* Backdrop — only when expanded */}
-      {expanded && (
-        <div
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
-          onClick={onCollapse}
-        />
-      )}
-
-      {/* The sheet itself — always mounted, switches between mini and full */}
-      <div
-        ref={sheetRef}
-        className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-white shadow-2xl"
-        style={{
-          borderRadius: expanded ? '24px 24px 0 0' : '20px 20px 0 0',
-          maxHeight: expanded ? `${FULL_HEIGHT_VH}vh` : `${MINI_HEIGHT}px`,
-          height: expanded ? `${FULL_HEIGHT_VH}vh` : `${MINI_HEIGHT}px`,
-          transition: 'max-height 220ms ease-out, height 220ms ease-out, border-radius 220ms ease-out',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        {/* ── MINI BAR (collapsed) ── */}
-        {!expanded && (
-          <div
-            className="flex items-center gap-3 px-4 h-full cursor-pointer active:bg-slate-50 transition"
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onClick={onExpand}
-          >
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full bg-slate-300" />
-            {(() => {
-              const lastItem = cart.length > 0 ? cart[cart.length - 1] : null;
-              const lastProduct = lastItem && catalog ? catalog.find((cp: any) => cp.id === lastItem.productId) : null;
-              return lastProduct?.imageUrl ? (
-                <div className="w-9 h-9 rounded-xl overflow-hidden border-2 border-indigo-400 shrink-0" style={{overflow:'hidden'}}>
-                  <div className="relative w-full h-full">
-                    <img src={lastProduct.imageUrl} alt={lastProduct.name} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
-                    <div className="absolute inset-0" style={{background:'rgba(79,70,229,0.12)'}} />
-                  </div>
-                </div>
-              ) : (
-                <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-                  <ShoppingCart size={18} className="text-white" />
-                </div>
-              );
-            })()}
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-slate-900 text-sm">{cart.length} item{cart.length !== 1 ? 's' : ''} in bill</p>
-              <p className="text-xs text-slate-500">Tap or swipe up to view</p>
-            </div>
-            <div className="text-right shrink-0">
-              <p className="font-bold text-emerald-600 text-base">₹{totalAmount.toFixed(0)}</p>
-            </div>
-            <button
-              onClick={e => { e.stopPropagation(); onClearCart(); }}
-              className="w-7 h-7 rounded-full bg-rose-100 flex items-center justify-center shrink-0 hover:bg-rose-200 active:scale-90 transition-all"
-              title="Clear all items"
-            >
-              <X size={14} className="text-rose-500" strokeWidth={2.5} />
-            </button>
-          </div>
-        )}
-
-        {/* ── FULL SHEET (expanded) ── */}
-        {expanded && (
-          <>
-            {/* Drag handle + down arrow button */}
-            <div
-              className="flex flex-col items-center pt-2 pb-1 flex-shrink-0 cursor-grab gap-1"
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-            >
-              <div className="w-10 h-1.5 rounded-full bg-slate-300" />
-              <button
-                onClick={onCollapse}
-                className="w-7 h-7 flex items-center justify-center rounded-full bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 transition"
-                title="Collapse"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-              </button>
-            </div>
-
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 flex-shrink-0">
-              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <ShoppingCart size={18} className="text-indigo-500" /> Current Bill
-                <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2 py-0.5 rounded-full">{cart.length}</span>
-              </h2>
-              <button
-                onClick={onClearCart}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-100 transition"
-                title="Clear bill"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Cart items */}
-            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
-              {cart.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
-                  <ShoppingCart size={40} className="opacity-20" />
-                  <p className="text-sm">Cart is empty</p>
-                </div>
-              ) : (
-                cart.map((item: any, idx: number) => (
-                  <div key={idx} className="flex gap-2 items-center bg-slate-50 rounded-xl p-2 border border-slate-100">
-                    {/* Tappable left section — opens price editor */}
-                    <button
-                      className="flex items-center gap-2 flex-1 min-w-0 text-left active:opacity-70 transition-opacity"
-                      onClick={() => openPriceEdit(idx)}
-                      title="Tap to edit selling price"
-                    >
-                      <div className="w-9 h-9 rounded-lg bg-white overflow-hidden shrink-0 flex items-center justify-center border border-slate-200">
-                        {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-400" size={14} />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-slate-900 text-sm truncate">{pName(item.name, item.localName)}</p>
-                        {(() => {
-                          const bq = Number(item.baseQuantity) || 1;
-                          const bu = (item.baseUnit || 'pc').toLowerCase();
-                          const isWV = ['g','ml','kg','l'].includes(bu);
-                          const unitLabel = isWV && bq > 1 ? `${bq}${bu}` : bu;
-                          return <p className="text-xs text-indigo-500 font-medium">₹{(item.price || 0).toFixed(2)} / {unitLabel} <span className="text-slate-400 font-normal">· tap to edit</span></p>;
-                        })()}
-                      </div>
-                    </button>
-                    {(() => {
-                      const bq = Number(item.baseQuantity) || 1;
-                      const bu = (item.baseUnit || 'pc').toLowerCase();
-                      const step = ['g','ml','kg','l'].includes(bu) && bq > 1 ? bq : 1;
-                      return (
-                        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg h-7 shrink-0">
-                          <button onClick={() => { const q = item.quantity - step; q <= 0 ? removeFromCart(idx) : updateCartItem(idx, 'quantity', q); }} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">−</button>
-                          <span className="text-xs font-bold text-slate-800 px-1">{item.quantity}</span>
-                          <button onClick={() => updateCartItem(idx, 'quantity', item.quantity + step)} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">+</button>
-                        </div>
-                      );
-                    })()}
-                    <p className="text-sm font-bold text-indigo-600 shrink-0 w-14 text-right">₹{calculateItemTotal(item).toFixed(0)}</p>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Footer */}
-            {cart.length > 0 && (
-              <div className="px-4 pb-4 pt-2 border-t border-slate-100 space-y-2 flex-shrink-0">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 text-sm">Total</span>
-                  <span className="text-xl font-bold text-emerald-600">₹{totalAmount.toFixed(2)}</span>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <input
-                    type="tel"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={10}
-                    placeholder="📱 Phone Number"
-                    value={customerInfo.phone}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const val = e.target.value.replace(/\D/g, '');
-                      const newInfo = { ...customerInfo, phone: val };
-                      setCustomerInfo(newInfo);
-                      if (val.length === 10) { handleGenerateBill(newInfo); onCollapse(); }
-                    }}
-                    className="w-full bg-white border-2 border-indigo-200 rounded-xl px-4 py-2.5 text-base font-semibold focus:outline-none focus:border-indigo-500 placeholder:text-slate-400 placeholder:font-normal tracking-wider"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Customer Name (optional)"
-                    value={customerInfo.name}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomerInfo({ ...customerInfo, name: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-indigo-400"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setCustomerInfo({ ...customerInfo, status: 'PAID' })} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status === 'PAID' ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>✓ Paid</button>
-                  <button onClick={() => setCustomerInfo({ ...customerInfo, status: 'UNPAID' })} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status === 'UNPAID' ? 'bg-rose-100 text-rose-700 border border-rose-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>Unpaid</button>
-                </div>
-                <button
-                  disabled={savingBill}
-                  onClick={() => { handleGenerateBill(); onCollapse(); }}
-                  className="w-full bg-indigo-600 text-white font-bold py-3 rounded-2xl hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50"
-                >
-                  <CheckCircle size={18} />
-                  {savingBill ? 'Saving…' : 'Generate Bill'}
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Price Edit Modal — shown when a cart item card is tapped */}
-      {editingPriceIdx !== null && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end justify-center"
-          onClick={() => setEditingPriceIdx(null)}
-        >
-          <div
-            className="w-full max-w-md bg-white rounded-t-3xl shadow-2xl px-5 pt-5 pb-8 border-t border-slate-100"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Handle */}
-            <div className="w-10 h-1.5 rounded-full bg-slate-300 mx-auto mb-4" />
-
-            {/* Product name */}
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">Edit Selling Price</p>
-            <p className="font-bold text-slate-900 text-base mb-4 truncate">
-              {pName(cart[editingPriceIdx]?.name, cart[editingPriceIdx]?.localName)}
-            </p>
-
-            {/* Price input */}
-            <div className="flex items-center bg-slate-50 border-2 border-indigo-300 rounded-2xl px-4 h-14 gap-2 focus-within:border-indigo-500 transition-colors">
-              <span className="text-2xl font-bold text-slate-400">₹</span>
-              <input
-                ref={priceInputRef}
-                type="number"
-                inputMode="decimal"
-                className="flex-1 bg-transparent text-2xl font-bold text-slate-900 focus:outline-none"
-                value={editingPriceValue}
-                onChange={e => setEditingPriceValue(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') confirmPriceEditBillOnly(); if (e.key === 'Escape') setEditingPriceIdx(null); }}
-                autoFocus
-              />
-              <span className="text-sm text-slate-400 font-medium">/ {cart[editingPriceIdx]?.baseUnit}</span>
-            </div>
-
-            <p className="text-xs text-slate-400 mt-2 mb-5">
-              Original price: ₹{(cart[editingPriceIdx]?.price || 0).toFixed(2)} — "This Bill Only" keeps catalog unchanged
-            </p>
-
-            {/* Actions */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setEditingPriceIdx(null)}
-                className="py-3 px-4 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmPriceEditBillOnly}
-                className="flex-1 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 ring-2 ring-indigo-400 ring-offset-1"
-              >
-                This Bill Only
-              </button>
-              <button
-                onClick={confirmPriceEdit}
-                className="py-3 px-4 rounded-2xl bg-slate-700 text-white font-bold text-sm hover:bg-slate-600 active:scale-[0.98] transition-all"
-              >
-                Update Price
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

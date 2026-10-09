@@ -55,7 +55,7 @@ export default function Sidebar() {
         <div className="p-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             <Store className="text-indigo-400" />
-            Kirana<span className="text-indigo-400">MVP</span>
+            Retlex<span className="text-indigo-400">AI</span>
           </h1>
           {/* Hindi toggle inside sidebar (desktop) */}
           <button

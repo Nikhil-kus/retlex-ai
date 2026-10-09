@@ -27,3 +27,15 @@ Shirt photos illustrate the fictional demo listings; their source brands, fabric
 - `shop-grocery-3.jpg`: [Lavanya Kirana General Store, Secunderabad — Zone Adds](https://www.zoneadds.com/Business/Lavanya-Kirana-General-Store/6281)
 
 All assets are served locally from `/discover/` to avoid dependence on third-party image requests during a presentation.
+
+## Illustrated map backdrop
+
+- Final asset: `public/discover/neighbourhood-map.webp` (308 KB). Generated with the built-in image generation tool in **generate** mode, then compressed to WebP with the existing Sharp dependency.
+- This depicts fictional geography, rather than real map tiles. Interactive shop pins are HTML controls placed over the image. The interface labels the map and shop locations as illustrative/simulated.
+- The original generated PNG is retained by Codex; the optimized project asset is served locally.
+
+Final generation prompt:
+
+```text
+Use case: ui-mockup. Asset type: a standalone 1536x1024 street-map background image for a nearby shop discovery app. Create a highly realistic, clean top-down 2D digital street map of a fictional dense Bengaluru-style neighbourhood, like a polished modern navigation map. Show many small believable city blocks, parcel/building footprints in warm pale grey, a connected hierarchy of winding residential lanes and white roads with fine grey outlines, one broad soft-yellow arterial road winding diagonally through the neighbourhood, intersections and some cul-de-sacs. Two small muted green parks and one small pale-blue lake near an edge. It should look like practical map tiles at neighbourhood zoom, geographically plausible urban cartography, flat and crisp with restrained detail, not a decorative illustrated scene. Colors: off-white background, light beige-grey building blocks, white streets, very soft amber main road, pale sage-green parks. Composition: edge-to-edge landscape map, consistent close neighbourhood zoom, equally detailed across the frame. No app UI, no border, no search bars, no pins, no routes, no circles, no text, no numbers, no labels, no logos, no watermark. This will be labeled illustrative in the app. Avoid 3D, isometric buildings, satellite photography, artistic texture, cartoon blocks, excessive contrast. Deliver only the map image.
+```

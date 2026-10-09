@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:checkout": "node --import tsx --test src/lib/billing-checkout.test.ts",
+    "test:discover": "node --import tsx --test src/app/discover/demo-data.test.ts",
     "test:voice": "node --import tsx --test src/lib/voice-product-matcher.test.ts src/lib/product-suggestions.test.ts src/lib/billing-hold-to-speak.test.ts src/lib/vosk-runtime.test.ts",
     "setup:vosk": "python scripts/setup-vosk-model.py",
     "predev": "node scripts/prepare-vosk-browser.mjs",

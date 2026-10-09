@@ -14,7 +14,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Store, Package, Receipt,
-  ChartColumn, X, Users, Sparkles
+  ChartColumn, X, Users, Sparkles, History, Wallet, QrCode, ChevronRight
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useHindi } from '@/lib/hindi-context';
@@ -34,8 +34,11 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
 
   const navItems = [
     { href: `${base}/billing`,        label: 'Billing',        icon: Receipt },
-    { href: `${base}/shop/ingest`,    label: 'AI Ingest',      icon: Sparkles },
+    { href: `${base}/products`,       label: 'Product catalog', icon: Package },
+    { href: `${base}/history`,        label: 'Bill history',    icon: History },
+    { href: `${base}/unpaid`,         label: 'Unpaid bills',    icon: Wallet },
     { href: `${base}/analytics`,      label: 'Analytics',      icon: ChartColumn },
+    { href: `${base}/shop/ingest`,    label: 'Import products', icon: Sparkles },
     { href: `${base}/worker`,         label: 'Worker View',    icon: Users },
     { href: `${base}/shop/setup`,     label: 'Shop Setup',     icon: Store },
   ];
@@ -77,13 +80,14 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
 
       {/* Sidebar */}
       <nav
-        className={`fixed md:sticky top-0 left-0 h-screen w-64 bg-slate-900 text-slate-100 flex flex-col transition-transform transform ${
+        aria-label="Shop navigation"
+        className={`fixed md:sticky top-0 left-0 h-screen w-60 shrink-0 bg-[#191c2c] text-slate-100 flex flex-col transition-transform transform ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:translate-x-0 z-50 shadow-xl`}
+        } md:translate-x-0 z-50`}
       >
         {/* Logo + Hindi toggle */}
-        <div className="p-6 flex items-center justify-between">
-          <Link href={`${base}/billing`} className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+        <div className="px-5 pt-7 pb-6 flex items-center justify-between">
+          <Link href={`${base}/billing`} className="text-xl font-semibold tracking-tight text-white flex items-center gap-2">
             {shop?.logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -94,7 +98,7 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
             ) : (
               <Store className="text-indigo-400" />
             )}
-            Retlex<span className="text-indigo-400">AI</span>
+            Retlex<span className="text-[#ad98df]">AI</span>
           </Link>
           <button
             onClick={toggleHindi}
@@ -111,14 +115,14 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
         </div>
 
         {/* Shop ID badge */}
-        <div className="px-6 pb-3">
-          <span className="text-xs text-slate-500 font-mono truncate block" title={shopId}>
-            Shop: {shopId.slice(0, 12)}…
-          </span>
+        <div className="mx-4 mb-7 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3">
+          <span className="rounded-lg bg-white/5 p-2 text-[#b09bd6]"><Store size={17} /></span>
+          <div className="min-w-0"><p className="truncate text-xs font-medium text-slate-200">{shop?.name || 'Your shop'}</p><p className="mt-1 text-[10px] text-slate-500">Retail workspace</p></div>
         </div>
+        <p className="px-6 pb-3 text-[9px] font-semibold tracking-[0.2em] text-slate-600">WORKSPACE</p>
 
         {/* Nav links */}
-        <div className="flex-1 overflow-y-auto py-2 px-3 space-y-1">
+        <div className="flex-1 overflow-y-auto py-2 px-3 space-y-1 [scrollbar-width:thin] [scrollbar-color:#484256_transparent]">
           {navItems.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
             const Icon = item.icon;
@@ -126,21 +130,24 @@ export default function ShopSidebar({ shopId }: ShopSidebarProps) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${
+                aria-current={isActive ? 'page' : undefined}
+                className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-colors text-xs ${
                   isActive
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    ? 'bg-[#343047] text-[#d6c5f3]'
+                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                <Icon size={20} />
+                <Icon size={17} strokeWidth={1.7} />
                 <span className="font-medium">{item.label}</span>
+                {isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[#b897e7]" />}
               </Link>
             );
           })}
         </div>
 
-        <div className="p-4 bg-slate-800 text-xs text-slate-400 text-center">
-          Retlex AI &copy; 2026
+        <Link href={`/qr/${shopId}`} className="mx-4 mb-5 rounded-xl border border-white/10 p-3 text-slate-400 hover:border-white/20"><div className="flex items-center gap-2 text-xs text-slate-200"><QrCode size={16} className="text-[#ad98df]" />Customer storefront<ChevronRight className="ml-auto" size={14} /></div><p className="mt-2 text-[10px] leading-relaxed">Open your shop’s customer ordering page.</p></Link>
+        <div className="px-6 py-5 border-t border-white/5 text-[10px] text-slate-600 flex items-center justify-between">
+          <span>Made for everyday retail</span><span>Retlex AI</span>
         </div>
       </nav>
 
