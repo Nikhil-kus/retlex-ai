@@ -1,0 +1,185 @@
+
+> kirana-app@0.1.0 test:voice
+> node --import tsx --test src/lib/voice-product-matcher.test.ts src/lib/product-suggestions.test.ts src/lib/billing-hold-to-speak.test.ts src/lib/vosk-runtime.test.ts
+
+[PERF] processVoiceTextToItems | items=1 | parse=8.1ms | fuseSearch+scoring=6.9ms | total=15.1ms
+[PERF] onresult | totalItems=3 | enrichment=0.1ms | suggestions=0.0ms | setState=0.0ms | totalEvent=16.4ms
+[PERF] processVoiceTextToItems | items=1 | parse=3.5ms | fuseSearch+scoring=2.3ms | total=6.0ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.3ms | fuseSearch+scoring=0.2ms | total=0.5ms
+[PERF] processVoiceTextToItems | items=2 | parse=0.2ms | fuseSearch+scoring=1.6ms | total=1.8ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.2ms | fuseSearch+scoring=0.5ms | total=0.7ms
+[PERF] onresult | totalItems=1 | enrichment=0.2ms | suggestions=0.0ms | setState=0.0ms | totalEvent=1.1ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.6ms | fuseSearch+scoring=0.4ms | total=1.0ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=1.8ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.5ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.5ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.5ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.3ms | total=0.4ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.5ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.4ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.1ms | total=0.2ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.3ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.9ms | total=1.0ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.2ms | setState=0.0ms | totalEvent=1.6ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.2ms | fuseSearch+scoring=1.1ms | total=1.3ms
+[PERF] onresult | totalItems=1 | enrichment=0.1ms | suggestions=0.0ms | setState=0.0ms | totalEvent=1.6ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.4ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.5ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.2ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.4ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.5ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.1ms | total=0.1ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.2ms
+[PERF] processVoiceTextToItems | items=2 | parse=0.2ms | fuseSearch+scoring=0.2ms | total=0.4ms
+[PERF] onresult | totalItems=2 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.6ms
+[PERF] processVoiceTextToItems | items=2 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=2 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.8ms
+[PERF] processVoiceTextToItems | items=2 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=2 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.6ms
+[PERF] processVoiceTextToItems | items=2 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=2 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=1.0ms
+[PERF] processVoiceTextToItems | items=2 | parse=0.1ms | fuseSearch+scoring=0.0ms | total=0.2ms
+[PERF] onresult | totalItems=2 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.8ms
+[PERF] processVoiceTextToItems | items=3 | parse=0.2ms | fuseSearch+scoring=0.4ms | total=0.6ms
+[PERF] onresult | totalItems=3 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=1.8ms
+[PERF] processVoiceTextToItems | items=3 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.4ms
+[PERF] onresult | totalItems=3 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=1.3ms
+[PERF] processVoiceTextToItems | items=3 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=3 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.8ms
+[PERF] processVoiceTextToItems | items=3 | parse=0.1ms | fuseSearch+scoring=0.0ms | total=0.2ms
+[PERF] onresult | totalItems=3 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.9ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.4ms
+[PERF] processVoiceTextToItems | items=2 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.2ms
+[PERF] onresult | totalItems=2 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.3ms
+[PERF] processVoiceTextToItems | items=2 | parse=0.4ms | fuseSearch+scoring=0.4ms | total=0.8ms
+[PERF] onresult | totalItems=2 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=1.0ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.3ms | total=0.4ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.5ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.4ms
+[PERF] processVoiceTextToItems | items=2 | parse=0.1ms | fuseSearch+scoring=0.3ms | total=0.4ms
+[PERF] onresult | totalItems=2 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.7ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.1ms | total=0.2ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.9ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.1ms | total=0.2ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.7ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.2ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.4ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.3ms | total=0.4ms
+[PERF] onresult | totalItems=1 | enrichment=0.0ms | suggestions=0.0ms | setState=0.0ms | totalEvent=0.6ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] onresult | totalItems=1 | enrichment=0.8ms | suggestions=0.0ms | setState=0.0ms | totalEvent=1.3ms
+✔ Vosk can use the existing billing flow when browser recognition is unavailable (231.7605ms)
+✔ an unprepared or unsupported Vosk catalog cannot start an order session (109.8255ms)
+✔ release stops the main microphone and a delayed permission grant cannot reopen it (49.5539ms)
+✔ card correction waits for release, replaces only that item, and preserves quantity (53.0746ms)
+✔ correction honors spoken quantity; silence and multiple products leave the card intact (129.889ms)
+✔ cancellation, capture loss, backgrounding and unmount stop recognition without restart (157.9908ms)
+✔ controls inside the card do not open the mic; keyboard hold stops on key release (27.5589ms)
+✔ backgrounding and unmount cancel a pending delayed stop (59.1293ms)
+✔ recognition may restart within the release grace period but never after it (24.6566ms)
+✔ recognized names awaiting brand or size choices never activate card correction (82.5364ms)
+✔ voice correction is available for missing or low-confidence identity, not a confident selection (0.2859ms)
+✔ Hindi product and quantity fragments stay together without losing decimal weights (145.6753ms)
+✔ unexpected recognized words are retained without an invented product separator (78.0231ms)
+✔ growing Android hypotheses converge to one sentence rather than multiplying orders (54.0308ms)
+✔ overlap survives recognition restart; later interim updates replace the same result (36.123ms)
+✔ quantity continuation survives recognition restart and explicit product separators still work (80.7039ms)
+✔ catalogue-supported short Hindi vowel revisions reconcile without duplicated names (47.587ms)
+✔ equivalent pulse-name revisions retain one product with the spoken quantity (25.4481ms)
+✔ matching quantity suffixes cannot erase a different short product name (29.3588ms)
+✔ saved defaults are consulted after recognition and do not change the transcript (31.3784ms)
+✔ anjeer suggestions contain only figs, even across a long cumin-heavy catalogue (332.1561ms)
+✔ out-of-stock anjeer never falls back to cumin recommendations (96.4634ms)
+✔ price requests show matching-price variants rather than hiding them behind other sizes (4.2398ms)
+✔ selected voice products keep related variants available for browsing at other prices (2.3776ms)
+✔ almond packets exclude loose stock, oil and drinks despite shared words/categories (0.5175ms)
+✔ uncertain coriander powder keeps full identity instead of all powders (0.7542ms)
+✔ dairy milk suggestions do not drift to instant mixes; qualifiers are not pack sizes (2.8951ms)
+✔ unknown words do not become recommendations through a shared generic word (1.3117ms)
+✔ safe candidates remain available for explicit pack-size confirmation (0.8267ms)
+✔ saved catalogue reproductions retain relevant choices across inconsistent categories (134.867ms)
+✔ same brand prefix and missing categories are not enough to invent alternatives (6.3849ms)
+[PERF] processVoiceTextToItems | items=1 | parse=0.3ms | fuseSearch+scoring=1.3ms | total=2.1ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.2ms | fuseSearch+scoring=0.6ms | total=0.8ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.5ms | total=0.7ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.1ms | total=0.2ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.5ms | total=0.6ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.3ms | total=0.4ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.3ms | total=0.4ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.1ms | total=0.2ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.4ms | total=0.5ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.3ms | total=0.3ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.1ms | total=0.2ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.3ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.2ms | total=0.2ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.0ms | fuseSearch+scoring=0.2ms | total=0.2ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.0ms | fuseSearch+scoring=0.2ms | total=0.2ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.3ms | total=0.4ms
+[PERF] processVoiceTextToItems | items=1 | parse=0.1ms | fuseSearch+scoring=0.0ms | total=0.1ms
+Saved catalogue: 690 exact names, 665 resolved, 25 require review, 0 wrong automatic selections
+5000-product matching: 20.7 ms on this machine
+✔ future Hindi names produce selectable pronunciation alternatives without a product dictionary (51.6697ms)
+✔ screenshot: seb recovers sev only when apple is not a catalogue identity (52.353ms)
+✔ clipped do is a quantity only directly before a unit and stays on its own item (4.2453ms)
+✔ catalogue-backed Hindi recovery handles consonants and speech-inserted spaces (29.8976ms)
+✔ Hindi sound recovery is general, bounded and preserves exact identities (22.5799ms)
+✔ recovered generic names still require a brand choice, even with price, pack or saved preference (3.6424ms)
+✔ relative Hindi and Hinglish packs select and suggest by size, preserving packet counts (188.2904ms)
+✔ relative sizes fall back to prices and medium uses the lower distinct middle size (10.6734ms)
+✔ total weight ranks exact packs, loose, exact smaller combinations and oversized packs (15.4584ms)
+✔ total weight selects whole smaller packets and keeps ranked alternatives after selection (7.7442ms)
+✔ total quantities never auto-round, split sealed packets, cross dimensions or lose identity (8.8895ms)
+✔ exact catalogue tokens exclude phonetic neighbours before saved-choice and price selection (2.4632ms)
+✔ unmapped Hindi nasal marks are not discarded into a different product identity (1.9249ms)
+✔ unknown Latin spellings still recover likely typos (1.9994ms)
+✔ loose and packet requests match and suggest only their requested sale form (5.7585ms)
+✔ packet size and packet count remain separate in Hindi, Hinglish, and either word order (3.771ms)
+✔ exact and nearest packet sizes select whole packs, with the actual size reported (6.1747ms)
+✔ pack count converts correctly for packets stored in weight-based catalogue units (0.6043ms)
+✔ packet sizes and counts do not spill into the next product or replace the price (4.0653ms)
+✔ bare chhole selects whole chickpeas and excludes lobia and masala before ranking (38.7488ms)
+✔ explicit masala and genuine chickpea ambiguity still require the correct product (7.4967ms)
+✔ aliases, price and even a matching kilo size cannot substitute a different grocery type (8.4017ms)
+✔ screenshot: exact shop alias and price select Cool over a fuzzy same-price Skincare match (12.0815ms)
+✔ spoken prices resolve the same product as weight and select a priced pack (5.6047ms)
+✔ prices stay separate from quantities across multiple spoken products (0.6779ms)
+✔ currency-first price leaves a following quantity on the same product (0.5473ms)
+✔ reported sentence resolves the correct identity with quantity and packet intent intact (0.7985ms)
+✔ brand, script, spacing and spelling variations work across unrelated products (3.5416ms)
+✔ unknown brands cannot be replaced using only a shared category word (2.5943ms)
+✔ bulk requires explicit intent across brands (3.9903ms)
+✔ ambiguous sizes require selection; exact requested weight resolves them (4.552ms)
+✔ generic words and duplicate products are uncertain, not high confidence (7.6585ms)
+✔ saved choices break genuine ties but cannot override a mismatched brand or size (2.4333ms)
+✔ adding duplicate aliases cannot inflate a wrong product score (4.5236ms)
+✔ candidate retention is independent of catalogue order and the old top-15 cutoff (18.0586ms)
+✔ parser keeps fractional weights and multi-item quantities (1.6565ms)
+✔ the saved shop catalogue resolves the reported spelling without a product exception (82.2357ms)
+✔ weight and volume convert to packets consistently; loose goods retain their units (0.7863ms)
+✔ actual billing pipeline preserves quantity, rejects unknown names, and updates cached interim results (128.6829ms)
+✔ exact catalogue names never automatically switch to a different product (3466.059ms)
+✔ a 5000-product catalogue keeps rare identity matches without a shortlist cutoff (193.702ms)
+✔ grammar uses complete inventory names and aliases, never drops an unknown brand (6.0847ms)
+✔ unknown and low-confidence final phrases never enter billing (0.3875ms)
+✔ the official Hindi vocabulary supports real catalog aliases (98.7976ms)
+✔ release drains all queued audio before finalization and releases the microphone (15.1836ms)
+✔ release while permission is pending cannot reopen the microphone (2.521ms)
+✔ permission denial ends the session, reports a clear error, and closes audio (1.8296ms)
+✔ abort ignores late results and an old recognizer cannot affect a restarted session (1.9528ms)
+ℹ tests 79
+ℹ suites 0
+ℹ pass 79
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5920.3577
