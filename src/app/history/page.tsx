@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { History as HistoryIcon, Search, Eye, Download, CheckCircle } from 'lucide-react';
-import { getBillLabel } from '@/lib/bill-utils';
+import { getBillLabel, getBillNumber } from '@/lib/bill-utils';
 import { useHindi } from '@/lib/hindi-context';
 
 export default function HistoryPage() {
@@ -32,6 +32,7 @@ export default function HistoryPage() {
 
   const filteredBills = bills.filter(b => 
     getBillLabel(b).toLowerCase().includes(search.toLowerCase()) || 
+    getBillNumber(b).toLowerCase().includes(search.toLowerCase()) ||
     (b.customerPhone && b.customerPhone.includes(search))
   );
 

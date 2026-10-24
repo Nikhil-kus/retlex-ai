@@ -1,14 +1,36 @@
-/**
- * Get the display label for a bill
- * Shows: Customer Name if exists, otherwise "Bill #1"
- */
-export function getBillLabel(bill: any): string {
+interface BillDisplayData {
+  customerName?: string | null;
+  createdAt?: unknown;
+  date?: unknown;
+}
+
+/** Read current ISO dates and older Firestore timestamp representations. */
+export function getBillDate(bill: BillDisplayData): Date | null {
+  for (const value of [bill.createdAt, bill.date]) {
+    let date: Date | undefined;
+    if (value instanceof Date) date = value;
+    else if (typeof value === 'string' || typeof value === 'number') date = new Date(value);
+    else if (value && typeof value === 'object') {
+      if ('toDate' in value && typeof value.toDate === 'function') date = value.toDate();
+      else {
+        const seconds = 'seconds' in value ? value.seconds : '_seconds' in value ? value._seconds : undefined;
+        if (typeof seconds === 'number') date = new Date(seconds * 1000);
+      }
+    }
+    if (date instanceof Date && !Number.isNaN(date.getTime())) return date;
+  }
+  return null;
+}
+
+/** Bill card title: customer name when entered, otherwise the bill's time. */
+export function getBillLabel(bill: BillDisplayData): string {
   const customerName = bill.customerName?.trim();
   if (customerName) {
     return customerName;
   }
-  const billNum = bill.billNumber || 'N/A';
-  return `Bill #${billNum}`;
+  return getBillDate(bill)?.toLocaleTimeString('en-IN', {
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  }).toUpperCase() || 'Time unavailable';
 }
 
 /**

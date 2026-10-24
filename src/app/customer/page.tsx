@@ -1453,6 +1453,8 @@ export default function CustomerPage() {
       shopId: shop.id,
       items: cart,
       ...infoToUse,
+      customerName: infoToUse.name.trim() || null,
+      customerPhone: infoToUse.phone.trim() || null,
     };
 
     // Instantly update UI without waiting for save

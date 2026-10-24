@@ -92,8 +92,8 @@ export async function POST(request: Request) {
     const billData = {
       billNumber,
       shopId: data.shopId,
-      customerName: data.customerName || null,
-      customerPhone: data.customerPhone || null,
+      customerName: (data.customerName ?? data.name)?.trim() || null,
+      customerPhone: (data.customerPhone ?? data.phone)?.trim() || null,
       totalAmount,
       profit: totalProfit,
       status: data.status || 'UNPAID',

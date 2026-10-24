@@ -2,6 +2,7 @@
 
 import { CheckCircle, ChevronRight, Clock3, ShoppingCart, TriangleAlert } from 'lucide-react';
 import type { Bill } from '@/types';
+import { getBillDate, getBillLabel } from '@/lib/bill-utils';
 
 type BillKind = 'pending' | 'completed' | 'unpaid';
 
@@ -52,12 +53,11 @@ export default function BillingBillSection({ bills, kind, limit, expanded, loadi
   const groups = new Map<string, { title: string; bills: Bill[] }>();
 
   for (const bill of visibleBills) {
-    const date = new Date(bill.createdAt);
-    const validDate = !Number.isNaN(date.getTime());
-    const key = kind === 'unpaid' ? 'unpaid' : validDate ? date.toDateString() : 'unknown';
+    const date = getBillDate(bill);
+    const key = kind === 'unpaid' ? 'unpaid' : date ? date.toDateString() : 'unknown';
     let title = theme.title;
 
-    if (kind !== 'unpaid' && validDate) {
+    if (kind !== 'unpaid' && date) {
       const day = date.toLocaleDateString('en-IN', {
         day: 'numeric', month: 'short',
         ...(date.getFullYear() !== today.getFullYear() ? { year: 'numeric' as const } : {}),
@@ -104,10 +104,7 @@ export default function BillingBillSection({ bills, kind, limit, expanded, loadi
               {heading(group.title, group.bills.length)}
               <div className="space-y-1.5">
                 {group.bills.map(bill => {
-                  const date = new Date(bill.createdAt);
-                  const label = bill.customerName?.trim() || (Number.isNaN(date.getTime())
-                    ? `Bill #${bill.billNumber || 'N/A'}`
-                    : date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase());
+                  const label = getBillLabel(bill);
                   const itemCount = bill.items?.length || 0;
 
                   return (
@@ -115,14 +112,14 @@ export default function BillingBillSection({ bills, kind, limit, expanded, loadi
                       key={bill.id}
                       type="button"
                       onClick={() => onSelect(bill)}
-                      aria-label={`Open ${theme.title.toLowerCase()} bill: ${label}, Bill #${bill.billNumber || 'N/A'}`}
-                      className={`group relative flex min-h-[62px] w-full items-center gap-2.5 overflow-hidden rounded-xl border border-slate-200 bg-white px-3 py-2 text-left transition-all hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 ${theme.cardClass}`}
+                      aria-label={`Open ${theme.title.toLowerCase()} bill: ${label}`}
+                      className={`group relative flex min-h-[62px] w-full items-center gap-2.5 overflow-hidden rounded-xl border border-[#e7d5c3] bg-[#faf4ec] px-3 py-2 text-left transition-all hover:bg-[#f5eadc] hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 ${theme.cardClass}`}
                     >
                       <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-0.5 rounded-full ${theme.accentClass} ${kind === 'pending' ? '' : 'opacity-0 transition-opacity group-hover:opacity-100'}`} />
                       <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${theme.iconClass}`}><Icon size={18} /></span>
                       <span className="min-w-0 flex-1">
                         <span title={label} className="block truncate text-sm font-semibold leading-5 text-slate-900">{label}</span>
-                        <span className="block text-xs leading-4 text-slate-400">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
+                        <span className="block text-xs leading-4 text-slate-500">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
                       </span>
                       <span className={`shrink-0 text-sm font-bold tabular-nums ${kind === 'unpaid' ? 'text-rose-600' : 'text-slate-900'}`}>₹{(bill.totalAmount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                       <ChevronRight aria-hidden="true" size={16} className="shrink-0 text-slate-400" />
