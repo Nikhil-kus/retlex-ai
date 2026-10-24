@@ -16,7 +16,7 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const { hindiMode, toggleHindi, isSearching, headerVisible } = useHindi();
+  const { hindiMode, toggleHindi, isSearching } = useHindi();
 
   // Reset main scroll container on route change
   useEffect(() => {
@@ -32,13 +32,12 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Shop icon — top-left, hides with header on scroll-down */}
+      {/* Keep the menu button anchored while the page scrolls. */}
       {!isSearching && (
       <button
         onClick={() => setIsOpen(!isOpen)}
         aria-label={isOpen ? 'Close menu' : 'Open menu'}
-        className="menu-toggle-btn md:hidden fixed top-3 left-3 z-50 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 active:scale-95 transition-all duration-300"
-        style={{ opacity: headerVisible ? 1 : 0, pointerEvents: headerVisible ? 'auto' : 'none', transform: headerVisible ? 'translateY(0)' : 'translateY(-56px)' }}
+        className="menu-toggle-btn md:hidden fixed top-3 left-3 z-50 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 active:scale-95 transition-[background-color,box-shadow] duration-200 motion-reduce:transition-none"
       >
         {isOpen ? <X size={20} strokeWidth={2.5} /> : <Store size={20} />}
       </button>

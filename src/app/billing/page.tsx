@@ -56,7 +56,7 @@ const getLevenshteinDistance = (a: string, b: string): number => {
 };
 
 export default function BillingPage() {
-  const { pName, hindiMode, toggleHindi, catName, setIsSearching, headerVisible, setHeaderVisible } = useHindi();
+  const { pName, hindiMode, toggleHindi, catName, setIsSearching } = useHindi();
   const [isListening, setIsListening] = useState(false);
   const [finalTranscript, setFinalTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
@@ -1028,24 +1028,6 @@ export default function BillingPage() {
   const slide1Ref = useRef<HTMLDivElement>(null);
   const slide2Ref = useRef<HTMLDivElement>(null);
 
-  // ── Hide-on-scroll-down / show-on-scroll-up for the existing header ─────
-  const lastScrollYRef = useRef(0);
-
-  useEffect(() => {
-    // Reset header visibility whenever the tab changes
-    setHeaderVisible(true);
-    lastScrollYRef.current = 0;
-  }, [modeIndex]);
-
-  const handleScrollDirection = (scrollTop: number) => {
-    const THRESHOLD = 6;
-    const diff = scrollTop - lastScrollYRef.current;
-    if (Math.abs(diff) < THRESHOLD) return;
-    setHeaderVisible(diff < 0 || scrollTop < 10);
-    lastScrollYRef.current = scrollTop;
-  };
-  // ─────────────────────────────────────────────────────────────────────────
-
   useEffect(() => {
     if (sliderRef.current) {
       sliderRef.current.style.transform = `translateX(-${modeIndex * 100}%)`;
@@ -1488,11 +1470,10 @@ export default function BillingPage() {
       <div className="flex-1 flex flex-col min-h-0">
         <VoiceEngineControl voice={voiceEngine} busy={isListening} onRestore={restoreCurrentRecognition} />
         <div className="bg-white overflow-hidden flex flex-col flex-1 min-h-0">
-          {/* Existing shop header retains its scroll and search behavior. */}
+          {/* Reserve stable space for the logo; scrolling must not resize the slides. */}
           {!(mode === 'MANUAL' && search.length > 0) && (
           <div
-            className="flex-shrink-0 flex items-center justify-between px-4 transition-all duration-300 ease-in-out overflow-hidden"
-            style={{ maxHeight: headerVisible ? '64px' : '0px', opacity: headerVisible ? 1 : 0, paddingTop: headerVisible ? '10px' : '0', paddingBottom: headerVisible ? '10px' : '0' }}
+            className="h-[60px] flex-shrink-0 flex items-center justify-between px-4 py-2.5 overflow-hidden"
           >
             {/* Shop logo — left */}
             <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-sm flex-shrink-0">
@@ -1542,7 +1523,6 @@ export default function BillingPage() {
           >
             {/* Slide 0 - Speak your order / Review */}
             <div ref={slide2Ref} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}
-              onScroll={(e) => handleScrollDirection((e.currentTarget as HTMLDivElement).scrollTop)}
             >
               {!isReviewing ? (
                 /* ── IDLE STATE: Upload / Voice prompt ── */
@@ -1978,7 +1958,6 @@ export default function BillingPage() {
 
             {/* Slide 1 - Pending Bills */}
             <div ref={slide1Ref} className="w-full shrink-0 p-6 space-y-8 overflow-y-auto"
-              onScroll={(e) => handleScrollDirection((e.currentTarget as HTMLDivElement).scrollTop)}
             >
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -2053,7 +2032,7 @@ export default function BillingPage() {
             {/* Slide 2 - Manual Search */}
             <div ref={slide0Ref} className="w-full shrink-0 overflow-y-auto flex flex-col"
               onTouchStart={() => { if (search.length > 0) searchInputRef.current?.blur(); }}
-              onScroll={(e) => { const t = (e.currentTarget as HTMLDivElement).scrollTop; if (search.length > 0) searchInputRef.current?.blur(); setActiveSuggestionId(null); handleScrollDirection(t); }}
+              onScroll={() => { if (search.length > 0) searchInputRef.current?.blur(); setActiveSuggestionId(null); }}
             >
 
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 bg-white">
