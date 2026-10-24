@@ -8,15 +8,16 @@ import { canCorrectProductByVoice } from '@/lib/voice-review';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, TriangleAlert, ShoppingCart, X, Package, Store, Pencil } from 'lucide-react';
+import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, ShoppingCart, X, Package, Pencil } from 'lucide-react';
 import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { shopCache, catalogCache, voicePrefsCache } from '@/lib/session-cache';
 import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
-import { getBillLabel, getBillNumber, getBillIdentifier, formatProductPackSize } from '@/lib/bill-utils';
+import { getBillNumber, getBillIdentifier, formatProductPackSize } from '@/lib/bill-utils';
 import { transliterateHinglishToHindi } from '@/lib/transliterate';
 import ProductEditor from '@/components/ProductEditor';
 import VoiceEngineControl, { useVoiceEngine } from '@/components/VoiceEngineControl';
 import BillDetails from '@/components/BillDetails';
+import BillingBillSection from '@/components/BillingBillSection';
 import BillingDock from '@/components/BillingDock';
 import dockStyles from '@/components/BillingDock.module.css';
 import DebugPanel, { makeEmptyDebugData, type DebugData, type TraceEntry } from '@/components/DebugPanel';
@@ -931,11 +932,8 @@ export default function BillingPage() {
   const [catalogQtyProduct, setCatalogQtyProduct] = useState<any | null>(null);
 
   // Pending Bills state
-  const [pendingBills, setPendingBills] = useState<any[]>([]);
   const [allPendingBills, setAllPendingBills] = useState<any[]>([]);
   const [showMorePending, setShowMorePending] = useState(false);
-  const [completedBills, setCompletedBills] = useState<any[]>([]);
-  const [unpaidBills, setUnpaidBills] = useState<any[]>([]);
   const [allCompletedBills, setAllCompletedBills] = useState<any[]>([]);
   const [allUnpaidBills, setAllUnpaidBills] = useState<any[]>([]);
   const [loadingBills, setLoadingBills] = useState(false);
@@ -1086,11 +1084,8 @@ export default function BillingPage() {
         const completed = allBills.filter((b: any) => b.orderStatus === 'COMPLETED');
         const unpaid = allBills.filter((b: any) => b.status === 'UNPAID');
         
-        setPendingBills(pending.slice(0, 5));
         setAllPendingBills(pending);
-        setCompletedBills(completed.slice(0, 3));
         setAllCompletedBills(completed);
-        setUnpaidBills(unpaid.slice(0, 3));
         setAllUnpaidBills(unpaid);
         setShowMoreCompleted(false);
         setShowMorePending(false);
@@ -1470,19 +1465,6 @@ export default function BillingPage() {
       <div className="flex-1 flex flex-col min-h-0">
         <VoiceEngineControl voice={voiceEngine} busy={isListening} onRestore={restoreCurrentRecognition} />
         <div className="bg-white overflow-hidden flex flex-col flex-1 min-h-0">
-          {/* Reserve stable space for the logo; scrolling must not resize the slides. */}
-          {!(mode === 'MANUAL' && search.length > 0) && (
-          <div
-            className="h-[60px] flex-shrink-0 flex items-center justify-between px-4 py-2.5 overflow-hidden"
-          >
-            {/* Shop logo — left */}
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-sm flex-shrink-0">
-              <Store size={20} className="text-white" />
-            </div>
-
-          </div>
-          )}
-
           {/* Swipeable slider - 3 panels side by side */}
           <div className="overflow-hidden flex-1" style={{minHeight: 0}}>
           <div
@@ -1956,77 +1938,23 @@ export default function BillingPage() {
               )}
             </div>
 
-            {/* Slide 1 - Pending Bills */}
-            <div ref={slide1Ref} className="w-full shrink-0 p-6 space-y-8 overflow-y-auto"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Pending</h3></div>
-                  {pendingBills.length > 0 && <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pendingBills.length}</span>}
-                </div>
-                {loadingBills ? (
-                  <div className="space-y-2">{[1,2].map(i => <div key={i} className="h-16 rounded-xl bg-slate-100 animate-pulse" />)}</div>
-                ) : pendingBills.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><ShoppingCart size={28} className="opacity-30" /><p className="text-sm">No pending orders</p></div>
-                ) : (
-                  <div className="space-y-2">
-                    {(showMorePending ? allPendingBills : pendingBills).map((bill) => (
-                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-orange-300 hover:shadow-md hover:shadow-orange-50 transition-all">
-                        <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0"><span className="text-orange-500 text-lg">🕐</span></div>
-                        <div className="flex-1 min-w-0"><p className="font-semibold text-slate-900 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{bill.items?.length || 0} items · {new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <div className="text-right shrink-0"><p className="font-bold text-slate-900 text-sm">₹{bill.totalAmount?.toFixed(0) || '0'}</p><span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md">Pending</span></div>
-                        <div className="absolute inset-y-0 left-0 w-1 bg-orange-400 rounded-full" />
-                      </div>
-                    ))}
-                    {!showMorePending && allPendingBills.length > 5 && <button onClick={() => setShowMorePending(true)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-orange-200">Show {allPendingBills.length - 5} more</button>}
-                    {showMorePending && allPendingBills.length > 5 && <button onClick={() => setShowMorePending(false)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-orange-200">Show less</button>}
-                  </div>
-                )}
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Completed</h3></div>
-                  {allCompletedBills.length > 0 && <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">{allCompletedBills.length}</span>}
-                </div>
-                {completedBills.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><p className="text-sm">No completed orders yet</p></div>
-                ) : (
-                  <div className="space-y-2">
-                    {(showMoreCompleted ? allCompletedBills : completedBills).map((bill) => (
-                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-50 transition-all">
-                        <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0"><CheckCircle size={16} className="text-emerald-500" /></div>
-                        <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <p className="font-semibold text-slate-700 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
-                        <div className="absolute inset-y-0 left-0 w-0.5 bg-emerald-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    ))}
-                    {!showMoreCompleted && allCompletedBills.length > 3 && <button onClick={() => setShowMoreCompleted(true)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show {allCompletedBills.length - 3} more</button>}
-                    {showMoreCompleted && allCompletedBills.length > 3 && <button onClick={() => setShowMoreCompleted(false)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show less</button>}
-                  </div>
-                )}
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.6)]"></span><h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Unpaid</h3></div>
-                  {allUnpaidBills.length > 0 && <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">{allUnpaidBills.length}</span>}
-                </div>
-                {unpaidBills.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl"><p className="text-sm">No unpaid bills</p></div>
-                ) : (
-                  <div className="space-y-2">
-                    {(showMoreUnpaid ? allUnpaidBills : unpaidBills).map((bill) => (
-                      <div key={bill.id} onClick={() => setSelectedBill(bill)} className="group relative flex items-center gap-4 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-rose-300 hover:shadow-md hover:shadow-rose-50 transition-all">
-                        <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0"><TriangleAlert size={15} className="text-rose-500" /></div>
-                        <div className="flex-1 min-w-0"><p className="font-medium text-slate-800 text-sm truncate">{getBillLabel(bill)}</p><p className="text-xs text-slate-400 mt-0.5">{new Date(bill.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p></div>
-                        <p className="font-semibold text-rose-600 text-sm shrink-0">₹{bill.totalAmount?.toFixed(0) || '0'}</p>
-                        <div className="absolute inset-y-0 left-0 w-0.5 bg-rose-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    ))}
-                    {!showMoreUnpaid && allUnpaidBills.length > 3 && <button onClick={() => setShowMoreUnpaid(true)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show {allUnpaidBills.length - 3} more</button>}
-                    {showMoreUnpaid && allUnpaidBills.length > 3 && <button onClick={() => setShowMoreUnpaid(false)} className="w-full mt-1 py-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl text-xs font-semibold transition border border-dashed border-slate-200 hover:border-indigo-200">Show less</button>}
-                  </div>
-                )}
-              </div>
+            {/* Slide 1 - Bills */}
+            <div ref={slide1Ref} className="w-full shrink-0 overflow-y-auto p-4 space-y-5 sm:p-6">
+              <BillingBillSection
+                bills={allPendingBills} kind="pending" limit={5}
+                expanded={showMorePending} loading={loadingBills}
+                onToggle={() => setShowMorePending(value => !value)} onSelect={setSelectedBill}
+              />
+              <BillingBillSection
+                bills={allCompletedBills} kind="completed" limit={3}
+                expanded={showMoreCompleted} loading={loadingBills}
+                onToggle={() => setShowMoreCompleted(value => !value)} onSelect={setSelectedBill}
+              />
+              <BillingBillSection
+                bills={allUnpaidBills} kind="unpaid" limit={3}
+                expanded={showMoreUnpaid} loading={loadingBills}
+                onToggle={() => setShowMoreUnpaid(value => !value)} onSelect={setSelectedBill}
+              />
             </div>
 
             {/* Slide 2 - Manual Search */}
