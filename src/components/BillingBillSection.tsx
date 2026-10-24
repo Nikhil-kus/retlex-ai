@@ -113,7 +113,7 @@ export default function BillingBillSection({ bills, kind, limit, expanded, loadi
                       type="button"
                       onClick={() => onSelect(bill)}
                       aria-label={`Open ${theme.title.toLowerCase()} bill: ${label}`}
-                      className={`group relative flex min-h-[62px] w-full items-center gap-2.5 overflow-hidden rounded-xl border border-[#e7d5c3] bg-[#faf4ec] px-3 py-2 text-left transition-all hover:bg-[#f5eadc] hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 ${theme.cardClass}`}
+                      className={`group relative flex min-h-[62px] w-full items-center gap-2.5 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-left transition-all hover:bg-gray-100 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 ${theme.cardClass}`}
                     >
                       <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-0.5 rounded-full ${theme.accentClass} ${kind === 'pending' ? '' : 'opacity-0 transition-opacity group-hover:opacity-100'}`} />
                       <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${theme.iconClass}`}><Icon size={18} /></span>
