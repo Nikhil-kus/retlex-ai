@@ -17,6 +17,8 @@ import { transliterateHinglishToHindi } from '@/lib/transliterate';
 import ProductEditor from '@/components/ProductEditor';
 import VoiceEngineControl, { useVoiceEngine } from '@/components/VoiceEngineControl';
 import BillDetails from '@/components/BillDetails';
+import BillingDock from '@/components/BillingDock';
+import dockStyles from '@/components/BillingDock.module.css';
 import DebugPanel, { makeEmptyDebugData, type DebugData, type TraceEntry } from '@/components/DebugPanel';
 
 const cleanProductName = (name: string) => {
@@ -1026,7 +1028,7 @@ export default function BillingPage() {
   const slide1Ref = useRef<HTMLDivElement>(null);
   const slide2Ref = useRef<HTMLDivElement>(null);
 
-  // ── Hide-on-scroll-down / show-on-scroll-up for the tab bar ──────────────
+  // ── Hide-on-scroll-down / show-on-scroll-up for the existing header ─────
   const lastScrollYRef = useRef(0);
 
   useEffect(() => {
@@ -1475,13 +1477,18 @@ export default function BillingPage() {
 
   return (
     <>
-    <div className="flex flex-col w-full min-w-0 max-w-7xl mx-auto h-full bg-white" data-searching={search.length > 0 ? 'true' : undefined}>
+    <div
+      className={`${dockStyles.page} flex flex-col w-full min-w-0 max-w-7xl mx-auto h-full bg-white`}
+      data-searching={search.length > 0 ? 'true' : undefined}
+      data-dock-hidden={mode === 'MANUAL' && search.length > 0 ? 'true' : undefined}
+      data-has-cart={cart.length > 0 ? 'true' : undefined}
+    >
 
       {/* Main Panel — fills full height, voice button floats over the bottom */}
       <div className="flex-1 flex flex-col min-h-0">
         <VoiceEngineControl voice={voiceEngine} busy={isListening} onRestore={restoreCurrentRecognition} />
         <div className="bg-white overflow-hidden flex flex-col flex-1 min-h-0">
-          {/* Tab bar — pill style, hides on scroll-down, reveals on scroll-up */}
+          {/* Existing shop header retains its scroll and search behavior. */}
           {!(mode === 'MANUAL' && search.length > 0) && (
           <div
             className="flex-shrink-0 flex items-center justify-between px-4 transition-all duration-300 ease-in-out overflow-hidden"
@@ -1492,14 +1499,6 @@ export default function BillingPage() {
               <Store size={20} className="text-white" />
             </div>
 
-            {/* Three-tab pill — fills remaining width */}
-            <div className="flex items-center bg-slate-100 rounded-full p-1 flex-1 ml-3">
-              <TabButton active={mode === 'OCR'} onClick={() => setMode('OCR')} icon={<FileText size={18} />} label="Scan" />
-              <div className="w-px h-5 bg-slate-300 flex-shrink-0" />
-              <TabButton active={mode === 'PENDING'} onClick={() => setMode('PENDING')} icon={<ShoppingCart size={18} />} label="Bills" />
-              <div className="w-px h-5 bg-slate-300 flex-shrink-0" />
-              <TabButton active={mode === 'MANUAL'} onClick={() => setMode('MANUAL')} icon={<Search size={18} />} label="Search" />
-            </div>
           </div>
           )}
 
@@ -2325,9 +2324,15 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* Floating Voice Button - fixed bottom center, hidden during manual search */}
+      <BillingDock
+        value={mode}
+        onChange={setMode}
+        hidden={mode === 'MANUAL' && search.length > 0}
+      />
+
+      {/* Existing voice action clears the dock without changing its behavior. */}
       {voiceMessage && (
-        <div role="status" className="fixed left-1/2 -translate-x-1/2 bottom-28 z-50 max-w-sm w-[90%] rounded-xl bg-slate-900 px-4 py-3 text-center text-sm text-white shadow-lg" onClick={() => setVoiceMessage('')}>
+        <div role="status" className={`${dockStyles.voiceMessage} fixed left-1/2 -translate-x-1/2 z-50 max-w-sm w-[90%] rounded-xl bg-slate-900 px-4 py-3 text-center text-sm text-white shadow-lg`} onClick={() => setVoiceMessage('')}>
           {voiceMessage}
         </div>
       )}
@@ -2336,7 +2341,7 @@ export default function BillingPage() {
         {...holdToSpeak()}
         aria-label="Hold to speak order. Release to stop."
         aria-pressed={isListening && correctingItemIdx === null}
-        className={`fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5 px-6 py-3.5 rounded-full font-bold text-white text-sm tracking-wide shadow-lg active:scale-95 transition-transform duration-150 ${
+        className={`${dockStyles.voiceAction} fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5 px-6 py-3.5 rounded-full font-bold text-white text-sm tracking-wide shadow-lg active:scale-95 transition-transform duration-150 ${
           isListening
             ? 'bg-rose-500'
             : 'bg-indigo-600 hover:bg-indigo-700'
@@ -2347,7 +2352,6 @@ export default function BillingPage() {
           userSelect: 'none',
           WebkitTouchCallout: 'none',
           justifyContent: 'center',
-          bottom: cart.length > 0 ? '5rem' : '1.5rem',
         }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="shrink-0">
@@ -2552,21 +2556,6 @@ export default function BillingPage() {
       <DebugPanel dataRef={debugDataRef} updateTick={debugTick} />
     )}
     </>
-  );
-}
-
-function TabButton({ active, onClick, icon, label }: any) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
-        active
-          ? 'bg-indigo-100 text-indigo-700 border border-indigo-500 shadow-sm'
-          : 'text-slate-500 hover:text-slate-700'
-      }`}
-    >
-      {icon}
-    </button>
   );
 }
 
