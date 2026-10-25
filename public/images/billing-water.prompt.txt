@@ -1,5 +1,0 @@
-Asset: billing-water.webp
-Generated with the built-in image generation tool; converted to WebP at quality 85 for the billing navigation.
-
-Prompt:
-Use case: stylized-concept. Asset type: repeating water surface texture for an interactive navigation bar. Create a full-bleed wide 3:1 image of luminous deep turquoise and sapphire blue clear ocean water, viewed from directly overhead, with intricate natural flowing white cyan caustic light networks, small soft ripples, glossy glasslike surface, photographic high detail. Upper edge lighter turquoise, lower edge deeper rich petrol blue. Continuous water covering every pixel; no horizon, no sky, no objects, no icons, no circles, no sun, no text, no borders, no interface, no white margins. This is a material texture only, not a UI mockup. Restrained highlights so white icons will be readable. Save the generated image as an asset.
