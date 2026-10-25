@@ -1,6 +1,6 @@
 .page {
   --billing-dock-cart-offset: 0px;
-  --billing-dock-reserve: calc(88px + env(safe-area-inset-bottom, 0px));
+  --billing-dock-reserve: calc(144px + env(safe-area-inset-bottom, 0px));
   position: relative;
   padding-bottom: calc(var(--billing-dock-reserve) + var(--billing-dock-cart-offset));
 }
@@ -23,11 +23,13 @@
 }
 
 .dock {
+  --dock-page: #fff;
   position: absolute;
   bottom: var(--billing-dock-cart-offset);
   inset-inline: 0;
   z-index: 30;
-  height: calc(72px + env(safe-area-inset-bottom, 0px));
+  isolation: isolate;
+  height: calc(88px + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
@@ -35,103 +37,201 @@
   display: none;
 }
 
-.surface {
+.artwork {
   position: absolute;
-  inset: 0;
+  inset: -56px 0 -12px;
+  overflow: hidden;
   pointer-events: none;
 }
 
-.leadingSurface,
-.trailingSurface {
+.water {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  background: currentColor;
+  inset: 56px 0 12px;
+  border: 1px solid #8cdaf2;
+  border-radius: 14px;
+  background-color: #075b80;
+  background-image:
+    linear-gradient(180deg, #1c92bd20, #00365880),
+    url('/images/billing-water.webp');
+  background-size: 100% 100%, cover;
+  background-position: center;
+  box-shadow:
+    inset 0 2px 2px #e8fcff,
+    inset 0 5px 5px #a5e7f580,
+    inset 0 -2px 1px #a9edff,
+    inset 0 -5px 3px #023f69,
+    0 6px 10px #123f5b30;
 }
 
-.leadingSurface {
-  left: 0;
-  width: calc(var(--dock-center) - 48px);
-  transition: width 500ms cubic-bezier(0.65, 0, 0.35, 1) 50ms;
+.water::after {
+  content: '';
+  position: absolute;
+  inset: 4px 4px 5px;
+  border: 1px solid #b6edff40;
+  border-radius: 11px;
+  background: linear-gradient(115deg, transparent 25%, #e4fbff18 44%, transparent 58%);
 }
 
-.trailingSurface {
-  left: calc(var(--dock-center) + 48px);
-  right: 0;
-  transition: left 500ms cubic-bezier(0.65, 0, 0.35, 1) 50ms;
+/* Sun, curved waterline, and reflected light travel together without timers. */
+.traveler {
+  position: absolute;
+  top: 56px;
+  bottom: 12px;
+  left: var(--dock-center);
+  width: 112px;
+  transform: translateX(-50%);
+  transition: left 560ms cubic-bezier(0.22, 0.75, 0.2, 1);
 }
 
 .notch {
   position: absolute;
-  top: 0;
-  left: var(--dock-center);
-  transform: translateX(-50%);
-  transition: left 500ms cubic-bezier(0.65, 0, 0.35, 1) 50ms;
+  top: -1px;
+  left: 0;
+  overflow: visible;
 }
 
-.surfaceFloor {
+.cutout {
+  fill: var(--dock-page);
+  stroke: var(--dock-page);
+  stroke-width: 2;
+}
+
+.rimShadow {
+  fill: none;
+  stroke: #126c95;
+  stroke-width: 4;
+}
+
+.rim {
+  fill: none;
+  stroke: #b9edfa;
+  stroke-width: 2;
+  filter: drop-shadow(0 2px 1px #e4fbff);
+}
+
+.reflection {
   position: absolute;
-  inset: 38px 0 0;
-  background: currentColor;
+  top: 43px;
+  left: 8px;
+  width: 96px;
+  height: 43px;
+  border-radius: 50%;
+  background:
+    repeating-linear-gradient(174deg, transparent 0 5px, #ffe9a588 6px, transparent 8px 12px),
+    radial-gradient(ellipse at 50% 0, #ffda70c0, #ffb33a40 40%, transparent 70%);
+  mask-image: radial-gradient(ellipse at 50% 0, #000, transparent 72%);
+  mix-blend-mode: screen;
+  filter: blur(0.5px);
+}
+
+.sun {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  transform: translateX(-50%);
+  border: 1px solid #ffc05a;
+  border-radius: 50%;
+  color: #a34506;
+  background:
+    radial-gradient(ellipse at 29% 18%, #fff 0 3%, #ffffeaa0 5%, transparent 13%),
+    radial-gradient(ellipse at 50% 85%, #fffbd6 0, #fff298 17%, transparent 48%),
+    radial-gradient(circle at 40% 45%, #fff8ad 0, #ffe56c 36%, #ffb344 72%, #ffde8c 85%, #fff9d5 89%, #ffb849 95%);
+  box-shadow:
+    inset 0 1px 2px 1px #fffef1,
+    inset 2px 0 3px #fff8d2,
+    inset -3px -2px 5px #f79a35a0,
+    0 0 0 2px #ffce762e,
+    0 0 20px 7px #ffdc6a55,
+    0 7px 24px #ffcc6480;
+}
+
+.sun::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  border: 1px solid #fff8c780;
+  background: url('/images/billing-water.webp') center / 240px auto;
+  mix-blend-mode: luminosity;
+  opacity: 0.2;
+  mask-image: radial-gradient(circle, transparent 20%, #000 75%);
+}
+
+.sun::after {
+  content: '';
+  position: absolute;
+  inset: 2px 4px 32px;
+  border-radius: 50%;
+  border-top: 2px solid #ffffffb0;
+  transform: rotate(-25deg);
+}
+
+.sun svg {
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 1px 0 #fff6bb) drop-shadow(0 1px 1px #c7773150);
 }
 
 .buttons {
   position: relative;
-  top: -16px;
+  top: -28px;
   display: flex;
-  height: 80px;
+  height: 116px;
 }
 
 .tab {
   position: relative;
   display: flex;
   flex: 1 1 0%;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 7px;
   min-width: 0;
-  padding-top: 16px;
+  padding: 28px 0 0;
   border: 0;
   background: transparent;
+  color: #e4f6ff;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: color 160ms ease;
+}
+
+.tab:hover {
+  color: #fff;
 }
 
 .tab:focus-visible {
-  outline-width: 2px;
-  outline-style: solid;
-  outline-offset: -4px;
-  border-radius: 12px;
+  outline: 2px solid #ffc94f;
+  outline-offset: -5px;
+  border-radius: 16px;
 }
 
 .restIcon {
   opacity: 1;
-  transition: opacity 120ms ease 160ms;
+  filter: drop-shadow(0 1px 0 #fff9) drop-shadow(0 2px 2px #002c54);
+  transition: opacity 140ms ease;
 }
 
-.bubble {
-  position: absolute;
-  top: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(12px) scale(0.8);
-  transition: transform 160ms ease-in, opacity 120ms ease-in;
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 3px #00304f, 0 0 6px #00304f;
+}
+
+.tab[aria-pressed='true'] {
+  color: #fff2ba;
 }
 
 .tab[aria-pressed='true'] .restIcon {
   opacity: 0;
-  transition-delay: 0ms;
-}
-
-.tab[aria-pressed='true'] .bubble {
-  opacity: 1;
-  transform: translateY(-24px) scale(1);
-  transition: transform 360ms cubic-bezier(0.2, 0.9, 0.25, 1.18) 230ms, opacity 80ms ease-out 230ms;
 }
 
 @media (max-width: 1023px) {
@@ -141,12 +241,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .leadingSurface,
-  .trailingSurface,
-  .notch,
+  .traveler,
   .restIcon,
-  .bubble,
-  .tab[aria-pressed='true'] .bubble {
+  .tab {
     transition: none;
   }
 }

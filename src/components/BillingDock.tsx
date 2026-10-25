@@ -18,6 +18,7 @@ export default function BillingDock({ value, onChange, hidden }: {
   hidden: boolean;
 }) {
   const activeIndex = tabs.findIndex(tab => tab.value === value);
+  const ActiveIcon = tabs[activeIndex].icon;
 
   return (
     <nav
@@ -26,13 +27,21 @@ export default function BillingDock({ value, onChange, hidden }: {
       className={styles.dock}
       style={{ '--dock-center': `${((activeIndex + 0.5) / tabs.length) * 100}%` } as CSSProperties}
     >
-      <div className={`${styles.surface} text-slate-100`} aria-hidden="true">
-        <div className={styles.leadingSurface} />
-        <svg className={styles.notch} width="96" height="72" viewBox="0 0 96 72" fill="currentColor">
-          <path d="M0 0 C16 0 14 38 48 38 C82 38 80 0 96 0 V72 H0 Z" />
-        </svg>
-        <div className={styles.trailingSurface} />
-        <div className={styles.surfaceFloor} />
+      <div className={styles.artwork} aria-hidden="true">
+        <div className={styles.water} />
+        {/* One moving parent keeps the sun, icon, and cutout aligned, even
+            when another tab is selected before the animation finishes. */}
+        <div className={styles.traveler}>
+          <svg className={styles.notch} width="112" height="48" viewBox="0 0 112 48">
+            <path className={styles.cutout} d="M0 0 C22 0 20 44 56 44 C92 44 90 0 112 0 Z" />
+            <path className={styles.rimShadow} d="M0 1 C22 1 20 45 56 45 C92 45 90 1 112 1" />
+            <path className={styles.rim} d="M0 0 C22 0 20 44 56 44 C92 44 90 0 112 0" />
+          </svg>
+          <div className={styles.reflection} />
+          <div className={styles.sun}>
+            <ActiveIcon size={25} strokeWidth={2.2} />
+          </div>
+        </div>
       </div>
 
       <div className={styles.buttons}>
@@ -44,15 +53,10 @@ export default function BillingDock({ value, onChange, hidden }: {
             aria-pressed={value === tabValue}
             title={label}
             onClick={() => onChange(tabValue)}
-            className={`${styles.tab} text-slate-500 hover:text-slate-700 focus-visible:outline-indigo-500`}
+            className={styles.tab}
           >
-            <Icon size={18} aria-hidden="true" className={styles.restIcon} />
-            <span
-              aria-hidden="true"
-              className={`${styles.bubble} bg-indigo-100 text-indigo-700 border border-indigo-500 shadow-sm`}
-            >
-              <Icon size={18} />
-            </span>
+            <Icon size={23} strokeWidth={1.8} aria-hidden="true" className={styles.restIcon} />
+            <span className={styles.label}>{label}</span>
           </button>
         ))}
       </div>
