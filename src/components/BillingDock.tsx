@@ -26,7 +26,7 @@ export default function BillingDock({ value, onChange, hidden }: {
       className={styles.dock}
       style={{ '--dock-center': `${((activeIndex + 0.5) / tabs.length) * 100}%` } as CSSProperties}
     >
-      <div className={`${styles.surface} text-slate-100`} aria-hidden="true">
+      <div className={`${styles.surface} text-neutral-100`} aria-hidden="true">
         <div className={styles.leadingSurface} />
         <svg className={styles.notch} width="96" height="72" viewBox="0 0 96 72" fill="currentColor">
           <path d="M0 0 C16 0 14 38 48 38 C82 38 80 0 96 0 V72 H0 Z" />
@@ -44,12 +44,12 @@ export default function BillingDock({ value, onChange, hidden }: {
             aria-pressed={value === tabValue}
             title={label}
             onClick={() => onChange(tabValue)}
-            className={`${styles.tab} text-slate-500 hover:text-slate-700 focus-visible:outline-indigo-500`}
+            className={`${styles.tab} text-neutral-500 hover:text-neutral-700 focus-visible:outline-emerald-500`}
           >
             <Icon size={18} aria-hidden="true" className={styles.restIcon} />
             <span
               aria-hidden="true"
-              className={`${styles.bubble} bg-indigo-100 text-indigo-700 border border-indigo-500 shadow-sm`}
+              className={`${styles.bubble} bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-700 border-2 border-emerald-500 shadow-lg shadow-emerald-500/30`}
             >
               <Icon size={18} />
             </span>

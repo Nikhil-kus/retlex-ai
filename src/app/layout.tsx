@@ -23,7 +23,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Retlex AI",
-  description: "AI Powered Kirana Billing",
+  description: "Smart billing for Kirana, Tent House and Electronics shops",
   manifest: "/manifest.json",
   icons: {
     icon: [
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#2563eb",
+  themeColor: "#10b981",
 };
 
 export default function RootLayout({
@@ -45,7 +45,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} bg-slate-50 text-slate-900 flex h-screen overflow-hidden`}>
+      <body className={`${inter.className} bg-neutral-50 text-neutral-900 flex h-screen overflow-hidden`}>
         <HindiProvider>
           <ServiceWorkerRegister />
           {children}
