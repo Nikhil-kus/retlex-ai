@@ -18,6 +18,18 @@ interface HindiContextType {
 }
 
 export const CATEGORY_HINDI: Record<string, string> = {
+  'Kirana Essentials': 'किराना सामान',
+  'Tents & Coverings': 'टेंट व शामियाना',
+  'Chairs & Tables': 'कुर्सियाँ व टेबल',
+  'Linen & Furnishings': 'बिस्तर व सजावट',
+  'Catering & Utensils': 'केटरिंग व बर्तन',
+  'Lighting': 'लाइट व बल्ब',
+  'Fans & Appliances': 'पंखे व उपकरण',
+  'Wiring & Fittings': 'तार व फिटिंग',
+  'Mobile & Audio Accessories': 'मोबाइल व ऑडियो सामान',
+  'Universal · Packaging': 'सभी दुकानें · पैकिंग',
+  'Universal · Stationery': 'सभी दुकानें · स्टेशनरी',
+  'Universal · Essentials': 'सभी दुकानें · ज़रूरी सामान',
   'Grains & Cereals':       'अनाज व दालें',
   'Pulses & Dals':          'दालें',
   'Salt & Sugar':           'नमक व चीनी',

@@ -12,13 +12,27 @@
  * view without owner navigation.
  */
 
-import { usePathname } from 'next/navigation';
-import { ShopProvider } from '@/lib/shop-context';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+import { ShopProvider, useShop } from '@/lib/shop-context';
 import ShopSidebar from '@/components/ShopSidebar';
 
 interface Props {
   shopId: string;
   children: React.ReactNode;
+}
+
+function SetupGate({ children }: { children: React.ReactNode }) {
+  const { shop, shopId, loading } = useShop();
+  const pathname = usePathname();
+  const router = useRouter();
+  const ownerPage = !pathname.startsWith(`/${shopId}/customer`) && pathname !== `/${shopId}/worker`;
+  const needsSetup = ownerPage && shop?.catalogSetupComplete === false && !pathname.startsWith(`/${shopId}/shop/`);
+  useEffect(() => {
+    if (needsSetup) router.replace(`/${shopId}/shop/catalog-setup`);
+  }, [needsSetup, shopId, router]);
+  if (ownerPage && (loading || needsSetup)) return <div className="p-8 text-sm text-slate-500">Loading your shop…</div>;
+  return children;
 }
 
 export default function ShopLayoutClient({ shopId, children }: Props) {
@@ -31,7 +45,7 @@ export default function ShopLayoutClient({ shopId, children }: Props) {
     <ShopProvider shopId={shopId}>
       {!isWorkerPage && <ShopSidebar shopId={shopId} />}
       <main className="flex-1 overflow-y-auto h-full">
-        {children}
+        <SetupGate>{children}</SetupGate>
       </main>
     </ShopProvider>
   );

@@ -57,20 +57,23 @@ export default function BillDetails({ bill, shop, onClose }: { bill: any; shop?:
           <div className="flex items-center gap-3"><span className="rounded-2xl bg-indigo-50 p-3 text-indigo-600"><Receipt size={22} /></span><div><h2 id="bill-details-title" className="text-lg font-bold text-slate-900">Bill details</h2><p className="text-xs text-slate-500">Your purchase, at a glance</p></div></div>
           <button onClick={onClose} aria-label="Close bill details" className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200"><X size={20} /></button>
         </header>
-        <div className="bill-content min-h-0 overflow-y-auto p-4 sm:p-6">
-          <section className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-500">Purchase receipt</p><h3 className="mt-2 break-words text-xl font-bold text-slate-900">{store.name || 'Kirana Store'}</h3></div>
-              <span className={`rounded-full px-3 py-1 text-[11px] font-bold ${bill.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{bill.status || 'PENDING'}</span>
+        <div className="bill-content min-h-0 overflow-y-auto p-3 sm:p-4">
+          <section className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-500">Purchase receipt</p>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${bill.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{bill.status || 'PENDING'}</span>
             </div>
-            {store.address && <p className="mt-2 break-words text-xs text-slate-500">{store.address}</p>}
-            {store.mobile && <p className="mt-1 text-xs text-slate-500">Mobile: {store.mobile}</p>}
-            <div className="mt-5 grid gap-4 border-t border-indigo-100 pt-4 sm:grid-cols-2">
-              <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Billed to</p><p className="mt-1 break-words text-sm font-semibold text-slate-800">{bill.customerName || 'Cash Customer'}</p>{bill.customerPhone && <p className="text-xs text-slate-500">{bill.customerPhone}</p>}</div>
-              <div className="min-w-0 sm:text-right"><p className="break-words text-sm font-semibold text-slate-800">{getBillNumber(bill)}</p><p className="mt-1 text-xs text-slate-500">{dateLabel}</p></div>
+            <h3 className="mt-1 text-sm font-bold leading-snug text-slate-900 [overflow-wrap:anywhere]">{store.name || 'Kirana Store'}</h3>
+            {(store.address || store.mobile) && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] leading-4 text-slate-500">
+              {store.address && <p className="min-w-0 [overflow-wrap:anywhere]">{store.address}</p>}
+              {store.mobile && <p className="min-w-0 [overflow-wrap:anywhere]">Mobile: {store.mobile}</p>}
+            </div>}
+            <div className="mt-2 grid grid-cols-2 gap-3 border-t border-indigo-100 pt-2">
+              <div className="min-w-0"><p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Billed to</p><p className="text-xs font-semibold leading-4 text-slate-800 [overflow-wrap:anywhere]">{bill.customerName || 'Cash Customer'}</p>{bill.customerPhone && <p className="text-[11px] leading-4 text-slate-500 [overflow-wrap:anywhere]">{bill.customerPhone}</p>}</div>
+              <div className="min-w-0 text-right"><p className="text-xs font-semibold leading-4 text-slate-800 [overflow-wrap:anywhere]">{getBillNumber(bill)}</p><p className="mt-0.5 text-[11px] leading-4 text-slate-500 [overflow-wrap:anywhere]">{dateLabel}</p></div>
             </div>
           </section>
-          <div className="mb-3 mt-6 flex items-center justify-between"><h3 className="text-sm font-bold text-slate-900">Items purchased</h3><span className="text-xs text-slate-500">{items.length} items</span></div>
+          <div className="mb-2 mt-3 flex items-center justify-between"><h3 className="text-sm font-bold text-slate-900">Items purchased</h3><span className="text-xs text-slate-500">{items.length} items</span></div>
           <ol className="space-y-1.5">
             {items.map((item: any, index: number) => (
               <li key={item.id || index} className="bill-item grid grid-cols-[minmax(0,1fr)_minmax(0,0.65fr)] items-center gap-x-3 rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">

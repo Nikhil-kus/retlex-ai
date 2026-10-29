@@ -616,7 +616,7 @@ test('weight and volume convert to packets consistently; loose goods retain thei
 });
 
 test('actual billing pipeline preserves quantity, rejects unknown names, and updates cached interim results', () => {
-  const source = readFileSync('src/app/billing/page.tsx', 'utf8');
+  const source = readFileSync('src/components/pages/BillingWorkspace.tsx', 'utf8');
   const start = source.indexOf('  const processVoiceTextToItems =');
   const end = source.indexOf('  const getSuggestions =', start);
   assert.ok(start >= 0 && end > start);

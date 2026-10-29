@@ -1,14 +1,7 @@
 import { NextResponse } from 'next/server';
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { SHOP_TYPES } from '@/lib/shop-types';
+import { STARTER_CATALOG } from '@/lib/starter-catalog';
 
 export async function GET() {
-  try {
-    const q = query(collection(db, "businessTypes"), orderBy("name", "asc"));
-    const querySnapshot = await getDocs(q);
-    const businessTypes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    return NextResponse.json(businessTypes);
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch business types' }, { status: 500 });
-  }
+  return NextResponse.json(SHOP_TYPES.map(type => ({ ...type, items: STARTER_CATALOG.filter(p => p.shopType === type.id || p.shopType === 'universal') })));
 }

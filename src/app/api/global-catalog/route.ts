@@ -1,105 +1,46 @@
-/**
- * /api/global-catalog
- * ─────────────────────────────────────────────────────────────────────────────
- * Returns a deduplicated, merged product catalog built from:
- *   1. The `globalCatalog` Firestore collection (seeded via db-migrate.mjs)
- *   2. All products across all shops (live, always up-to-date)
- *
- * Deduplication rule: products with the same name (case-insensitive, trimmed)
- * are merged — the one with the most complete data (imageUrl, localName, etc.)
- * wins. The `id` returned is the globalCatalog doc ID if it exists, otherwise
- * a synthetic ID derived from the product name for stable selection.
- *
- * This means:
- *   - When any shop adds a new product, it appears here automatically.
- *   - No manual seeding needed after the initial migration.
- *   - Deleting a product from a shop does NOT remove it from the catalog
- *     (other shops may still have it, or it may be in globalCatalog).
- *
- * GET /api/global-catalog
- *   Returns: Product[] sorted by category then name, deduplicated
- * ─────────────────────────────────────────────────────────────────────────────
- */
-
 import { NextResponse } from 'next/server';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { STARTER_CATALOG } from '@/lib/starter-catalog';
+import { getShopType, isShopType } from '@/lib/shop-types';
+import { mergeCatalog, type StoredCatalogItem } from '@/lib/catalog-utils';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Fetch globalCatalog and all shop products in parallel
-    const [globalSnap, productsSnap] = await Promise.all([
-      getDocs(collection(db, 'globalCatalog')),
-      getDocs(collection(db, 'products')),
-    ]);
-
-    // Map: normalizedName → best product entry
-    const catalog = new Map<string, any>();
-
-    // Helper: score a product entry by data completeness
-    // Higher = more complete = preferred when deduplicating
-    const score = (p: any) =>
-      (p.imageUrl ? 4 : 0) +
-      (p.localName ? 2 : 0) +
-      (p.category ? 1 : 0) +
-      (p.price > 0 ? 1 : 0);
-
-    // 1. Seed from globalCatalog first (these have stable IDs)
-    for (const d of globalSnap.docs) {
-      const data = d.data();
-      const key = (data.name || '').toLowerCase().trim();
-      if (!key) continue;
-      catalog.set(key, {
-        id: d.id,           // stable globalCatalog doc ID
-        _source: 'global',
-        ...data,
-      });
+    const params = new URL(request.url).searchParams;
+    const shopId = params.get('shopId');
+    const requestedType = params.get('shopType');
+    if (requestedType && !isShopType(requestedType)) return NextResponse.json({ error: 'Invalid shop category' }, { status: 400 });
+    let type = isShopType(requestedType) ? requestedType : 'kirana' as const;
+    if (shopId) {
+      const shop = await getDoc(doc(db, 'shops', shopId));
+      if (!shop.exists()) return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+      type = getShopType(shop.data());
     }
-
-    // 2. Merge in all shop products — deduplicate by name
-    for (const d of productsSnap.docs) {
-      const data = d.data();
-      const key = (data.name || '').toLowerCase().trim();
-      if (!key) continue;
-
-      const existing = catalog.get(key);
-      if (!existing) {
-        // New product not in globalCatalog — add it with a synthetic stable ID
-        catalog.set(key, {
-          id: `shop_${key.replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`,
-          _source: 'shop',
-          _shopProductId: d.id,  // reference to one real product doc
-          ...data,
-          // Strip shopId — this is a catalog entry, not a shop-specific product
-          shopId: undefined,
-        });
-      } else {
-        // Already exists — keep the more complete entry
-        if (score(data) > score(existing)) {
-          catalog.set(key, {
-            ...existing,          // keep the stable ID
-            ...data,
-            id: existing.id,      // never overwrite the stable ID
-            shopId: undefined,    // strip shopId
-            _source: existing._source,
-          });
-        }
+    const shopsSnap = await getDocs(collection(db, 'shops'));
+    const shopTypes = new Map(shopsSnap.docs.map(d => [d.id, getShopType(d.data())]));
+    // New shop categories should not download the entire legacy grocery database.
+    const matchingShopIds = [...shopTypes].filter(([, value]) => value === type).map(([id]) => id);
+    const legacyQueries = [];
+    if (type !== 'kirana') {
+      for (let start = 0; start < matchingShopIds.length; start += 30) {
+        legacyQueries.push(getDocs(query(collection(db, 'products'), where('shopId', 'in', matchingShopIds.slice(start, start + 30)))));
       }
     }
-
-    // Convert to array, sort by category then name
-    const items = Array.from(catalog.values())
-      .map(({ _source, _shopProductId, shopId, sourceShopId, createdAt, updatedAt, ...rest }) => rest)
-      .sort((a, b) => {
-        const catA = (a.category || 'Uncategorized').toLowerCase();
-        const catB = (b.category || 'Uncategorized').toLowerCase();
-        if (catA !== catB) return catA.localeCompare(catB);
-        return (a.name || '').localeCompare(b.name || '');
-      });
-
-    return NextResponse.json(items);
+    const [globalSnap, productsSnap, ...legacySnaps] = await Promise.all([
+      getDocs(type === 'kirana' ? collection(db, 'globalCatalog') : query(collection(db, 'globalCatalog'), where('shopType', 'in', [type, 'universal']))),
+      getDocs(type === 'kirana' ? collection(db, 'products') : query(collection(db, 'products'), where('shopType', 'in', [type, 'universal']))),
+      ...legacyQueries,
+    ]);
+    const items: StoredCatalogItem[] = [
+      ...STARTER_CATALOG,
+      ...globalSnap.docs.map(d => ({ ...d.data(), id: d.id, name: d.data().name || '' })),
+      ...productsSnap.docs.map(d => ({ ...d.data(), id: `shop_${d.id}`, name: d.data().name || '' })),
+      ...legacySnaps.flatMap(snapshot => snapshot.docs.map(d => ({ ...d.data(), id: `shop_${d.id}`, name: d.data().name || '' }))),
+    ];
+    return NextResponse.json(mergeCatalog(items, type, shopTypes));
   } catch (error) {
     console.error('GET /api/global-catalog error:', error);
-    return NextResponse.json({ error: 'Failed to fetch global catalog' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch catalog. Please try again.' }, { status: 500 });
   }
 }

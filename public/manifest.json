@@ -1,8 +1,8 @@
 {
   "name": "Retlex AI",
   "short_name": "Retlex AI",
-  "description": "AI Powered Kirana Billing",
-  "start_url": "/billing",
+  "description": "Smart billing for Kirana, Tent House and Electronics shops",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",

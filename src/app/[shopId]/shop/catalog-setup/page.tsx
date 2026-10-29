@@ -5,8 +5,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Global Catalog Import Page
  *
- * Shows ALL unique products from across all shops + globalCatalog collection,
- * deduplicated by name, grouped by category — exactly like the billing page.
+ * Shows the shop's category catalog plus universal products, merged with
+ * matching shared products and deduplicated by name.
  *
  * Import modes:
  *   • Import All          — one click, imports everything not already in shop
@@ -21,7 +21,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useShop } from '@/lib/shop-context';
 import {
@@ -31,6 +31,8 @@ import {
 import Link from 'next/link';
 import { useHindi, CATEGORY_IMAGES } from '@/lib/hindi-context';
 import { formatProductPackSize } from '@/lib/bill-utils';
+import { getShopType, shopTypeName, type CatalogScope } from '@/lib/shop-types';
+import { catalogCache, persistentCatalogCache } from '@/lib/session-cache';
 
 interface CatalogProduct {
   id: string;
@@ -40,13 +42,18 @@ interface CatalogProduct {
   price?: number;
   baseUnit?: string;
   imageUrl?: string | null;
+  shopType?: CatalogScope;
   [key: string]: any;
 }
 
 export default function CatalogSetupPage() {
   const router = useRouter();
   const { pName, catName } = useHindi();
-  const { shop, shopId, loading: shopLoading } = useShop();
+  const { shop, shopId, loading: shopLoading, refreshShop } = useShop();
+  const [scope, setScope] = useState<'shop' | 'universal' | 'all'>('shop');
+  const [loadError, setLoadError] = useState('');
+  const [finishing, setFinishing] = useState(false);
+  const shopType = getShopType(shop || {});
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
@@ -64,42 +71,66 @@ export default function CatalogSetupPage() {
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
 
   // ── Load catalog ──────────────────────────────────────────────────────────
-  const loadCatalog = async () => {
+  const loadCatalog = useCallback(async () => {
     setLoadingCatalog(true);
     try {
-      const res = await fetch('/api/global-catalog');
+      const res = await fetch(`/api/global-catalog?shopId=${encodeURIComponent(shopId)}`);
+      if (!res.ok) throw new Error('Could not load the product catalog. Please retry.');
       if (res.ok) {
         const data: CatalogProduct[] = await res.json();
         setCatalog(data);
 
       }
-    } catch {}
-    setLoadingCatalog(false);
-  };
+    } finally { setLoadingCatalog(false); }
+  }, [shopId]);
 
   // ── Load this shop's existing products ────────────────────────────────────
-  const loadShopProducts = async () => {
+  const loadShopProducts = useCallback(async () => {
     if (!shopId) return;
     setLoadingShopProducts(true);
     try {
       const res = await fetch(`/api/products?shopId=${shopId}`);
+      if (!res.ok) throw new Error('Could not load your existing products. Please retry.');
       if (res.ok) {
         const data = await res.json();
         setShopProductNames(
           new Set(data.map((p: any) => (p.name || '').toLowerCase().trim()))
         );
       }
-    } catch {}
-    setLoadingShopProducts(false);
-  };
-
-  useEffect(() => {
-    loadCatalog();
-  }, []);
-
-  useEffect(() => {
-    if (shopId) loadShopProducts();
+    } finally { setLoadingShopProducts(false); }
   }, [shopId]);
+
+  const reload = useCallback(async () => {
+    setLoadError('');
+    const results = await Promise.allSettled([loadCatalog(), loadShopProducts()]);
+    const failed = results.find(result => result.status === 'rejected');
+    if (failed?.status === 'rejected') setLoadError(failed.reason instanceof Error ? failed.reason.message : 'Could not load products. Please retry.');
+  }, [loadCatalog, loadShopProducts]);
+
+  useEffect(() => {
+    if (shopLoading) return;
+    setSelected(new Set());
+    setActiveCategory(null);
+    void reload();
+  }, [shopId, shopType, shopLoading, reload]);
+
+  const finishSetup = async () => {
+    if (selected.size > 0 || importing) return;
+    setFinishing(true);
+    setLoadError('');
+    try {
+      const res = await fetch(`/api/shops/${encodeURIComponent(shopId)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ catalogSetupComplete: true }),
+      });
+      if (!res.ok) throw new Error('Could not finish setup. Please retry.');
+      catalogCache.clear();
+      persistentCatalogCache.clear();
+      await refreshShop();
+      router.push(`/${shopId}/billing`);
+    } catch (error) { setLoadError(error instanceof Error ? error.message : 'Could not finish setup.'); }
+    finally { setFinishing(false); }
+  };
 
   // ── Derived data ──────────────────────────────────────────────────────────
   const isAlreadyAdded = (p: CatalogProduct) =>
@@ -107,14 +138,16 @@ export default function CatalogSetupPage() {
 
   // Filter by search
   const filtered = useMemo(() => {
-    if (!search.trim()) return catalog;
-    const q = search.toLowerCase();
-    return catalog.filter(
+    const scoped = catalog.filter(p => scope === 'all' || (scope === 'universal' ? p.shopType === 'universal' : p.shopType !== 'universal'));
+    if (!search.trim()) return scoped;
+    const q = search.toLowerCase().trim();
+    return scoped.filter(
       p =>
         (p.name || '').toLowerCase().includes(q) ||
-        (p.localName || '').toLowerCase().includes(q)
+        (p.localName || '').toLowerCase().includes(q) ||
+        (p.localAliases || []).some((alias: string) => alias.toLowerCase().includes(q))
     );
-  }, [catalog, search]);
+  }, [catalog, search, scope]);
 
   // Group by category
   const grouped = useMemo(() => {
@@ -197,6 +230,8 @@ export default function CatalogSetupPage() {
       if (res.ok) {
         setImportResult({ imported: data.imported, skipped: data.skipped });
         setSelected(new Set());
+        catalogCache.clear();
+        persistentCatalogCache.clear();
         // Refresh shop products so newly imported ones show as "Already Added"
         await loadShopProducts();
       } else {
@@ -223,7 +258,7 @@ export default function CatalogSetupPage() {
       <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 py-4">
           {/* Back + title */}
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center gap-3 mb-3 pl-12 md:pl-0">
             <Link
               href={`/${shopId}/shop/setup`}
               className="flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 text-sm font-medium transition"
@@ -234,10 +269,16 @@ export default function CatalogSetupPage() {
             <span className="text-slate-300">/</span>
             <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <Package size={20} className="text-indigo-600" />
-              Import Catalog
+              {shopTypeName(shopType)} Catalog
             </h1>
           </div>
 
+          <p className="text-sm text-slate-500 mb-3">{shop?.catalogSetupComplete === false ? 'Step 3 of 3 · ' : ''}Select products for {shop?.name}. You can add more later.</p>
+          <p className="text-xs text-amber-700 mb-3">Prices are starting examples. Review selling prices and costs using the product edit button before billing.{shopType === 'tent' ? ' Tent rates are per item per event; adjust quantities and rates for your booking.' : ''}</p>
+          <a href="/image-credits" target="_blank" rel="noreferrer" className="mb-3 inline-block text-[11px] text-slate-500 underline">Product photo credits · Images are representative</a>
+          <div className="flex flex-wrap gap-2 mb-3" aria-label="Catalog sections">
+            {(['shop', 'universal', 'all'] as const).map(value => <button key={value} disabled={importing} aria-pressed={scope === value} onClick={() => { setScope(value); setActiveCategory(null); setSearch(''); }} className={`rounded-full px-4 py-2 text-xs font-semibold ${scope === value ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{value === 'shop' ? shopTypeName(shopType) : value === 'universal' ? 'Universal items' : 'All available'}</button>)}
+          </div>
           {/* Stats row */}
           {!isLoading && (
             <div className="flex flex-wrap items-center gap-3 mb-3 text-xs">
@@ -288,7 +329,7 @@ export default function CatalogSetupPage() {
             )}
             <button
               disabled={importing || isLoading}
-              onClick={() => { loadCatalog(); loadShopProducts(); }}
+              onClick={() => void reload()}
               className="p-2 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition"
               title="Refresh catalog"
             >
@@ -300,6 +341,7 @@ export default function CatalogSetupPage() {
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
       <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-4 pb-32">
+        {loadError && <div role="alert" className="mb-4 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{loadError} <button onClick={() => void reload()} className="ml-2 font-bold underline">Retry</button></div>}
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
             <Loader2 size={32} className="animate-spin text-indigo-400" />
@@ -333,10 +375,11 @@ export default function CatalogSetupPage() {
                   )}
                 </div>
                 <button
-                  onClick={() => router.push(`/${shopId}/billing`)}
+                  disabled={selected.size > 0 || finishing}
+                  onClick={() => void finishSetup()}
                   className="text-xs text-emerald-700 font-bold hover:underline"
                 >
-                  View in Billing →
+                  Start Billing →
                 </button>
               </div>
             )}
@@ -395,7 +438,7 @@ export default function CatalogSetupPage() {
       </div>
 
       {/* ── Sticky import footer ───────────────────────────────────────────── */}
-      {!isLoading && (
+      {!isLoading && !loadError && (
         <div className="fixed bottom-0 left-0 md:left-64 right-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 shadow-lg pb-[env(safe-area-inset-bottom)]">
           <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
             {/* Summary */}
@@ -411,12 +454,13 @@ export default function CatalogSetupPage() {
               )}
               {selected.size > 0 && (
                 <p className="text-xs text-slate-400">
-                  Will be added as independent copies to {shop?.name}
+                  Ready to add to {shop?.name}
                 </p>
               )}
             </div>
 
             {/* Quick actions */}
+            <button disabled={importing || finishing || selected.size > 0} onClick={() => void finishSetup()} className="px-4 py-2.5 rounded-xl border border-indigo-200 text-sm font-semibold text-indigo-600 disabled:opacity-40">{finishing ? 'Saving…' : shopProductNames.size > 0 ? 'Start Billing →' : 'Skip for now →'}</button>
             {selected.size === 0 && allSelectableInFiltered.length > 0 && (
               <button
                 disabled={importing}

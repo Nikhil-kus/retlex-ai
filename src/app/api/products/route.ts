@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { collection, addDoc, getDocs, query, where, orderBy } from "firebase/firestore";
+import { collection, addDoc, getDocs, getDoc, doc, query, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { generateLocalAliases } from "@/lib/alias-utils";
+import { getShopType } from '@/lib/shop-types';
 
 export async function GET(request: Request) {
   try {
@@ -52,6 +53,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    const shop = await getDoc(doc(db, 'shops', data.shopId));
+    if (!shop.exists()) return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+
     // Use manually provided aliases if available; otherwise, auto-generate via Gemini
     let aliases = data.localAliases;
     if (aliases === undefined) {
@@ -71,6 +75,7 @@ export async function POST(request: Request) {
       packetUnit: data.unit === 'pkt' ? data.packetUnit : null,
       category: data.category || null,
       imageUrl: data.imageUrl || null,
+      shopType: getShopType(shop.data()),
       shopId: data.shopId
     };
     

@@ -3,13 +3,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Imports selected products from the global catalog into a shop.
  *
- * The global catalog returns products with two ID types:
- *   - Real globalCatalog doc IDs (from the Firestore globalCatalog collection)
- *   - Synthetic IDs like "shop_aata_khula" (derived from shop products)
- *
- * This route handles both:
- *   - Real IDs → fetch from globalCatalog collection
- *   - Synthetic IDs → find a matching product by name across all shops
+ * Built-in IDs are resolved against server presets. Shared product objects
+ * are validated and restricted to the target category or universal scope.
  *
  * Each import creates an INDEPENDENT COPY in the target shop's products.
  * Isolation guarantee: editing/deleting the copy never affects the source.
@@ -21,15 +16,17 @@
  */
 
 import { NextResponse } from 'next/server';
-import { collection, addDoc, getDoc, doc, query, where, getDocs } from 'firebase/firestore';
+import { collection, getDoc, doc, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { getShopType } from '@/lib/shop-types';
+import { prepareCatalogImport } from '@/lib/catalog-import';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { shopId, products } = body;
 
-    if (!shopId || !products || !Array.isArray(products) || products.length === 0) {
+    if (typeof shopId !== 'string' || !shopId || !products || !Array.isArray(products) || products.length === 0 || products.length > 2000) {
       return NextResponse.json(
         { error: 'shopId and products array required' },
         { status: 400 }
@@ -42,6 +39,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
     }
 
+    // Validate the entire request before writing any product.
+    let prepared;
+    try { prepared = products.map(product => prepareCatalogImport(product, getShopType(shopDoc.data()))); }
+    catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid products' }, { status: 400 }); }
+
     // Fetch existing shop products to avoid duplicates
     const existingSnap = await getDocs(
       query(collection(db, 'products'), where('shopId', '==', shopId))
@@ -52,32 +54,27 @@ export async function POST(request: Request) {
 
     let imported = 0;
     let skipped = 0;
+    let batch = writeBatch(db);
+    let pending = 0;
 
-    for (const product of products) {
+    for (const product of prepared) {
       const nameLower = (product.name || '').toLowerCase().trim();
       if (!nameLower) { skipped++; continue; }
 
       // Skip if already exists in this shop
       if (existingNames.has(nameLower)) { skipped++; continue; }
 
-      // Build the product document — strip catalog metadata, bind to shop
-      const {
-        id: _id,
-        sourceShopId: _src,
-        createdAt: _c,
-        updatedAt: _u,
-        shopId: _sid,
-        ...productData
-      } = product;
-
-      await addDoc(collection(db, 'products'), {
-        ...productData,
+      batch.set(doc(collection(db, 'products')), {
+        ...product,
         shopId,  // bind to the importing shop — fully independent copy
       });
+      pending++;
+      if (pending === 400) { await batch.commit(); batch = writeBatch(db); pending = 0; }
 
       existingNames.add(nameLower);
       imported++;
     }
+    if (pending) await batch.commit();
 
     return NextResponse.json({ success: true, imported, skipped, total: products.length });
   } catch (error) {

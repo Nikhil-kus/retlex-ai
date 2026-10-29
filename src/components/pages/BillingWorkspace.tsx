@@ -1,0 +1,3273 @@
+
+'use client';
+import Fuse from 'fuse.js';
+import { createProductSuggestions } from '@/lib/product-suggestions';
+import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct, totalQuantityPlan } from '@/lib/voice-product-matcher';
+import { parseVoiceItems } from '@/lib/voice-parser';
+import { canCorrectProductByVoice } from '@/lib/voice-review';
+
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { Search, Camera, FileText, Upload, Plus, Minus, Trash, CheckCircle, ShoppingCart, X, Package, Pencil } from 'lucide-react';
+import { useHindi, CATEGORY_HINDI, CATEGORY_IMAGES } from '@/lib/hindi-context';
+import { catalogCache, voicePrefsCache } from '@/lib/session-cache';
+import type { Shop } from '@/types';
+import { generateWhatsAppMessage, openWhatsAppChat } from '@/lib/whatsapp-utils';
+import { getBillNumber, getBillIdentifier, formatProductPackSize } from '@/lib/bill-utils';
+import { transliterateHinglishToHindi } from '@/lib/transliterate';
+import ProductEditor from '@/components/ProductEditor';
+import VoiceEngineControl, { useVoiceEngine } from '@/components/VoiceEngineControl';
+import BillDetails from '@/components/BillDetails';
+import BillingBillSection from '@/components/BillingBillSection';
+import BillingDock from '@/components/BillingDock';
+import BillingCatVoice from '@/components/BillingCatVoice';
+import dockStyles from '@/components/BillingDock.module.css';
+import DebugPanel, { makeEmptyDebugData, type DebugData, type TraceEntry } from '@/components/DebugPanel';
+
+const cleanProductName = (name: string) => {
+  return name
+    .toLowerCase()
+    .replace(/\b\d+(?:\s*(?:g|kg|ml|l|ltr|pkt|pc|pcs|tin|sachet|g\b|kg\b|ml\b|l\b|ltr\b|pkt\b|pc\b|pcs\b|tin\b|sachet\b))\b/gi, '')
+    .replace(/\b\d+\b/g, '')
+    .replace(/\b(khula|khule|packet|pkt|tin|bulk|sachet|pcs|pc|pack|bottle|jar)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const getLevenshteinDistance = (a: string, b: string): number => {
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+};
+
+export default function BillingPage({ initialShop }: { initialShop: Shop }) {
+  const { pName, hindiMode, toggleHindi, catName, setIsSearching } = useHindi();
+  const [isListening, setIsListening] = useState(false);
+  const [finalTranscript, setFinalTranscript] = useState("");
+  const recognitionRef = useRef<any>(null);
+  const isListeningRef = useRef(false);
+  const heldInputRef = useRef<number | string | null>(null);
+  const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [correctingItemIdx, setCorrectingItemIdx] = useState<number | null>(null);
+  const [voiceMessage, setVoiceMessage] = useState('');
+  const globalTranscriptRef = useRef("");
+  const currentBreathRef = useRef("");
+  const baseReviewItemsRef = useRef<any[]>([]);
+  const itemOverridesRef = useRef<Record<string, any>>({});
+  // Tracks which brand card is "previewed" per review item index
+  // so the Pack Sizes row updates to show that brand's variants
+  const [selectedBrandPerItem, setSelectedBrandPerItem] = useState<Record<number, any>>({});
+  // Long-press timer for pinning a suggestion as default
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cached product identity index for voice matching — rebuilt only when catalog changes,
+  // not on every speech recognition event.
+  const suggestionsRef = useRef<ReturnType<typeof createProductSuggestions<any>> | null>(null);
+  const voiceMatcherRef = useRef<ReturnType<typeof createVoiceProductMatcher<any>> | null>(null);
+  // Match result cache: key = "name__unit__quantity__rawText", value = matched item object.
+  // Populated during voice matching; cleared when catalog changes or a new voice session starts.
+  const matchCacheRef = useRef<Map<string, any>>(new Map());
+  // Debug timing panel — populated by [PERF] instrumentation, shown during voice input
+  const [perfStats, setPerfStats] = useState<{
+    items: number; parse: string; fuse: string; enrichment: string;
+    suggestions: string; setState: string; total: string;
+  } | null>(null);
+  // ── Developer debug panel data (only used when NEXT_PUBLIC_DEBUG=true) ───
+  const debugDataRef = useRef<DebugData>(makeEmptyDebugData());
+  const [debugTick, setDebugTick] = useState(0);
+  const _isDebug = process.env.NEXT_PUBLIC_DEBUG === 'true';
+
+  // ── Trace helpers (debug only) ────────────────────────────────────────────
+  // Tag the current merge call site so the probe inside mergeOverlappingStrings
+  // can label which part of the pipeline produced each merge.
+  const _mergeCallSiteRef = useRef<string>('unknown');
+  const _onresultIndexRef  = useRef(0);
+
+  const _countGraphemes = (s: string): number => {
+    try { return [...new Intl.Segmenter('hi', { granularity: 'grapheme' }).segment(s)].filter(x => x.segment.trim()).length; }
+    catch { return s.length; }
+  };
+
+  const _addTrace = (entry: Omit<TraceEntry, 'seq' | 'ts'>) => {
+    if (!_isDebug) return;
+    const seq = ++debugDataRef.current.traceSeq;
+    debugDataRef.current.traceEntries.push({ seq, ts: performance.now(), ...entry } as TraceEntry);
+    // Check if any merge entry is a truncation and set the top-level flag
+    if (entry.kind === 'merge' && entry.merge?.truncation) debugDataRef.current.truncationDetected = true;
+    if (entry.kind === 'onresult' && entry.onresult?.truncation) debugDataRef.current.truncationDetected = true;
+    if (entry.kind === 'onend' && entry.onend?.truncation) debugDataRef.current.truncationDetected = true;
+  };
+  // ── [/Trace helpers] ─────────────────────────────────────────────────────
+  // Toast: id of the product just pinned as default (auto-clears after 1.5s)
+  const [pinnedProductId, setPinnedProductId] = useState<string | null>(null);
+  // Quantity selector sheet: index of the review item whose picker is open (null = closed)
+  const [qtyPickerIdx, setQtyPickerIdx] = useState<number | null>(null);
+  // Suggestion panel: index of the review item whose suggestion panel is open (null = closed)
+  const [openSuggestionIdx, setOpenSuggestionIdx] = useState<number | null>(null);
+  const openSuggestionIdxRef = useRef<number | null>(null);
+  useEffect(() => { openSuggestionIdxRef.current = openSuggestionIdx; }, [openSuggestionIdx]);
+
+  const areWordsSimilar = (w1: string, w2: string): boolean => {
+    const val1 = w1.trim().toLowerCase();
+    const val2 = w2.trim().toLowerCase();
+    if (val1 === val2) return true;
+    
+    // Short words must match exactly to prevent false overlaps (numbers/units like do, to, 1, 2, kg, pc)
+    if (val1.length <= 3 || val2.length <= 3) return false;
+    
+    const dist = getLevenshteinDistance(val1, val2);
+    const maxAllowedDist = val1.length >= 6 ? 2 : 1;
+    return dist <= maxAllowedDist;
+  };
+
+  const arePhrasesSimilar = (wordsA: string[], wordsB: string[]): boolean => {
+    if (wordsA.length !== wordsB.length) return false;
+    
+    // For single-word comparison, follow word-specific rules
+    if (wordsA.length === 1) {
+      const w1 = wordsA[0].toLowerCase();
+      const w2 = wordsB[0].toLowerCase();
+      if (w1 === w2) return true;
+      if (/\d/.test(w1 + w2)) return false;
+      // Existing grocery synonyms (e.g. चोला / छोले) describe the same identity.
+      if (normalizeVoiceName(w1) === normalizeVoiceName(w2)) return true;
+      if (w1.length <= 3 || w2.length <= 3) return false;
+      const dist = getLevenshteinDistance(w1, w2);
+      // For longer words in Hindi, speech recognition variations can be larger.
+      // E.g. "पारले-जी" (8) and "परले-ग" (6) has distance 3.
+      const maxAllowed = Math.max(w1.length, w2.length) >= 6 ? 3 : 1;
+      return dist <= maxAllowed;
+    }
+    
+    // Shared quantities must not hide a different product name. Reconcile each
+    // token rather than letting a long matching suffix erase a short identity.
+    return wordsA.every((word, i) => arePhrasesSimilar([word], [wordsB[i]]));
+  };
+
+  const mergeOverlappingStrings = (s1Arg: string, s2Arg: string) => {
+    let s1 = s1Arg || "";
+    let s2 = s2Arg || "";
+    if (!s1) return s2;
+    if (!s2) return s1;
+    
+    // Ignore sentence punctuation for overlap matching, but keep decimal quantities.
+    s1 = s1.replace(/[!?।]|(?<!\d)\.|\.(?!\d)/g, '');
+    s2 = s2.replace(/[!?।]|(?<!\d)\.|\.(?!\d)/g, '');
+
+    const s1Lower = s1.trim().toLowerCase();
+    const s2Lower = s2.trim().toLowerCase();
+    
+    if (s1Lower === s2Lower) return s1.trim();
+    
+    const words1 = s1.trim().split(/\s+/);
+    const words2 = s2.trim().split(/\s+/);
+
+    // Repeated Hindi hypotheses may differ by one vowel mark (नमक / नामक).
+    // Recover only an adjacent boundary word supported by the catalogue. Keep
+    // consonants/nasal marks intact, and never override another known identity.
+    const previousWord = words1[words1.length - 1];
+    const nextWord = words2[0];
+    const consonants = (word: string) => word.replace(/[\u093e-\u094c]/g, '');
+    if (/^[\u0900-\u097f]+$/.test(previousWord + nextWord)
+      && consonants(previousWord).length >= 3
+      && consonants(previousWord) === consonants(nextWord)
+      && getLevenshteinDistance(previousWord, nextWord) === 1) {
+      const knownIdentity = (word: string) => voiceMatcherRef.current?.match({ name: word })
+        .candidates.some(candidate => candidate.identityComplete && candidate.eligible) || false;
+      if (knownIdentity(previousWord) && !knownIdentity(nextWord)) words2[0] = previousWord;
+      else if (knownIdentity(nextWord) && !knownIdentity(previousWord)) words1[words1.length - 1] = nextWord;
+    }
+
+    let maxOverlap = 0;
+    const minLen = Math.min(words1.length, words2.length);
+    
+    for (let i = 1; i <= minLen; i++) {
+        const slice1 = words1.slice(-i);
+        const slice2 = words2.slice(0, i);
+        if (arePhrasesSimilar(slice1, slice2)) {
+            maxOverlap = i;
+        }
+    }
+    
+    // ── [PROVE] write merge trace entry to debugDataRef ────────────────────
+    if (_isDebug && (/[\u0900-\u097F]/.test(s1 + s2))) {
+      const _mergeResult = maxOverlap > 0
+        ? words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ")
+        : s1.trim() + " " + s2.trim();
+      const _s1t = s1.trim(), _s2t = s2.trim();
+      const _longerIn = Math.max(_s1t.length, _s2t.length);
+      const _truncation = maxOverlap > 0 && _mergeResult.length < _s1t.length;
+      const _detail = _truncation
+        ? `s1 "${_s1t}" (${_countGraphemes(_s1t)} graphemes) → result "${_mergeResult}" (${_countGraphemes(_mergeResult)} graphemes) — ${_s1t.length - _mergeResult.length} chars lost`
+        : '';
+      _addTrace({
+        kind: 'merge',
+        merge: {
+          callSite: _mergeCallSiteRef.current,
+          s1: _s1t, s2: _s2t,
+          s1Len: _countGraphemes(_s1t), s2Len: _countGraphemes(_s2t),
+          maxOverlap,
+          result: _mergeResult, resultLen: _countGraphemes(_mergeResult),
+          truncation: _truncation, truncationDetail: _detail,
+        }
+      });
+    }
+    // ── [/PROVE] ─────────────────────────────────────────────────────────────
+    if (maxOverlap > 0) {
+        return words1.slice(0, words1.length - maxOverlap).concat(words2).join(" ");
+    }
+    // No overlap means continuation, not necessarily another product. Let the
+    // parser use spoken quantities/conjunctions to determine item boundaries.
+    // Keep overlap reconciliation above: Android can repeat growing hypotheses.
+    return s1.trim() + " " + s2.trim();
+  };
+
+  const recalculateQtyAndUnit = voiceQuantityForProduct;
+
+  const processVoiceTextToItems = (text: string) => {
+    if (!text || text.trim().length === 0) return { items: [], _timing: { parse: '0.0', fuse: '0.0' } };
+
+    // ── TIMING: Phase 1 — parse ──────────────────────────────────────────────
+    const _t0 = performance.now();
+    const parsedItems = parseVoiceItems(text);
+    const _tParse = performance.now();
+    
+    // PHASE 2: NORMALIZATION LAYER
+    const normalizedItems = parsedItems.map(item => {
+      const cleanName = String(item.name || '').trim().toLowerCase();
+      let normalizedUnit = String(item.unit || '').trim().toLowerCase();
+      if (['g', 'gm', 'grams', 'gram', 'ग्राम'].includes(normalizedUnit)) normalizedUnit = 'g';
+      else if (['kg', 'kilo', 'kilos', 'किलो'].includes(normalizedUnit)) normalizedUnit = 'kg';
+      else if (['litre', 'litres', 'l', 'ltr', 'लीटर'].includes(normalizedUnit)) normalizedUnit = 'l';
+      else if (['packet', 'pack', 'pkt', 'pc', 'pcs', 'piece', 'पैकेट', 'पीस'].includes(normalizedUnit)) normalizedUnit = 'pc';
+      else if (!normalizedUnit) normalizedUnit = 'pc';
+      const cleanQuantity = (item.quantity && !isNaN(item.quantity) && item.quantity > 0) ? item.quantity : 1;
+
+      return {
+        ...item,
+        name: cleanName,
+        quantity: cleanQuantity,
+        unit: normalizedUnit
+      };
+    });
+
+    // Match identity across the catalogue; ambiguous choices require review.
+    // The index is rebuilt only when the catalogue changes.
+    // ── TIMING: Phase 3 start (Fuse search + scoring) ────────────────────────
+    const _tFuseStart = performance.now();
+    const matcher = voiceMatcherRef.current;
+    if (!matcher) return { items: [], _timing: { parse: '0.0', fuse: '0.0' } };
+
+    const seenItemsMap = new Set();
+
+    const matchedItems = normalizedItems.map(item => {
+      // ── MATCH CACHE: skip the entire Fuse + scoring pipeline for items whose
+      // name/unit/quantity/rawText haven't changed since the last speech event.
+      const _cacheKey = `${item.name}__${item.unit}__${item.quantity}__${item.requestedPrice ?? ''}__${item.rawText || ''}__${JSON.stringify([item.saleForm, item.packSize, item.packetCount])}`;
+      if (matchCacheRef.current.has(_cacheKey)) {
+        // ── [TRACE] ──────────────────────────────────────────────────────────
+        if (/धनिया/i.test(item.name) || /dhaniya/i.test(item.name)) {
+          const cached = matchCacheRef.current.get(_cacheKey);
+          console.log('%c[TRACE] 🔁 CACHE HIT for "' + item.name + '" — returning:', 'color:#cc0000;font-weight:bold', {
+            name: cached?.name, localName: cached?.localName, productId: cached?.productId, cacheKey: _cacheKey
+          });
+        }
+        // ── [/TRACE] ─────────────────────────────────────────────────────────
+        // ── [DEBUG PANEL] record cache hit ───────────────────────────────────
+        if (_isDebug) {
+          const cached = matchCacheRef.current.get(_cacheKey);
+          debugDataRef.current.cacheEntries.push({ key: _cacheKey, hit: true, result: cached });
+          debugDataRef.current.spokenText = item.name;
+          debugDataRef.current.normalizedText = normalizeVoiceName(item.name);
+          debugDataRef.current.bestMatchName = cached?.productId ? cached.name : '—';
+          debugDataRef.current.bestMatchPath = cached?.productId ? 'identity matcher (cached)' : 'needs review (cached)';
+          debugDataRef.current.matchDecision = cached?._matchDecision;
+        }
+        // ── [/DEBUG PANEL] ───────────────────────────────────────────────────
+        return { ...matchCacheRef.current.get(_cacheKey) };
+      }
+
+      const decision = matcher.match(item);
+      const bestMatch = decision.product;
+      if (_isDebug) {
+        debugDataRef.current.spokenText = item.name;
+        debugDataRef.current.normalizedText = normalizeVoiceName(item.name);
+        debugDataRef.current.bestMatchName = bestMatch?.name || '—';
+        debugDataRef.current.bestMatchPath = bestMatch ? 'identity matcher' : 'needs review';
+        debugDataRef.current.matchDecision = {
+          reason: decision.reason,
+          candidates: decision.candidates.map(candidate => ({
+            name: candidate.product.name, id: candidate.product.id,
+            score: candidate.score, coverage: candidate.coverage,
+            field: candidate.matchedField, missing: candidate.missingTokens.join(', '),
+            eligible: candidate.eligible, reason: candidate.reason,
+          })),
+        };
+        debugDataRef.current.stage1 = [];
+        debugDataRef.current.stage2 = [];
+        debugDataRef.current.stage3 = [];
+        debugDataRef.current.stage4 = [];
+      }
+      const key = (bestMatch?.id || item.name).toLowerCase();
+      let isRepeated = false;
+      if (seenItemsMap.has(key)) {
+        isRepeated = true;
+      } else {
+        seenItemsMap.add(key);
+      }
+
+      // PHASE 5: REJECTION SYSTEM
+      if (!bestMatch) {
+        const _rejected = {
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          price: 0,
+          costPrice: 0,
+          productId: null,
+          confidence: 'low',
+          needsMatchReview: true,
+          matchReason: decision.reason,
+          _matchDecision: _isDebug ? debugDataRef.current.matchDecision : undefined,
+          matchCandidateDetails: decision.candidates,
+          spokenWord: item.name,
+          sourceRawText: item.rawText,
+          requestedPrice: item.requestedPrice,
+          saleForm: item.saleForm,
+          packSize: item.packSize,
+          packetCount: item.packetCount,
+          aiLabel: item.name,
+          hasExplicitQty: item.hasExplicitQty || false,
+          isRepeated,
+          parsedQty: item.quantity,
+          parsedUnit: item.unit
+        };
+        matchCacheRef.current.set(_cacheKey, _rejected);
+        return { ..._rejected };
+      }
+
+      // PHASE 4: FINAL SAFE OUTPUT
+      const match = bestMatch;
+      const { quantity: finalQty, unit: finalUnit } = voiceQuantityForProduct(item.quantity, item.unit, match, decision.packetCount);
+
+      const _matched = {
+        productId: match.id,
+        name: match.name, // Safely mapped exactly from Database Output
+        localName: match.localName,
+        imageUrl: match.imageUrl,
+        quantity: finalQty,
+        unit: finalUnit,
+        baseUnit: match.baseUnit,
+        baseQuantity: match.baseQuantity,
+        packetWeight: match.packetWeight,
+        packetUnit: match.packetUnit,
+        price: match.price,
+        costPrice: match.costPrice,
+        confidence: decision.confidence,
+        needsMatchReview: false,
+        matchReason: decision.reason,
+        _matchDecision: _isDebug ? debugDataRef.current.matchDecision : undefined,
+        matchCandidates: decision.candidates.map(candidate => candidate.product),
+        hasExplicitQty: item.hasExplicitQty || false,
+        aiLabel: match.name,
+        spokenWord: item.name, // original spoken word — used for generic category detection
+        sourceRawText: item.rawText,
+        requestedPrice: item.requestedPrice,
+        saleForm: item.saleForm,
+        packSize: item.packSize,
+        packetCount: decision.packetCount,
+        isApproximateSize: decision.isApproximateSize,
+        selectedPackLabel: decision.selectedPackLabel,
+        isRepeated,
+        parsedQty: item.quantity,
+        parsedUnit: item.unit
+      };
+      matchCacheRef.current.set(_cacheKey, _matched);
+      return { ..._matched };
+    });    // Deduplicate within the same voice phrase
+    const deduplicatedItems: any[] = [];
+    const dedupeMap = new Map();
+
+    for (const item of matchedItems) {
+      const key = item.productId || item.name;
+      if (dedupeMap.has(key)) {
+        const existing = dedupeMap.get(key);
+        if (!existing.hasExplicitQty && item.hasExplicitQty) {
+          // Replace default quantity with explicit quantity
+          existing.quantity = item.quantity;
+          existing.unit = item.unit;
+          existing.hasExplicitQty = true;
+          existing.parsedQty = item.parsedQty;
+          existing.parsedUnit = item.parsedUnit;
+          existing.packetCount = item.packetCount;
+          existing.packSize = item.packSize;
+        } else if (existing.hasExplicitQty && item.hasExplicitQty) {
+          // Add quantities if both are explicit
+          if (existing.unit === item.unit) {
+            existing.quantity += item.quantity;
+            existing.parsedQty = (existing.parsedQty || 0) + (item.parsedQty || 0);
+            if (existing.packetCount !== undefined && item.packetCount !== undefined) existing.packetCount += item.packetCount;
+          }
+        }
+      } else {
+        dedupeMap.set(key, item);
+        deduplicatedItems.push(item);
+      }
+    }
+
+    // ── TIMING: log processVoiceTextToItems breakdown ────────────────────────
+    const _tEnd = performance.now();
+    console.log(
+      `[PERF] processVoiceTextToItems | items=${deduplicatedItems.length}` +
+      ` | parse=${(_tParse - _t0).toFixed(1)}ms` +
+      ` | fuseSearch+scoring=${(_tEnd - _tFuseStart).toFixed(1)}ms` +
+      ` | total=${(_tEnd - _t0).toFixed(1)}ms`
+    );
+
+    return {
+      items: deduplicatedItems,
+      _timing: {
+        parse: (_tParse - _t0).toFixed(1),
+        fuse:  (_tEnd   - _tFuseStart).toFixed(1),
+      }
+    };
+  };
+
+  const getSuggestions = (item: any) => suggestionsRef.current?.suggest(item)
+    || { brandVariants: [], sizeVariants: [] };
+
+  const getSizeVariantsForBrand = (product: any) => product
+    ? suggestionsRef.current?.sizes(product) || [] : [];
+
+  const startVoiceInput = (correctionIdx: number | null = null) => {
+    if (recognitionRef.current) return;
+    if (correctionIdx !== null && !canCorrectProductByVoice(reviewItems[correctionIdx])) {
+      heldInputRef.current = null;
+      return;
+    }
+    if (voiceEngine.engine === 'vosk' && (!voiceEngine.resources?.model.ready || !voiceEngine.grammar?.productPhrases)) {
+      heldInputRef.current = null;
+      setVoiceMessage('Prepare Vosk and check inventory name coverage, or select Current recognition.');
+      return;
+    }
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (voiceEngine.engine === 'browser' && !SpeechRecognition) {
+      heldInputRef.current = null;
+      alert("Speech Recognition not supported");
+      return;
+    }
+
+    const correctionItem = correctionIdx === null ? null : reviewItems[correctionIdx];
+    setCorrectingItemIdx(correctionIdx);
+    setVoiceMessage('');
+
+    baseReviewItemsRef.current = [...reviewItems];
+    itemOverridesRef.current = {};
+    globalTranscriptRef.current = "";
+    currentBreathRef.current = "";
+    setFinalTranscript("");
+    setSelectedBrandPerItem({});
+    setOpenSuggestionIdx(null);
+    matchCacheRef.current.clear(); // clear stale interim results from any prior voice session
+    // ── [PROVE] reset transcript trace for new session ───────────────────────
+    if (_isDebug) {
+      debugDataRef.current.traceEntries    = [];
+      debugDataRef.current.traceSeq        = 0;
+      debugDataRef.current.truncationDetected = false;
+      debugDataRef.current.displayedTranscript = '';
+      debugDataRef.current.processedQuery  = '';
+      debugDataRef.current.globalTranscript = '';
+      debugDataRef.current.currentBreath   = '';
+      _onresultIndexRef.current = 0;
+    }
+    // ── [/PROVE] ─────────────────────────────────────────────────────────────
+    isListeningRef.current = true;
+    setIsListening(true);
+    setMode('OCR');
+
+    // Preserve the browser implementation; the experiment supplies compatible events.
+    const recognition = voiceEngine.engine === 'vosk'
+      ? voiceEngine.createRecognition()
+      : new SpeechRecognition();
+    recognition.lang = "hi-IN";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognitionRef.current = recognition;
+    // Permission prompts can finish after the finger has already been released.
+    recognition.onstart = () => {
+      if (recognitionRef.current !== recognition || !isListeningRef.current) {
+        try { recognition.abort(); } catch (_) {}
+      }
+    };
+
+    recognition.onresult = (event: any) => {
+        if (recognitionRef.current !== recognition) return;
+        // ── TIMING: total onresult event ─────────────────────────────────────
+        const _tEvent = performance.now();
+
+        // ── [PROVE] capture raw segments for trace ────────────────────────────
+        const _eventIdx = _isDebug ? ++_onresultIndexRef.current : 0;
+        const _segs = _isDebug
+          ? Array.from({ length: event.results.length }, (_, i) => ({
+              idx: i, isFinal: event.results[i].isFinal,
+              text: event.results[i][0].transcript,
+            }))
+          : [];
+        const _globalBefore = _isDebug ? globalTranscriptRef.current : '';
+        // ── [/PROVE] ─────────────────────────────────────────────────────────
+
+        let merged = "";
+        for (let i = 0; i < event.results.length; ++i) {
+            const text = event.results[i][0].transcript.trim();
+            if (!text) continue;
+            if (_isDebug) _mergeCallSiteRef.current = `onresult-inner[${i}]`;
+            merged = mergeOverlappingStrings(merged, text);
+        }
+
+        currentBreathRef.current = merged;
+        if (_isDebug) _mergeCallSiteRef.current = 'onresult-global';
+        const fullText = mergeOverlappingStrings(globalTranscriptRef.current, merged);
+
+        // ── [PROVE] write onresult trace entry ────────────────────────────────
+        if (_isDebug) {
+          const _truncation = fullText.length < _globalBefore.length && _globalBefore.length > 0;
+          const _detail = _truncation
+            ? `fullText "${fullText}" (${_countGraphemes(fullText)} graphemes) < globalBefore "${_globalBefore}" (${_countGraphemes(_globalBefore)} graphemes)`
+            : '';
+          _addTrace({
+            kind: 'onresult',
+            onresult: {
+              eventIndex: _eventIdx,
+              segments: _segs,
+              mergedSegments: merged,
+              globalBefore: _globalBefore,
+              fullText,
+              processedQuery: fullText,   // updated to actual query below after parse
+              truncation: _truncation,
+              truncationDetail: _detail,
+            }
+          });
+          // Keep live summary fields up to date
+          debugDataRef.current.displayedTranscript = fullText;
+          debugDataRef.current.globalTranscript    = globalTranscriptRef.current;
+          debugDataRef.current.currentBreath       = merged;
+        }
+        // ── [/PROVE] ─────────────────────────────────────────────────────────
+
+        setFinalTranscript(fullText);
+        // Keep the touched card stable; replace it once the final result arrives.
+        if (correctionIdx !== null) return;
+
+        if (fullText.length > 1) {
+            // ── [PROVE] record the exact query passed into processing ─────────
+            if (_isDebug) {
+              _addTrace({ kind: 'process', process: { query: fullText } });
+              debugDataRef.current.processedQuery = fullText;
+              // Patch the processedQuery on the last onresult entry too
+              const _lastOR = [...debugDataRef.current.traceEntries].reverse().find(e => e.kind === 'onresult');
+              if (_lastOR?.onresult) _lastOR.onresult.processedQuery = fullText;
+            }
+            // ── [/PROVE] ─────────────────────────────────────────────────────
+            // ── TIMING: processVoiceTextToItems (logged internally) ───────────
+            const _pvResult = processVoiceTextToItems(fullText);
+            const newParsedItems = _pvResult.items;
+            const _pvTiming = _pvResult._timing;
+            if (newParsedItems.length > 0) {
+                // ── TIMING: enrichment loop ───────────────────────────────────
+                const _tEnrichStart = performance.now();
+                const enrichedItems = newParsedItems.map((item: any) => {
+                    let finalItem = item;
+                    // 1. Session override (tapped a suggestion card during this voice session)
+                    if (item.aiLabel && itemOverridesRef.current[item.aiLabel]) {
+                        finalItem = { ...finalItem, ...itemOverridesRef.current[item.aiLabel] };
+                    }
+                    // 2. Persistent preference (long-pressed in a previous session)
+                    // Only apply if no session override exists for this word
+                    if (!itemOverridesRef.current[item.aiLabel]) {
+                        const spokenKey = item.spokenWord || item.aiLabel || item.name;
+                        const pref = shop?.id ? voicePrefsCache.get(shop.id, spokenKey) : null;
+                        if (pref) {
+                            const prefProduct = catalog.find((p: any) => p.id === pref.productId);
+                            if (prefProduct) {
+                                const preferenceDecision = voiceMatcherRef.current?.match({
+                                  name: spokenKey,
+                                  quantity: item.parsedQty ?? item.quantity,
+                                  unit: item.parsedUnit ?? item.unit,
+                                  rawText: item.sourceRawText,
+                                  requestedPrice: item.requestedPrice,
+                                  saleForm: item.saleForm,
+                                  packSize: item.packSize,
+                                  packetCount: item.packetCount,
+                                }, prefProduct.id);
+                                const isMatchValid = preferenceDecision?.product?.id === prefProduct.id;
+                                // Ignore incompatible defaults for this request; do not erase a
+                                // useful preference just because a different size was requested.
+                                if (isMatchValid && preferenceDecision) {
+                                    const matchedProduct = prefProduct;
+                                    // Recalculate quantity and unit for the matched variant
+                                    const pQty = item.parsedQty !== undefined ? item.parsedQty : item.quantity;
+                                    const pUnit = item.parsedUnit !== undefined ? item.parsedUnit : (item.unit || item.baseUnit || 'pc');
+                                    const recalculated = recalculateQtyAndUnit(pQty, pUnit, matchedProduct, preferenceDecision.packetCount);
+
+                                    finalItem = {
+                                        ...finalItem,
+                                        confidence: 'high',
+                                        needsMatchReview: false,
+                                        packetCount: preferenceDecision.packetCount,
+                                        isApproximateSize: preferenceDecision.isApproximateSize,
+                                        selectedPackLabel: preferenceDecision.selectedPackLabel,
+                                        productId: matchedProduct.id,
+                                        name: matchedProduct.name,
+                                        localName: matchedProduct.localName,
+                                        price: matchedProduct.price,
+                                        costPrice: matchedProduct.costPrice,
+                                        baseUnit: matchedProduct.baseUnit,
+                                        baseQuantity: matchedProduct.baseQuantity,
+                                        packetWeight: matchedProduct.packetWeight,
+                                        packetUnit: matchedProduct.packetUnit,
+                                        imageUrl: matchedProduct.imageUrl,
+                                        quantity: recalculated.quantity,
+                                        unit: recalculated.unit,
+                                        parsedQty: pQty,
+                                        parsedUnit: pUnit
+                                    };
+                                }
+                            }
+                        }
+                    }
+                    return {
+                        ...finalItem,
+                        suggestions: []
+                    };
+                });
+                // ── TIMING: enrichment done ───────────────────────────────────
+                const _tEnrichEnd = performance.now();
+
+                const allItems = [...baseReviewItemsRef.current, ...enrichedItems];
+
+                // ── TIMING: suggestion generation ─────────────────────────────
+                const _tSugStart = performance.now();
+                // Refresh suggestions for visible panels as speech updates arrive.
+                const finalItems = allItems.map((item, idx) => {
+                    if (item.needsMatchReview || openSuggestionIdxRef.current === idx || idx === allItems.length - 1) {
+                      return { ...item, suggestions: getSuggestions(item) };
+                    }
+                    return item;
+                });
+                const _tSugEnd = performance.now();
+
+                // ── TIMING: setState ──────────────────────────────────────────
+                const _tSetState = performance.now();
+                setReviewItems(finalItems);
+                setIsReviewing(true);
+                const _tSetStateEnd = performance.now();
+
+                // ── TIMING: full onresult summary ─────────────────────────────
+                console.log(
+                  `[PERF] onresult | totalItems=${allItems.length}` +
+                  ` | enrichment=${(_tEnrichEnd - _tEnrichStart).toFixed(1)}ms` +
+                  ` | suggestions=${(_tSugEnd - _tSugStart).toFixed(1)}ms` +
+                  ` | setState=${(_tSetStateEnd - _tSetState).toFixed(1)}ms` +
+                  ` | totalEvent=${(_tSetStateEnd - _tEvent).toFixed(1)}ms`
+                );
+                setPerfStats({
+                  items:       allItems.length,
+                  parse:       _pvTiming.parse,
+                  fuse:        _pvTiming.fuse,
+                  enrichment:  (_tEnrichEnd - _tEnrichStart).toFixed(1),
+                  suggestions: (_tSugEnd   - _tSugStart   ).toFixed(1),
+                  setState:    (_tSetStateEnd - _tSetState).toFixed(1),
+                  total:       (_tSetStateEnd - _tEvent   ).toFixed(1),
+                });
+                // ── [DEBUG PANEL] sync perf + trigger re-render ───────────────
+                if (_isDebug) {
+                  debugDataRef.current.perfItems       = allItems.length;
+                  debugDataRef.current.perfParse       = _pvTiming.parse;
+                  debugDataRef.current.perfFuse        = _pvTiming.fuse;
+                  debugDataRef.current.perfEnrichment  = (_tEnrichEnd - _tEnrichStart).toFixed(1);
+                  debugDataRef.current.perfSuggestions = (_tSugEnd - _tSugStart).toFixed(1);
+                  debugDataRef.current.perfSetState    = (_tSetStateEnd - _tSetState).toFixed(1);
+                  debugDataRef.current.perfTotal       = (_tSetStateEnd - _tEvent).toFixed(1);
+                  debugDataRef.current.processingTimeMs = (_tSetStateEnd - _tEvent).toFixed(1);
+                  setDebugTick(t => t + 1);
+                }
+                // ── [/DEBUG PANEL] ────────────────────────────────────────────
+            }
+        }
+    };
+
+    recognition.onerror = (e: any) => {
+        if (recognitionRef.current !== recognition) return;
+        console.error("Speech Error:", e.error || e);
+        if (e.error !== 'no-speech') {
+          stopVoiceInput();
+          setVoiceMessage('Could not hear you. Hold again to retry.');
+        }
+        if (e.error === 'not-allowed' || e.error === 'audio-capture') {
+            setIsListening(false);
+            isListeningRef.current = false;
+            alert("Microphone error: Please check permissions or hardware.");
+        }
+    };
+
+    recognition.onend = () => {
+        if (recognitionRef.current !== recognition) return;
+        // ── [PROVE] capture state before commit ───────────────────────────────
+        const _endGlobalBefore = _isDebug ? globalTranscriptRef.current : '';
+        const _endBreath       = _isDebug ? currentBreathRef.current   : '';
+        // ── [/PROVE] ─────────────────────────────────────────────────────────
+        if (_isDebug) _mergeCallSiteRef.current = 'onend';
+        globalTranscriptRef.current = mergeOverlappingStrings(globalTranscriptRef.current, currentBreathRef.current);
+        // ── [PROVE] write onend trace entry ───────────────────────────────────
+        if (_isDebug) {
+          const _endAfter = globalTranscriptRef.current;
+          const _truncation = _endAfter.length < _endGlobalBefore.length && _endGlobalBefore.length > 0;
+          const _detail = _truncation
+            ? `globalBefore "${_endGlobalBefore}" (${_countGraphemes(_endGlobalBefore)} graphemes) → globalAfter "${_endAfter}" (${_countGraphemes(_endAfter)} graphemes)`
+            : '';
+          _addTrace({
+            kind: 'onend',
+            onend: {
+              globalBefore: _endGlobalBefore,
+              currentBreath: _endBreath,
+              globalAfter: _endAfter,
+              truncation: _truncation,
+              truncationDetail: _detail,
+            }
+          });
+          debugDataRef.current.globalTranscript = _endAfter;
+          debugDataRef.current.currentBreath    = '';
+        }
+        // ── [/PROVE] ─────────────────────────────────────────────────────────
+        currentBreathRef.current = "";
+        if (isListeningRef.current && (heldInputRef.current !== null || releaseTimerRef.current !== null)) {
+          try { recognition.start(); return; } catch (_) { stopVoiceInput(); }
+        }
+        recognitionRef.current = null;
+        setCorrectingItemIdx(null);
+        if (correctionIdx !== null && correctionItem) {
+          const corrected = processVoiceTextToItems(globalTranscriptRef.current).items;
+          if (corrected.length !== 1) {
+            setVoiceMessage(corrected.length ? 'Say only one product to correct this card.' : 'No speech heard. Hold the card and repeat the product name.');
+            return;
+          }
+          let replacement = corrected[0];
+          if (!replacement.hasExplicitQty) {
+            const quantity = correctionItem.parsedQty ?? correctionItem.quantity;
+            const unit = correctionItem.parsedUnit ?? correctionItem.unit;
+            const converted = replacement.productId
+              ? voiceQuantityForProduct(quantity, unit, replacement, correctionItem.packetCount)
+              : { quantity, unit };
+            replacement = { ...replacement, ...converted, parsedQty: quantity, parsedUnit: unit,
+              hasExplicitQty: correctionItem.hasExplicitQty, packetCount: correctionItem.packetCount };
+          }
+          const updated = { ...replacement, suggestions: getSuggestions(replacement) };
+          // Do not overwrite another row if this item was removed while recognizing.
+          setReviewItems(items => items.map((item, idx) =>
+            idx === correctionIdx && item === correctionItem ? updated : item));
+          setVoiceMessage(updated.productId ? 'Product corrected.' : canCorrectProductByVoice(updated)
+            ? 'Still no reliable match. Hold the card to try again, or choose a suggestion.'
+            : 'Product recognized. Choose the correct brand or pack size from the suggestions.');
+        }
+    };
+
+    try {
+        recognition.start();
+    } catch(e) {
+        console.error("Failed to start mic:", e);
+        setIsListening(false);
+        isListeningRef.current = false;
+        heldInputRef.current = null;
+        recognitionRef.current = null;
+        setCorrectingItemIdx(null);
+        setVoiceMessage('Could not start the microphone. Hold again to retry.');
+    }
+  };
+
+  const stopVoiceInput = () => {
+    if (releaseTimerRef.current !== null) {
+      clearTimeout(releaseTimerRef.current);
+      releaseTimerRef.current = null;
+    }
+    heldInputRef.current = null;
+    isListeningRef.current = false;
+    setIsListening(false);
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch(e) {}
+    }
+  };
+
+  const releaseVoiceInput = () => {
+    heldInputRef.current = null;
+    if (!isListeningRef.current || releaseTimerRef.current !== null) return;
+    // Keep the last half-second of speech, including results delivered after release.
+    releaseTimerRef.current = setTimeout(stopVoiceInput, 500);
+  };
+
+  const holdToSpeak = (correctionIdx: number | null = null) => ({
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      if (!event.isPrimary || event.button !== 0 || recognitionRef.current) return;
+      if (correctionIdx !== null && (event.target as HTMLElement).closest('button, input, select, textarea, a')) return;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      heldInputRef.current = event.pointerId;
+      startVoiceInput(correctionIdx);
+    },
+    onPointerUp: (event: React.PointerEvent<HTMLElement>) => {
+      if (heldInputRef.current === event.pointerId) releaseVoiceInput();
+    },
+    onPointerCancel: (event: React.PointerEvent<HTMLElement>) => {
+      if (heldInputRef.current === event.pointerId) stopVoiceInput();
+    },
+    onLostPointerCapture: (event: React.PointerEvent<HTMLElement>) => {
+      if (heldInputRef.current === event.pointerId) stopVoiceInput();
+    },
+    onContextMenu: (event: React.MouseEvent<HTMLElement>) => event.preventDefault(),
+    onTouchStart: (event: React.TouchEvent<HTMLElement>) => event.stopPropagation(),
+    onTouchMove: (event: React.TouchEvent<HTMLElement>) => event.stopPropagation(),
+    onTouchEnd: (event: React.TouchEvent<HTMLElement>) => event.stopPropagation(),
+    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+      if (event.target !== event.currentTarget || ![' ', 'Enter'].includes(event.key)) return;
+      event.preventDefault();
+      if (event.repeat || recognitionRef.current) return;
+      heldInputRef.current = event.key;
+      startVoiceInput(correctionIdx);
+    },
+    onKeyUp: (event: React.KeyboardEvent<HTMLElement>) => {
+      if (event.target === event.currentTarget && heldInputRef.current === event.key) {
+        event.preventDefault();
+        releaseVoiceInput();
+      }
+    },
+    onBlur: () => { if (typeof heldInputRef.current === 'string') stopVoiceInput(); },
+  });
+
+  useEffect(() => {
+    const release = (event: PointerEvent) => {
+      if (heldInputRef.current === event.pointerId) releaseVoiceInput();
+    };
+    const cancel = (event: PointerEvent) => {
+      if (heldInputRef.current === event.pointerId) stopVoiceInput();
+    };
+    const hide = () => { if (document.hidden) stopVoiceInput(); };
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('blur', stopVoiceInput);
+    document.addEventListener('visibilitychange', hide);
+    return () => {
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('blur', stopVoiceInput);
+      document.removeEventListener('visibilitychange', hide);
+      heldInputRef.current = null;
+      if (releaseTimerRef.current !== null) {
+        clearTimeout(releaseTimerRef.current);
+        releaseTimerRef.current = null;
+      }
+      isListeningRef.current = false;
+      const recognition = recognitionRef.current;
+      recognitionRef.current = null;
+      try { recognition?.abort(); } catch (_) {}
+    };
+  }, []);
+
+  const router = useRouter();
+  const shop = initialShop;
+  const [catalog, setCatalog] = useState<any[]>([]);
+  const [manageProducts, setManageProducts] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [productEditor, setProductEditor] = useState<{ product: any | null } | null>(null);
+  const [mode, setMode] = useState<'MANUAL' | 'OCR' | 'PENDING'>('OCR');
+  const voiceEngine = useVoiceEngine(catalog);
+  const restoreCurrentRecognition = () => {
+    stopVoiceInput();
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    try { recognition?.abort(); } catch (_) {}
+    voiceEngine.restore();
+  };
+
+  // Rebuild the voice product index whenever the catalog changes (page load, background
+  // refresh, or inline price edit). This avoids rebuilding it on every speech event.
+  // Also clear the match cache — catalog change means stored match results are stale.
+  useEffect(() => {
+    voiceMatcherRef.current = createVoiceProductMatcher(catalog);
+    suggestionsRef.current = createProductSuggestions(catalog);
+    setReviewItems(items => items.map(item => item.suggestions
+      ? { ...item, suggestions: suggestionsRef.current!.suggest(item) } : item));
+    matchCacheRef.current.clear();
+  }, [catalog]);
+
+  // Cart state
+  const [cart, setCart] = useState<any[]>([]);
+  const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' });
+  const [savingBill, setSavingBill] = useState(false);
+
+  // Manual Mode state
+  const [search, setSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchSuggestions, setSearchSuggestions] = useState<{name: string; imageUrl: string | null; matchField: string}[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
+  // Qty picker for top-selling / catalog product cards
+  const [catalogQtyProduct, setCatalogQtyProduct] = useState<any | null>(null);
+
+  // Pending Bills state
+  const [allPendingBills, setAllPendingBills] = useState<any[]>([]);
+  const [showMorePending, setShowMorePending] = useState(false);
+  const [allCompletedBills, setAllCompletedBills] = useState<any[]>([]);
+  const [allUnpaidBills, setAllUnpaidBills] = useState<any[]>([]);
+  const [loadingBills, setLoadingBills] = useState(false);
+  const [selectedBill, setSelectedBill] = useState<any>(null);
+  const [showMoreCompleted, setShowMoreCompleted] = useState(false);
+  const [showMoreUnpaid, setShowMoreUnpaid] = useState(false);
+
+  const toggleManagedProduct = (id: string) => setSelectedProducts(previous => { const next = new Set(previous); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const deleteSelectedProducts = async () => {
+    if (!selectedProducts.size || !confirm(`Delete ${selectedProducts.size} products? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    try {
+      const response = await fetch('/api/products/bulk-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopId: shop.id, productIds: [...selectedProducts] }) });
+      if (!response.ok) throw new Error('Could not delete products. Please try again.');
+      setSelectedProducts(new Set()); setManageProducts(false);
+      catalogCache.clear(); await fetchCatalog(shop.id);
+    } catch (error) { alert(error instanceof Error ? error.message : 'Could not delete products.'); }
+    finally { setBulkDeleting(false); }
+  };
+
+  // AI/OCR state
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [reviewItems, setReviewItems] = useState<any[]>([]);
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [showCartSheet, setShowCartSheet] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const reviewEndRef = useRef<HTMLDivElement>(null);
+  const sliderRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (reviewEndRef.current) {
+        reviewEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [reviewItems.length]);
+
+  // ── Android hardware back button support ──────────────────────────────────
+  // Push a history entry whenever a sub-view opens so the browser back button
+  // closes it instead of navigating away from the page.
+  useEffect(() => {
+    const anySubViewOpen = selectedCategory || selectedBill || isReviewing || productEditor;
+    if (anySubViewOpen) {
+      window.history.pushState({ subView: true }, '');
+    }
+  }, [selectedCategory, selectedBill, isReviewing, productEditor]);
+
+  // Push a separate history entry when manual search becomes active so the
+  // Android back button clears the search instead of closing the app.
+  const searchIsActive = search.length > 0;
+  useEffect(() => {
+    if (searchIsActive) {
+      window.history.pushState({ searchOpen: true }, '');
+    }
+  }, [searchIsActive]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (productEditor) { setProductEditor(null); return; }
+      // Close sub-views in priority order: search > bill modal > review > category
+      if (search.length > 0) {
+        setSearch('');
+        searchInputRef.current?.blur();
+        return;
+      }
+      if (selectedBill) { setSelectedBill(null); return; }
+      if (isReviewing) {
+        stopVoiceInput();
+        setIsReviewing(false);
+        setReviewItems([]);
+        globalTranscriptRef.current = '';
+        currentBreathRef.current = '';
+        setFinalTranscript('');
+        return;
+      }
+      if (selectedCategory) { setSelectedCategory(null); return; }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [search, selectedBill, isReviewing, selectedCategory, productEditor]);
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const modeIndex = mode === 'OCR' ? 0 : mode === 'PENDING' ? 1 : 2;
+  const isProgrammaticScroll = useRef(false);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const isSwiping = useRef(false);
+  const slide0Ref = useRef<HTMLDivElement>(null);
+  const slide1Ref = useRef<HTMLDivElement>(null);
+  const slide2Ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (sliderRef.current) {
+      sliderRef.current.style.transform = `translateX(-${modeIndex * 100}%)`;
+    }
+    // Scroll the newly active slide back to top
+    const slideRefs = [slide2Ref, slide1Ref, slide0Ref];
+    const activeSlide = slideRefs[modeIndex]?.current;
+    if (activeSlide) {
+      activeSlide.scrollTop = 0;
+    }
+  }, [modeIndex]);
+
+  useEffect(() => {
+    void fetchCatalog(initialShop.id);
+    void fetchBills(initialShop.id);
+  }, [initialShop.id]);
+
+  const fetchCatalog = async (shopId: string) => {
+    const cached = catalogCache.get(shopId);
+    if (cached) { setCatalog(cached); }
+    // Always refresh from server in background to pick up product edits (unit changes, price changes, etc.)
+    const res = await fetch(`/api/products?shopId=${shopId}`);
+    if (res.ok) {
+      const data = await res.json();
+      catalogCache.set(shopId, data);
+      setCatalog(data);
+    }
+  };
+
+  const fetchBills = async (shopId: string) => {
+    try {
+      setLoadingBills(true);
+      const res = await fetch(`/api/bills?shopId=${shopId}`);
+      if (res.ok) {
+        const allBills = await res.json();
+        const pending = allBills.filter((b: any) => b.orderStatus === 'PENDING');
+        const completed = allBills.filter((b: any) => b.orderStatus === 'COMPLETED');
+        const unpaid = allBills.filter((b: any) => b.status === 'UNPAID');
+        
+        setAllPendingBills(pending);
+        setAllCompletedBills(completed);
+        setAllUnpaidBills(unpaid);
+        setShowMoreCompleted(false);
+        setShowMorePending(false);
+        setShowMoreUnpaid(false);
+      }
+    } catch (error) {
+      console.error('Failed to fetch bills:', error);
+    } finally {
+      setLoadingBills(false);
+    }
+  };
+
+  useEffect(() => {
+    if (search.length > 1) {
+      const q = search.toLowerCase();
+      const qHindi = transliterateHinglishToHindi(q);
+
+      // ── Exact / substring pass ──────────────────────────────────────────────
+      const exactMatched = catalog.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        (p.localName && p.localName.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.includes(search)) ||
+        (qHindi !== q && (
+          (p.localName && p.localName.toLowerCase().includes(qHindi)) ||
+          p.name.toLowerCase().includes(qHindi)
+        ))
+      );
+
+      let matched: any[];
+
+      if (exactMatched.length > 0) {
+        // Good spelling — use exact results
+        matched = exactMatched;
+      } else {
+        // Misspelled / wrong spelling — fall back to fuzzy search (Blinkit-style)
+        const fuzzy = new Fuse(catalog, {
+          keys: ['name', 'localName', 'localAliases'],
+          threshold: 0.45,       // 0 = perfect match, 1 = match anything
+          includeScore: true,
+          ignoreLocation: true,
+          minMatchCharLength: 2,
+        });
+
+        // Search both the raw query and its Hindi transliteration
+        const fuseResultsRaw = fuzzy.search(q);
+        const fuseResultsHindi = qHindi !== q ? fuzzy.search(qHindi) : [];
+
+        // Merge, keep best score per product
+        const scoreMap = new Map<string, { item: any; score: number }>();
+        for (const r of [...fuseResultsRaw, ...fuseResultsHindi]) {
+          const key = r.item.id || r.item.name;
+          const existing = scoreMap.get(key);
+          if (!existing || (r.score ?? 1) < existing.score) {
+            scoreMap.set(key, { item: r.item, score: r.score ?? 1 });
+          }
+        }
+
+        matched = Array.from(scoreMap.values())
+          .sort((a, b) => a.score - b.score)
+          .map(v => v.item);
+      }
+
+      setSearchResults(matched);
+
+      // ── Autocomplete suggestions (unique display names, max 5) ─────────────
+      const seen = new Set<string>();
+      const suggestions: {name: string; imageUrl: string | null; matchField: string}[] = [];
+      for (const p of matched) {
+        const localLower = (p.localName || '').toLowerCase();
+        let displayName = p.name;
+        let matchField = 'name';
+        if (
+          localLower.includes(q) ||
+          (qHindi !== q && localLower.includes(qHindi))
+        ) {
+          displayName = p.localName || p.name;
+          matchField = 'localName';
+        }
+        const baseKey = cleanProductName(displayName);
+        if (seen.has(baseKey)) continue;
+        seen.add(baseKey);
+        suggestions.push({ name: displayName, imageUrl: p.imageUrl || null, matchField });
+        if (suggestions.length >= 5) break;
+      }
+      setSearchSuggestions(suggestions);
+    } else {
+      setSearchResults([]);
+      setSearchSuggestions([]);
+    }
+  }, [search, catalog]);
+
+  // Tell the Sidebar (via shared context) to hide its fixed buttons when search is active or focused
+  const [searchFocused, setSearchFocused] = useState(false);
+  useEffect(() => {
+    setIsSearching(search.length > 0 || searchFocused);
+    return () => { setIsSearching(false); };
+  }, [search, searchFocused]);
+
+  const addToCart = (product: any, qty?: number) => {
+    const baseUnit = product.baseUnit || 'pc';
+    const baseQuantity = Number(product.baseQuantity) || 1;
+    // For weight/volume units with baseQuantity > 1 (e.g. 100g, 250ml),
+    // default one "unit" = baseQuantity so the price is correct immediately
+    const isWeightVol = ['g', 'ml', 'kg', 'l'].includes(baseUnit.toLowerCase());
+    const defaultQty = qty !== undefined ? qty : (isWeightVol && baseQuantity > 1 ? baseQuantity : 1);
+
+    setCart(prev => {
+      const existing = prev.find(item => item.productId === product.id && item.unit === baseUnit);
+      if (existing) {
+        return prev.map(item => item === existing ? { ...item, quantity: item.quantity + defaultQty } : item);
+      }
+      return [...prev, {
+        productId: product.id,
+        name: product.name,
+        localName: product.localName || null,
+        imageUrl: product.imageUrl || null,
+        price: product.price || 0,
+        costPrice: product.costPrice || 0,
+        unit: baseUnit,
+        baseUnit: baseUnit,
+        baseQuantity: baseQuantity,
+        packetWeight: product.packetWeight || null,
+        packetUnit: product.packetUnit || null,
+        quantity: defaultQty
+      }];
+    });
+
+    setSearch('');
+  };
+
+  const updateCartItem = (index: number, field: string, value: any) => {
+    const newCart = [...cart];
+    newCart[index] = { ...newCart[index], [field]: value };
+    setCart(newCart);
+  };
+
+  const removeFromCart = (index: number) => setCart(cart.filter((_, i) => i !== index));
+
+  const calculateItemTotal = (item: any) => {
+    const isTentHouse = shop?.businessType?.name === 'Tent House';
+    const price = Number(item.price) || 0;
+    
+    if (isTentHouse) {
+      return item.quantity * price;
+    }
+
+    const baseUnit = (item.baseUnit || 'pc').toString().trim().toLowerCase();
+    const scannedUnit = (item.unit || baseUnit).toString().trim().toLowerCase();
+    const baseQuantity = Number(item.baseQuantity) || 1;
+
+    const isPktBase = ['pkt', 'packet', 'pack', 'pc', 'pcs', 'piece'].includes(baseUnit);
+    const isPktScanned = ['pkt', 'packet', 'pack', 'pc', 'pcs', 'piece'].includes(scannedUnit);
+    const isWeightScanned = ['kg', 'g', 'gram', 'l', 'ml', 'ltr', 'liter', 'kilo'].includes(scannedUnit);
+    const isWeightScanned1000 = ['kg', 'kilo', 'l', 'ltr', 'liter'].includes(scannedUnit);
+
+    if (isPktBase && item.packetWeight && isWeightScanned) {
+       let qBase = Number(item.quantity) || 0;
+       if (isWeightScanned1000) qBase *= 1000;
+
+       let pktWeightBase = Number(item.packetWeight) || 1;
+       const pUnit = (item.packetUnit || 'g').toString().trim().toLowerCase();
+       if (['kg', 'kilo', 'l', 'ltr', 'liter'].includes(pUnit)) pktWeightBase *= 1000;
+
+       const packetsNeeded = qBase / pktWeightBase;
+       return packetsNeeded * price;
+    }
+
+    if (isPktBase || isPktScanned) return (Number(item.quantity) || 0) * price;
+
+    let qBase = Number(item.quantity) || 0;
+    if (isWeightScanned1000) qBase *= 1000;
+
+    let bBase = baseQuantity;
+    const isBaseWeight1000 = ['kg', 'kilo', 'l', 'ltr', 'liter'].includes(baseUnit);
+    if (isBaseWeight1000) bBase *= 1000;
+
+    return bBase > 0 ? (qBase / bBase) * price : 0;
+  };
+
+  const handlePriceUpdate = async (productId: string, newPrice: number) => {
+    if (!productId) return;
+    try {
+      await fetch(`/api/products/${productId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ price: newPrice }),
+      });
+      // Update local catalog so future adds use the new price
+      setCatalog(prev => {
+        const updated = prev.map(p => p.id === productId ? { ...p, price: newPrice } : p);
+        if (shop?.id) catalogCache.set(shop.id, updated);
+        return updated;
+      });
+    } catch (e) {
+      console.error('Failed to update product price:', e);
+    }
+  };
+
+  const totalAmount = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
+
+  const handleGenerateBill = async (overrideInfo?: any) => {
+    // Determine if overrideInfo is a valid object (and not a React click event)
+    const infoToUse = (overrideInfo && !overrideInfo.type) ? overrideInfo : customerInfo;
+
+    if (cart.length === 0) return alert('Cart is empty!');
+    if (savingBill) return;
+    setSavingBill(true);
+
+    // Generate WhatsApp message if customer phone is available
+    if (infoToUse.phone) {
+      // Calculate total amount
+      const totalAmount = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
+      
+      // Prepare cart items with calculated totals for message
+      const cartItemsForMessage = cart.map(item => ({
+        ...item,
+        itemTotal: calculateItemTotal(item)
+      }));
+      
+      // Generate the WhatsApp message
+      const whatsappMessage = generateWhatsAppMessage(
+        shop.name || 'Kirana Store',
+        cartItemsForMessage,
+        totalAmount
+      );
+      
+      // Open WhatsApp chat with pre-filled message (as fast as possible)
+      openWhatsAppChat(infoToUse.phone, whatsappMessage);
+    }
+
+    const payload = {
+      shopId: shop.id,
+      items: cart,
+      ...infoToUse,
+      customerName: infoToUse.name.trim() || null,
+      customerPhone: infoToUse.phone.trim() || null,
+    };
+
+    // Keep the entered customer details until the bill has been saved.
+    return fetch('/api/bills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(res => {
+      if (res.ok) {
+        setCart([]);
+        setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' });
+        setMode('PENDING');
+        // Refresh bills to show the new one in the pending tab
+        fetchBills(shop.id);
+        return true;
+      } else {
+        alert('Failed to save bill on server.');
+        return false;
+      }
+    }).catch(err => {
+      console.error("Failed to save bill", err);
+      alert('Network error while saving bill.');
+      return false;
+    }).finally(() => setSavingBill(false));
+  };
+
+  // AI & OCR Common Logic
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const selectedFile = e.target.files[0];
+      setFile(selectedFile);
+      setPreviewUrl(URL.createObjectURL(selectedFile));
+    }
+  };
+
+  const processImage = async () => {
+    if (!file) return;
+    setIsProcessing(true);
+
+    const compressImage = (imageFile: File): Promise<string> => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(imageFile);
+        reader.onload = (event) => {
+          const img = new Image();
+          img.src = event.target?.result as string;
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 800;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > MAX_WIDTH) {
+              height = Math.round((height * MAX_WIDTH) / width);
+              width = MAX_WIDTH;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
+          };
+        };
+      });
+    };
+
+    try {
+      const base64 = await compressImage(file);
+      const endpoint = mode === 'OCR' ? '/api/vision/ocr' : '/api/vision/analyze';
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64, shopId: shop.id })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setReviewItems([{ name: `Engine Error: ${data.error || 'Server failed'}`, quantity: 0, unit: '', price: 0, productId: null, isRepeated: false }]);
+        setIsReviewing(true);
+        setIsProcessing(false);
+        return;
+      }
+
+      if (data.items && data.items.length > 0) {
+        setReviewItems(data.items);
+        setIsReviewing(true);
+      } else {
+        setReviewItems([{ name: `Error: Could not detect any text/items in this image`, quantity: 0, unit: '', price: 0, productId: null, isRepeated: false }]);
+        setIsReviewing(true);
+      }
+    } catch (err: any) {
+      setReviewItems([{ name: `Network Error: ${err.message}`, quantity: 0, unit: '', price: 0, productId: null, isRepeated: false }]);
+      setIsReviewing(true);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const confirmReview = () => {
+    if (reviewItems.some(item => item.needsMatchReview)) {
+      alert('Choose a product for each uncertain item, or remove it before adding the bill.');
+      return;
+    }
+    // Merge valid review items into cart
+    const validItems = reviewItems.filter(item => item.name && (item.price > 0 || item.sellingPrice > 0)).map(i => ({
+      ...i,
+      price: i.price || i.sellingPrice || 0,
+      baseUnit: i.baseUnit || i.unit || 'pc',
+      baseQuantity: i.baseQuantity || ((i.baseUnit === 'g' || i.baseUnit === 'ml') ? 100 : 1)
+    }));
+    setCart(prev => [...prev, ...validItems]);
+    setIsReviewing(false);
+    setFile(null);
+    setPreviewUrl(null);
+    setReviewItems([]);
+    setShowCartSheet(true); // show cart bottom sheet after adding items
+    
+    if (isListeningRef.current) {
+      stopVoiceInput();
+    }
+  };
+
+  return (
+    <>
+    <div
+      className={`${dockStyles.page} flex flex-col w-full min-w-0 max-w-7xl mx-auto h-full bg-white`}
+      data-searching={search.length > 0 ? 'true' : undefined}
+      data-dock-hidden={mode === 'MANUAL' && search.length > 0 ? 'true' : undefined}
+      data-has-cart={cart.length > 0 ? 'true' : undefined}
+    >
+
+      {/* Main Panel — fills full height, voice button floats over the bottom */}
+      <div className="flex-1 flex flex-col min-h-0">
+        <VoiceEngineControl voice={voiceEngine} busy={isListening} onRestore={restoreCurrentRecognition} />
+        <div className="bg-white overflow-hidden flex flex-col flex-1 min-h-0">
+          {/* Swipeable slider - 3 panels side by side */}
+          <div className="overflow-hidden flex-1" style={{minHeight: 0}}>
+          <div
+            ref={sliderRef}
+            className="flex h-full"
+            style={{
+              transform: `translateX(-${modeIndex * 100}%)`,
+              transition: 'transform 200ms ease-out',
+              willChange: 'transform',
+            }}
+            onTouchStart={(e) => {
+              touchStartX.current = e.touches[0].clientX;
+              touchStartY.current = e.touches[0].clientY;
+              isSwiping.current = false;
+            }}
+            onTouchMove={(e) => {
+              const dx = e.touches[0].clientX - touchStartX.current;
+              const dy = e.touches[0].clientY - touchStartY.current;
+              if (!isSwiping.current && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+                isSwiping.current = true;
+              }
+              if (isSwiping.current) e.preventDefault();
+            }}
+            onTouchEnd={(e) => {
+              if (!isSwiping.current) return;
+              const dx = e.changedTouches[0].clientX - touchStartX.current;
+              const threshold = 50;
+              const modes: Array<'MANUAL' | 'PENDING' | 'OCR'> = ['OCR', 'PENDING', 'MANUAL'];
+              if (dx < -threshold && modeIndex < 2) {
+                setMode(modes[modeIndex + 1]);
+                setSelectedCategory(null);
+              } else if (dx > threshold && modeIndex > 0) {
+                setMode(modes[modeIndex - 1]);
+                setSelectedCategory(null);
+              }
+              isSwiping.current = false;
+            }}
+          >
+            {/* Slide 0 - Speak your order / Review */}
+            <div ref={slide2Ref} className="w-full shrink-0 flex flex-col overflow-y-auto" style={{minHeight: 0}}
+            >
+              {!isReviewing ? (
+                /* ── IDLE STATE: Upload / Voice prompt ── */
+                <div className="flex flex-col gap-4 p-5">
+                  {/* Voice hint banner */}
+                  {isListening ? (
+                    <div className="relative overflow-hidden rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50">
+                      <div className="h-1 w-full bg-gradient-to-r from-rose-400 via-orange-400 to-rose-400 animate-pulse" />
+                      <div className="p-4 flex items-start gap-3">
+                        <span className="relative flex h-3 w-3 mt-0.5 shrink-0">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold uppercase tracking-widest text-rose-500 mb-1">Listening…</p>
+                          <p className="text-slate-700 text-sm leading-relaxed break-words">{finalTranscript || 'Say items like "2 kg sugar, 1 packet salt…"'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 flex items-center gap-3">
+                      <span className="text-2xl">🎤</span>
+                      <div>
+                        <p className="text-sm font-semibold text-indigo-700">{hindiMode ? 'अपना ऑर्डर बोलें' : 'Speak your order'}</p>
+                        <p className="text-xs text-indigo-500 mt-0.5">{hindiMode ? 'बिल्ली की नाक दबाकर रखें और सामान बोलें' : "Hold the cat’s nose below and say your items"}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Divider */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-slate-200" />
+                    <span className="text-xs text-slate-400 font-medium">or upload a slip</span>
+                    <div className="flex-1 h-px bg-slate-200" />
+                  </div>
+
+                  {/* Upload area */}
+                  <div
+                    className="border-2 border-dashed border-indigo-200 rounded-2xl bg-indigo-50/40 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
+                    style={{minHeight: '120px'}}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleFileChange} />
+                    {previewUrl
+                      ? <img src={previewUrl} alt="Preview" className="max-h-48 rounded-xl shadow-sm object-contain" />
+                      : (
+                        <div className="flex flex-col items-center gap-2 py-6 text-indigo-500">
+                          <Camera size={36} />
+                          <span className="font-semibold text-sm">Tap to capture or upload</span>
+                          <span className="text-xs text-indigo-400">Photo of handwritten / printed list</span>
+                        </div>
+                      )
+                    }
+                  </div>
+
+                  {file && (
+                    <button
+                      disabled={isProcessing}
+                      onClick={processImage}
+                      className="w-full bg-indigo-600 text-white font-semibold py-3.5 rounded-xl hover:bg-indigo-700 active:bg-indigo-800 transition flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
+                    >
+                      {isProcessing ? (
+                        <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Analyzing…</>
+                      ) : (
+                        <><Camera size={16} />Analyze Image</>
+                      )}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                /* ── REVIEW STATE: Detected items list ── */
+                <div className="flex flex-col" style={{height: '100%'}}>
+
+                  {/* Live transcript strip */}
+                  {isListening && finalTranscript && (
+                    <div className="mx-4 mt-3 px-3 py-2 bg-rose-50 border border-rose-100 rounded-xl flex-shrink-0">
+                      <p className="text-xs text-rose-600 leading-relaxed line-clamp-2">{finalTranscript}</p>
+                    </div>
+                  )}
+
+                  {/* ── DEBUG PERF PANEL — remove after testing ── */}
+                  {isListening && perfStats && (
+                    <div className="mx-4 mt-2 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl flex-shrink-0 font-mono">
+                      <p className="text-[10px] font-bold text-yellow-400 mb-1">⏱ PERF · {perfStats.items} items</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-slate-300">
+                        <span>parse</span>       <span className="text-white text-right">{perfStats.parse} ms</span>
+                        <span>fuse+score</span>  <span className="text-white text-right">{perfStats.fuse} ms</span>
+                        <span>enrich</span>      <span className="text-white text-right">{perfStats.enrichment} ms</span>
+                        <span>suggest</span>     <span className="text-white text-right">{perfStats.suggestions} ms</span>
+                        <span>setState</span>    <span className="text-white text-right">{perfStats.setState} ms</span>
+                        <span className="text-yellow-400 font-bold">TOTAL</span>
+                        <span className="text-yellow-400 font-bold text-right">{perfStats.total} ms</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Items list */}
+                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5" style={{minHeight: 0}}>
+                    {reviewItems.map((item, idx) => (
+                      <div
+                        key={idx}
+                        {...(canCorrectProductByVoice(item) ? holdToSpeak(idx) : {})}
+                        tabIndex={canCorrectProductByVoice(item) ? 0 : undefined}
+                        aria-label={canCorrectProductByVoice(item) ? `Hold to correct ${item.name}` : undefined}
+                        style={canCorrectProductByVoice(item) ? { touchAction: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } : undefined}
+                        className={`relative rounded-2xl border overflow-hidden transition-all ${
+                          isListening && correctingItemIdx === idx
+                            ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-300'
+                            : item.isRepeated
+                            ? 'border-amber-300 bg-amber-50/30'
+                            : item.productId
+                            ? 'border-slate-200 bg-white'
+                            : 'border-rose-200 bg-rose-50/20'
+                        }`}
+                      >
+                        {/* Top color bar */}
+                        <div className={`h-0.5 w-full ${item.isRepeated ? 'bg-amber-400' : item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+
+                        <div className="p-3">
+                          {item.isRepeated && (
+                            <span className="absolute top-2.5 right-2.5 bg-amber-400 text-white text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full">Dup</span>
+                          )}
+
+                          {/* Row 1: image + name + delete */}
+                          <div className="flex gap-2.5 items-center">
+                            <div className={`w-10 h-10 rounded-lg overflow-hidden shrink-0 flex items-center justify-center border ${item.productId ? 'border-slate-100 bg-slate-50' : 'border-rose-100 bg-rose-50'}`}>
+                              {item.imageUrl
+                                ? <img src={item.imageUrl} className="w-full h-full object-cover" />
+                                : <Package className={item.productId ? 'text-slate-300' : 'text-rose-300'} size={18} />
+                              }
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <input
+                                value={hindiMode && item.localName ? item.localName : item.name}
+                                onChange={e => { const n = [...reviewItems]; n[idx].name = e.target.value; setReviewItems(n); }}
+                                className="font-semibold text-slate-900 w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none text-sm pb-0.5 transition-colors"
+                                placeholder="Product Name"
+                              />
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.productId ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                                <span className={`text-[10px] font-medium truncate ${item.productId ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                  {item.productId
+                                    ? (hindiMode ? (item.name || item.aiLabel || 'Matched') : (item.localName || item.aiLabel || 'Matched'))
+                                    : item.needsMatchReview ? 'Please choose the correct product' : 'Not found in catalog'}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                const newItems = reviewItems.filter((_, i) => i !== idx);
+                                baseReviewItemsRef.current = newItems;
+                                globalTranscriptRef.current = "";
+                                currentBreathRef.current = "";
+                                setFinalTranscript("");
+                                setOpenSuggestionIdx(null);
+                                stopVoiceInput();
+                                setReviewItems(newItems);
+                              }}
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors shrink-0"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+
+                          {item.productId && item.selectedPackLabel && (
+                            <p className={`mt-2 text-xs ${item.isApproximateSize ? 'text-amber-700' : 'text-slate-500'}`}>
+                              {!item.packSize && item.saleForm !== 'packet' && item.parsedQty && item.parsedUnit
+                                ? totalQuantityPlan(item.parsedQty, item.parsedUnit, item)?.label
+                                : <>{item.isApproximateSize ? 'Closest available size: ' : 'Pack size: '}{item.selectedPackLabel}
+                                  {item.packetCount ? ` × ${item.packetCount} packet${item.packetCount === 1 ? '' : 's'}` : ''}</>}
+                            </p>
+                          )}
+                          {item.needsMatchReview && (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                              <p className="text-xs font-semibold text-amber-800">{item.matchReason}</p>
+                              <p className="mt-1 text-xs text-amber-800">Check the quantity and unit after choosing a product.</p>
+                              {canCorrectProductByVoice(item) && !item.suggestions?.brandVariants?.length && !item.suggestions?.sizeVariants?.length && (
+                                <p className="mt-1 text-xs text-amber-800">Hold this card and repeat the full product name. Release to update this item.</p>
+                              )}
+                            </div>
+                          )}
+                          {canCorrectProductByVoice(item) && (
+                            <p className="mt-2 text-xs font-semibold text-rose-600" aria-live="polite">
+                              {isListening && correctingItemIdx === idx ? 'Listening… release to correct this product' : 'Hold card to correct by voice'}
+                            </p>
+                          )}
+
+                          {/* Row 2: rate | total | suggest-arrow | qty-pill */}
+                          <div className="flex gap-2 mt-2.5 items-center">
+                            {/* 1st: Rate box — fixed width so it doesn't crowd others */}
+                            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-9 w-24 shrink-0">
+                              <span className="text-slate-400 text-xs font-medium">₹</span>
+                              <input type="number" className="w-full bg-transparent focus:outline-none text-xs font-bold text-slate-800 min-w-0" value={item.price || item.sellingPrice || 0} onChange={e => { const n = [...reviewItems]; n[idx].price = parseFloat(e.target.value) || 0; setReviewItems(n); }} />
+                            </div>
+                            {/* 2nd: Total */}
+                            <span className="text-xs font-bold text-indigo-600 shrink-0">
+                              ₹{calculateItemTotal(item).toFixed(0)}
+                            </span>
+                            {/* 3rd: Suggestions toggle arrow — available on every selected product */}
+                            {item.productId && (() => {
+                              const isOpen = openSuggestionIdx === idx;
+                              return (
+                                <button
+                                  onClick={() => {
+                                    if (!isOpen) {
+                                      setReviewItems(previous => previous.map((current, currentIdx) =>
+                                        currentIdx === idx ? { ...current, suggestions: getSuggestions(current) } : current));
+                                    }
+                                    setOpenSuggestionIdx(isOpen ? null : idx);
+                                  }}
+                                  className={`flex items-center justify-center h-9 w-9 rounded-xl shrink-0 border-2 transition-all active:scale-95 ${
+                                    isOpen
+                                      ? 'bg-violet-100 border-violet-400 text-violet-600'
+                                      : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-violet-300 hover:text-violet-500'
+                                  }`}
+                                  title={isOpen ? 'Hide suggested products' : 'Show suggested products'}
+                                  aria-label={isOpen ? 'Hide suggested products' : 'Show suggested products'}
+                                  aria-expanded={isOpen}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 200ms' }}><path d="M9 18l6-6-6-6"/></svg>
+                                </button>
+                              );
+                            })()}
+                            {/* 4th: Tappable quantity pill — opens the quantity selector sheet */}
+                            <button
+                              onClick={() => setQtyPickerIdx(idx)}
+                              className="flex items-center gap-1.5 bg-indigo-50 border-2 border-indigo-300 rounded-xl h-9 px-3 ml-auto shrink-0 active:bg-indigo-100 active:scale-95 transition-all"
+                              title="Tap to change quantity"
+                            >
+                              <span className="text-sm font-black text-indigo-700">{item.quantity}</span>
+                              <span className="text-[11px] font-semibold text-indigo-400">{item.unit || item.baseUnit}</span>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400 ml-0.5"><path d="M6 9l6 6 6-6"/></svg>
+                            </button>
+                          </div>
+
+                          {openSuggestionIdx === idx && !item.suggestions?.brandVariants?.length && !item.suggestions?.sizeVariants?.length && (
+                            <p className="mt-3 border-t border-slate-100 pt-2.5 text-xs text-slate-500">No other suggested products available.</p>
+                          )}
+                          {/* Selected products show alternatives when their arrow is opened. */}
+                          {(item.needsMatchReview || openSuggestionIdx === idx) && item.suggestions && (item.suggestions.brandVariants?.length > 0 || item.suggestions.sizeVariants?.length > 0) && (() => {
+                            const selectedBrand = selectedBrandPerItem[idx] || null;
+                            const totalWeightReview = !item.packSize && item.saleForm !== 'packet'
+                              && /^(kg|g|ml|l|ltr)$/.test(item.parsedUnit || '');
+                            const activeSizeVariants = totalWeightReview ? [] : selectedBrand
+                              ? getSizeVariantsForBrand(selectedBrand)
+                              : (item.suggestions.sizeVariants || []);
+                            const spokenKey = item.spokenWord || item.aiLabel || item.name;
+
+                            // Helper: build overrides object from a suggestion product
+                            const buildOverrides = (sug: any) => {
+                              const pQty = item.parsedQty !== undefined ? item.parsedQty : item.quantity;
+                              const pUnit = item.parsedUnit !== undefined ? item.parsedUnit : (item.unit || item.baseUnit || 'pc');
+                              const plan = !item.packSize && item.saleForm !== 'packet' ? totalQuantityPlan(pQty, pUnit, sug) : undefined;
+                              // Recompute for the newly chosen pack; an inferred count
+                              // from the previous product must never carry across sizes.
+                              const count = plan ? (plan.count ?? (plan.rank !== 1 ? 1 : undefined)) : item.packetCount;
+                              const recalculated = recalculateQtyAndUnit(pQty, pUnit, sug, count);
+                              return {
+                                productId: sug.id, name: sug.name, localName: sug.localName,
+                                price: sug.price, costPrice: sug.costPrice, category: sug.category, baseUnit: sug.baseUnit, baseQuantity: sug.baseQuantity,
+                                packetWeight: sug.packetWeight, packetUnit: sug.packetUnit, imageUrl: sug.imageUrl,
+                                quantity: recalculated.quantity, unit: recalculated.unit,
+                                parsedQty: pQty, parsedUnit: pUnit,
+                                confidence: 'high', needsMatchReview: false,
+                                packetCount: count, isApproximateSize: Boolean(plan && !plan.exact), selectedPackLabel: plan?.size,
+                              };
+                            };
+
+                            // Helper: pin a product as default for this spoken word
+                            const pinAsDefault = (sug: any) => {
+                              if (shop?.id && spokenKey) {
+                                voicePrefsCache.set(shop.id, spokenKey, { productId: sug.id });
+                                setPinnedProductId(sug.id);
+                                setTimeout(() => setPinnedProductId(null), 1800);
+                              }
+                            };
+
+                            // Helper: long-press handlers for a card
+                            const longPressHandlers = (sug: any) => ({
+                              onPointerDown: () => {
+                                longPressTimerRef.current = setTimeout(() => pinAsDefault(sug), 650);
+                              },
+                              onPointerUp: () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); },
+                              onPointerLeave: () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); },
+                              onContextMenu: (e: React.MouseEvent) => e.preventDefault(), // suppress mobile context menu
+                            });
+
+                            return (
+                            <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2.5">
+                              {/* Row 1: Pack Sizes — updates when a brand is selected */}
+                              {activeSizeVariants.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">
+                                    {selectedBrand ? `${pName(selectedBrand.name, selectedBrand.localName)} — Pack Sizes` : 'Pack Sizes'}
+                                    <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span>
+                                  </p>
+                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
+                                    onTouchStart={e => e.stopPropagation()}
+                                    onTouchMove={e => e.stopPropagation()}
+                                    onTouchEnd={e => e.stopPropagation()}
+                                  >
+                                    {activeSizeVariants.map((sug: any, sIdx: number) => {
+                                      const isPinned = pinnedProductId === sug.id;
+                                      return (
+                                        <button
+                                          key={sIdx}
+                                          onClick={() => {
+                                            const overrides = buildOverrides(sug);
+                                            if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                            const newItems = [...reviewItems]; newItems[idx] = { ...newItems[idx], ...overrides, suggestions: getSuggestions({ ...newItems[idx], ...overrides }) };
+                                            setReviewItems(newItems);
+                                            setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
+                                            setOpenSuggestionIdx(null);
+                                          }}
+                                          {...longPressHandlers(sug)}
+                                          className={`relative flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border ${
+                                            isPinned ? 'border-emerald-500 bg-emerald-50 scale-105'
+                                            : 'border-amber-200 bg-white hover:border-amber-400'
+                                          }`}
+                                        >
+                                          {isPinned && (
+                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
+                                          )}
+                                          <div className="w-full h-12 bg-amber-50 overflow-hidden flex items-center justify-center">
+                                            {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-amber-300" size={16} />}
+                                          </div>
+                                          <div className="p-1 text-center">
+                                            <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                            <p className="text-[9px] font-black text-amber-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Row 2: Brand / Variant suggestions */}
+                              {item.suggestions.brandVariants?.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1.5">Suggested Products <span className="normal-case font-normal text-slate-300 ml-1">hold to set default</span></p>
+                                  <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}
+                                    onTouchStart={e => e.stopPropagation()}
+                                    onTouchMove={e => e.stopPropagation()}
+                                    onTouchEnd={e => e.stopPropagation()}
+                                  >
+                                    {item.suggestions.brandVariants.map((sug: any, sIdx: number) => {
+                                      const isSelected = selectedBrand?.id === sug.id;
+                                      const isPinned = pinnedProductId === sug.id;
+                                      const sugSizes = totalWeightReview ? [] : getSizeVariantsForBrand(sug);
+                                      return (
+                                        <button
+                                          key={sIdx}
+                                          onClick={() => {
+                                            // Always swap the main item immediately
+                                            const overrides = buildOverrides(sug);
+                                            if (item.aiLabel) { itemOverridesRef.current[item.aiLabel] = overrides; }
+                                            const newItems = [...reviewItems];
+                                            newItems[idx] = {
+                                              ...newItems[idx],
+                                              ...overrides,
+                                              suggestions: getSuggestions({ ...newItems[idx], ...overrides })
+                                            };
+                                            setReviewItems(newItems);
+                                            // Close suggestion panel after selection
+                                            setOpenSuggestionIdx(null);
+                                            // If brand has pack sizes, highlight it so Pack Sizes row updates
+                                            if (sugSizes.length > 0) {
+                                              setSelectedBrandPerItem(prev => ({ ...prev, [idx]: isSelected ? null : sug }));
+                                            } else {
+                                              setSelectedBrandPerItem(prev => { const n = {...prev}; delete n[idx]; return n; });
+                                            }
+                                          }}
+                                          {...longPressHandlers(sug)}
+                                          className={`relative flex-shrink-0 flex flex-col items-center rounded-xl overflow-hidden w-16 transition-all border-2 ${
+                                            isPinned ? 'border-emerald-500 bg-emerald-50 scale-105'
+                                            : isSelected ? 'border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-100'
+                                            : 'border-slate-200 bg-white hover:border-indigo-300'
+                                          }`}
+                                        >
+                                          {isPinned && (
+                                            <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500 text-white rounded-full px-1 py-0.5 leading-none z-10">★</span>
+                                          )}
+                                          <div className="w-full h-12 bg-slate-50 overflow-hidden flex items-center justify-center">
+                                            {sug.imageUrl ? <img src={sug.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-300" size={16} />}
+                                          </div>
+                                          <div className="p-1 text-center">
+                                            <p className="text-[9px] font-bold text-slate-700 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                                            <p className="text-[9px] font-bold text-emerald-600">₹{(sug.price || 0).toFixed(0)}</p>
+                                            {!item.packSize && item.saleForm !== 'packet' && (
+                                              <p className="text-[9px] text-indigo-600 leading-tight mt-1">
+                                                {totalQuantityPlan(item.parsedQty, item.parsedUnit, sug)?.label}
+                                              </p>
+                                            )}
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={reviewEndRef} />
+                  </div>
+
+                  {/* Add to Bill button */}
+                  <div className="px-4 pb-20 pt-2 flex-shrink-0 border-t border-slate-100 bg-white flex items-center gap-2">
+                    {/* Red clear button — always visible, left of Add to Bill */}
+                    <button
+                      onClick={() => { stopVoiceInput(); setIsReviewing(false); setReviewItems([]); setOpenSuggestionIdx(null); globalTranscriptRef.current = ""; currentBreathRef.current = ""; setFinalTranscript(""); }}
+                      className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-2xl bg-rose-50 border border-rose-200 text-rose-500 hover:bg-rose-100 active:scale-95 transition-all"
+                      aria-label="Clear items"
+                    >
+                      <X size={20} strokeWidth={2.5} />
+                    </button>
+                    <button
+                      onClick={confirmReview}
+                      disabled={reviewItems.some(item => item.needsMatchReview)}
+                      className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-3.5 rounded-2xl hover:from-emerald-500 hover:to-emerald-400 active:scale-[0.98] transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <CheckCircle size={18} />
+                      Add {reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''} to Bill
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Slide 1 - Bills */}
+            <div ref={slide1Ref} className="w-full shrink-0 overflow-y-auto p-4 space-y-5 sm:p-6">
+              <BillingBillSection
+                bills={allPendingBills} kind="pending" limit={5}
+                expanded={showMorePending} loading={loadingBills}
+                onToggle={() => setShowMorePending(value => !value)} onSelect={setSelectedBill}
+              />
+              <BillingBillSection
+                bills={allCompletedBills} kind="completed" limit={3}
+                expanded={showMoreCompleted} loading={loadingBills}
+                onToggle={() => setShowMoreCompleted(value => !value)} onSelect={setSelectedBill}
+              />
+              <BillingBillSection
+                bills={allUnpaidBills} kind="unpaid" limit={3}
+                expanded={showMoreUnpaid} loading={loadingBills}
+                onToggle={() => setShowMoreUnpaid(value => !value)} onSelect={setSelectedBill}
+              />
+            </div>
+
+            {/* Slide 2 - Manual Search */}
+            <div ref={slide0Ref} className="w-full shrink-0 overflow-y-auto flex flex-col"
+              onTouchStart={() => { if (search.length > 0) searchInputRef.current?.blur(); }}
+              onScroll={() => { if (search.length > 0) searchInputRef.current?.blur(); setActiveSuggestionId(null); }}
+            >
+
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 bg-white">
+                <div><h2 className="text-sm font-bold text-slate-900">Your products</h2><p className="text-[11px] text-slate-400">Tap a card to add to the bill</p></div>
+                <button disabled={bulkDeleting} onClick={() => { setManageProducts(!manageProducts); setSelectedProducts(new Set()); }} className="ml-auto rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">{manageProducts ? 'Done' : 'Select'}</button>
+                <button onClick={() => setProductEditor({ product: null })} className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"><Plus size={15} /> Add product</button>
+                <a href={`/${shop.id}/shop/catalog-setup`} className="rounded-xl border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-600 hover:bg-indigo-50">Browse catalog</a>
+              </div>
+              {manageProducts && <div className="flex flex-wrap items-center gap-3 px-4 py-2 bg-indigo-50 text-xs">
+                <span className="font-semibold text-indigo-700">{selectedProducts.size} selected</span>
+                <button disabled={bulkDeleting} onClick={() => setSelectedProducts(selectedProducts.size === catalog.length ? new Set() : new Set(catalog.map(p => p.id)))} className="text-indigo-600 font-semibold">{selectedProducts.size === catalog.length ? 'Clear all' : 'Select all products'}</button>
+                <button disabled={bulkDeleting || !selectedProducts.size} onClick={deleteSelectedProducts} className="ml-auto rounded-lg bg-rose-600 px-3 py-2 text-white font-semibold disabled:opacity-50">{bulkDeleting ? 'Deleting…' : 'Delete selected'}</button>
+              </div>}
+              {/* ── Category full-page view ── */}
+              {selectedCategory ? (
+                <div className="flex flex-col flex-1">
+                  {/* Header */}
+                  <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-slate-100 sticky top-0 bg-white z-10">
+                    <button
+                      onClick={() => setSelectedCategory(null)}
+                      className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+                    </button>
+                    <h2 className="font-bold text-slate-900 text-base">{hindiMode ? (CATEGORY_HINDI[selectedCategory] || selectedCategory) : selectedCategory}</h2>
+                    <span className="ml-auto text-xs text-slate-400">
+                      {catalog.filter(p => (p.category || 'Uncategorized') === selectedCategory).length} items
+                    </span>
+                  </div>
+                  {/* Products grid */}
+                  <div className="grid grid-cols-3 gap-3 p-4">
+                    {catalog.filter(p => (p.category || 'Uncategorized') === selectedCategory).map((p: any) => {
+                      const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
+                      const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
+                      return (
+                        <ProductCard key={p.id} p={p} qty={qty} onEdit={() => setProductEditor({ product: p })} selectionMode={manageProducts} selected={selectedProducts.has(p.id)} onSelect={() => { if (!bulkDeleting) toggleManagedProduct(p.id); }}
+                          onAdd={() => addToCart(p)}
+                          onInc={() => updateCartItem(cartIdx, 'quantity', qty + (Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1))}
+                          onDec={() => { const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1; cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+
+              ) : (
+                /* ── Home view ── */
+                <div className="flex flex-col gap-0">
+
+                  {/* Search bar */}
+                  <div className="px-4 pt-4 pb-3 sticky top-0 bg-white z-20 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      {/* Language toggle — shown here on mobile during search */}
+                      <button
+                        onClick={toggleHindi}
+                        className={`md:hidden flex-shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-bold shadow-sm transition-all ${
+                          hindiMode ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'
+                        }`}
+                        title={hindiMode ? 'Hindi ON' : 'Hindi OFF'}
+                      >
+                        <span>अ</span>
+                        <span className={`w-5 h-3 rounded-full relative transition-colors ${hindiMode ? 'bg-orange-300' : 'bg-slate-300'}`}>
+                          <span className={`absolute top-0.5 w-2 h-2 rounded-full bg-white shadow transition-all ${hindiMode ? 'left-2.5' : 'left-0.5'}`} />
+                        </span>
+                      </button>
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input
+                          ref={searchInputRef}
+                          type="search"
+                          inputMode="search"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="off"
+                          spellCheck={false}
+                          enterKeyHint="search"
+                          placeholder="Search products…"
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          onFocus={() => setSearchFocused(true)}
+                          onBlur={() => setSearchFocused(false)}
+                          className="w-full pl-10 pr-8 py-2.5 bg-slate-100 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition font-medium"
+                        />
+                        {search && (
+                          <button onClick={() => { setSearch(''); searchInputRef.current?.blur(); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <X size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Blinkit-style autocomplete suggestions — inline in page flow, not a floating overlay ── */}
+                  {search.length > 1 && searchSuggestions.length > 0 && (
+                    <div className="bg-white border-b border-slate-100">
+                      {searchSuggestions.map((sug, idx) => {
+                        // Highlight matching portion
+                        const q = search.toLowerCase();
+                        const qHindi = transliterateHinglishToHindi(q);
+                        const sugLower = sug.name.toLowerCase();
+                        let matchStart = sugLower.indexOf(q);
+                        let matchLen = q.length;
+                        if (matchStart === -1 && qHindi !== q) {
+                          matchStart = sugLower.indexOf(qHindi);
+                          matchLen = qHindi.length;
+                        }
+                        const before = matchStart >= 0 ? sug.name.slice(0, matchStart) : sug.name;
+                        const match = matchStart >= 0 ? sug.name.slice(matchStart, matchStart + matchLen) : '';
+                        const after = matchStart >= 0 ? sug.name.slice(matchStart + matchLen) : '';
+
+                        return (
+                          <button
+                            key={idx}
+                            className={`w-full flex items-center gap-3 px-4 py-3 text-left bg-white hover:bg-slate-50 active:bg-slate-100 transition-colors ${
+                              idx < searchSuggestions.length - 1 ? 'border-b border-slate-100' : ''
+                            }`}
+                            onClick={() => setSearch(sug.name)}
+                          >
+                            {/* Thumbnail */}
+                            <div className="w-9 h-9 rounded-xl bg-slate-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                              {sug.imageUrl
+                                ? <img src={sug.imageUrl} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                : <Package size={16} className="text-slate-300" />
+                              }
+                            </div>
+                            {/* Suggestion text with highlight */}
+                            <span className="text-sm text-slate-700 truncate flex-1">
+                              {matchStart >= 0 ? (
+                                <>{before}<span className="font-bold text-slate-900">{match}</span>{after}</>
+                              ) : (
+                                sug.name
+                              )}
+                            </span>
+                            {/* Search arrow icon */}
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 flex-shrink-0">
+                              <path d="M7 17L17 7M17 7H7M17 7V17"/>
+                            </svg>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* ── SEARCH RESULTS ── */}
+                  {search.length > 1 ? (
+                    <div className="px-4 pt-3">
+                      {searchResults.length === 0 ? (
+                        <div className="py-12 text-center text-slate-400">
+                          <Package size={36} className="mx-auto mb-2 opacity-30" />
+                          <p className="text-sm">No products found</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-3">
+                          {searchResults.map((p: any) => {
+                            const cartIdx = cart.findIndex(c => c.productId === p.id && c.unit === p.baseUnit);
+                            const qty = cartIdx >= 0 ? cart[cartIdx].quantity : 0;
+                            return (
+                              <ProductCard key={p.id} p={p} qty={qty} onEdit={() => setProductEditor({ product: p })} selectionMode={manageProducts} selected={selectedProducts.has(p.id)} onSelect={() => { if (!bulkDeleting) toggleManagedProduct(p.id); }}
+                                onAdd={() => addToCart(p)}
+                                onInc={() => updateCartItem(cartIdx, 'quantity', qty + (Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1))}
+                                onDec={() => { const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((p.baseUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1; cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                  ) : (
+                    /* ── HOME: Top selling + Categories ── */
+                    <>
+                      {/* Top Selling — grid layout */}
+                      {catalog.length > 0 && (
+                        <div className="pt-4 pb-2 bg-gradient-to-b from-amber-50 via-orange-50/50 to-yellow-50/30 rounded-2xl mx-2 mb-1">
+                          <div className="flex items-center px-4 mb-3">
+                            <h2 className="text-sm font-bold text-slate-900">⚡ Top Selling</h2>
+                          </div>
+
+                          {/* Product grid */}
+                          <div className="grid grid-cols-3 gap-2 px-3 pb-3">
+                            {catalog.slice(0, 18).map((p: any) => {
+                              // Match by productId only — unit may differ after qty picker changes it
+                              const cartIdx = cart.findIndex((c: any) => c.productId === p.id);
+                              const cartItem = cartIdx >= 0 ? cart[cartIdx] : null;
+                              const qty = cartItem ? cartItem.quantity : 0;
+                              const cartUnit = cartItem ? cartItem.unit : p.baseUnit;
+                              const isActive = activeSuggestionId === p.id;
+                              const step = Number(p.baseQuantity) > 1 && ['g','ml','kg','l'].includes((cartUnit||'').toLowerCase()) ? Number(p.baseQuantity) : 1;
+                              // Find if any cart item is a suggestion of this product
+                              const sugs = getSuggestions({ productId: p.id, name: p.name, localName: p.localName, category: p.category });
+                              const sugIds = new Set([...sugs.brandVariants, ...sugs.sizeVariants].map((s: any) => s.id));
+                              const sugCartProduct = cart
+                                .map((c: any) => catalog.find((cp: any) => cp.id === c.productId))
+                                .find((cp: any) => cp && sugIds.has(cp.id));
+                              return (
+                                <div
+                                  key={p.id}
+                                  className={`transition-all duration-200 scale-[0.93] origin-top ${isActive ? 'scale-[0.98]' : ''}`}
+                                >
+                                  <ProductCard p={p} qty={qty} mini onEdit={() => setProductEditor({ product: p })} selectionMode={manageProducts} selected={selectedProducts.has(p.id)} onSelect={() => { if (!bulkDeleting) toggleManagedProduct(p.id); }}
+                                    onAdd={() => addToCart(p)}
+                                    onInc={() => updateCartItem(cartIdx, 'quantity', qty + step)}
+                                    onDec={() => { cartIdx >= 0 && (qty <= step ? removeFromCart(cartIdx) : updateCartItem(cartIdx, 'quantity', qty - step)); }}
+                                    onSuggest={() => setActiveSuggestionId(isActive ? null : p.id)}
+                                    suggestedInCart={sugCartProduct || null}
+                                    onQtyPicker={() => setCatalogQtyProduct(p)}
+                                  />
+                                  {/* Active indicator dot */}
+                                  {isActive && (
+                                    <div className="flex justify-center mt-1">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Divider */}
+                      <div className="h-2 bg-slate-100 my-1" />
+
+                      {/* Categories grid */}
+                      <div className="px-4 pt-4 pb-6 bg-gradient-to-b from-indigo-50 via-violet-50 to-slate-50 rounded-2xl mx-2 mt-1">
+                        <h2 className="text-sm font-bold text-slate-900 mb-3">🛒 Shop by Category</h2>
+                        {(() => {
+                          const cats = Array.from(new Set(catalog.map(p => p.category || 'Uncategorized'))).sort();
+                          // Pick a representative image per category
+                          const catData = cats.map(cat => {
+                            const products = catalog.filter(p => (p.category || 'Uncategorized') === cat);
+                            const imgProduct = products.find(p => p.imageUrl);
+                            return { cat, count: products.length, img: CATEGORY_IMAGES[cat] || imgProduct?.imageUrl || null };
+                          });
+                          return (
+                            <div className="grid grid-cols-3 gap-4">
+                              {catData.map(({ cat, count, img }) => (
+                                <button
+                                  key={cat}
+                                  onClick={() => setSelectedCategory(cat)}
+                                  className="flex flex-col items-center gap-2 py-3 px-1 bg-white/70 rounded-2xl hover:bg-white hover:shadow-md active:scale-95 transition-all"
+                                >
+                                  {/* Circular image */}
+                                  <div className="w-16 h-16 rounded-full overflow-hidden ring-2 ring-indigo-100 bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center shadow-sm">
+                                    {img
+                                      ? <img src={img} alt={cat} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                                      : <Package className="text-indigo-400" size={26} />
+                                    }
+                                  </div>
+                                  {/* Label */}
+                                  <div className="text-center">
+                                    <p className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight">{hindiMode ? (CATEGORY_HINDI[cat] || cat) : cat}</p>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">{count} items</p>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+          </div>
+          </div>
+        </div>
+      </div>
+
+      <BillingDock
+        value={mode}
+        onChange={setMode}
+        hidden={mode === 'MANUAL' && search.length > 0}
+      />
+
+      {/* The cat's nose uses the existing hold-to-speak controls. */}
+      {voiceMessage && (
+        <div role="status"
+          data-compact={mode !== 'OCR' ? 'true' : undefined}
+          className={`${dockStyles.voiceMessage} fixed left-1/2 -translate-x-1/2 z-50 max-w-sm w-[90%] rounded-xl bg-slate-900 px-4 py-3 text-center text-sm text-white shadow-lg`} onClick={() => setVoiceMessage('')}>
+          {voiceMessage}
+        </div>
+      )}
+      {!(mode === 'MANUAL' && search.length > 0) && (
+      <BillingCatVoice
+        controls={holdToSpeak()}
+        isListening={isListening && correctingItemIdx === null}
+        hindiMode={hindiMode}
+        showFace={mode === 'OCR'}
+        className={dockStyles.voiceAction}
+      />
+      )}
+
+      {/* Cart Bottom Sheet — shown after "Add items to Bill" on mobile */}
+      {/* Cart Bottom Sheet — mini bar when collapsed, full sheet when expanded */}
+      {(showCartSheet || cart.length > 0) && (
+        <CartBottomSheet
+          cart={cart}
+          catalog={catalog}
+          totalAmount={totalAmount}
+          customerInfo={customerInfo}
+          setCustomerInfo={setCustomerInfo}
+          savingBill={savingBill}
+          calculateItemTotal={calculateItemTotal}
+          updateCartItem={updateCartItem}
+          removeFromCart={removeFromCart}
+          handleGenerateBill={handleGenerateBill}
+          expanded={showCartSheet}
+          onExpand={() => { setShowCartSheet(true); setIsSearching(true); }}
+          onCollapse={() => { setShowCartSheet(false); setIsSearching(false); }}
+          onClearCart={() => { setCart([]); setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' }); setShowCartSheet(false); setIsSearching(false); }}
+          onPriceUpdate={handlePriceUpdate}
+        />
+      )}
+
+      {productEditor && <ProductEditor product={productEditor.product} products={catalog} shop={shop} onClose={() => setProductEditor(null)} onSaved={async () => { catalogCache.clear(); await fetchCatalog(shop.id); }} />}
+      {selectedBill && <BillDetails bill={selectedBill} shop={shop} onClose={() => setSelectedBill(null)} />}
+
+      {/* Quantity Selector Sheet — opens when user taps quantity pill in review list */}
+      {qtyPickerIdx !== null && reviewItems[qtyPickerIdx] && (
+        <QuantitySelectorSheet
+          item={reviewItems[qtyPickerIdx]}
+          onSelect={(newQty: number, newUnit: string) => {
+            const n = [...reviewItems];
+            const current = n[qtyPickerIdx];
+            const perPack = voiceQuantityForProduct(1, 'pc', current, 1);
+            const converted = voiceQuantityForProduct(newQty, newUnit, current);
+            const packetCount = current.packetCount !== undefined && perPack.unit === converted.unit && perPack.quantity > 0
+              ? converted.quantity / perPack.quantity : undefined;
+            n[qtyPickerIdx] = { ...current, quantity: newQty, unit: newUnit, parsedQty: newQty, parsedUnit: newUnit, packetCount, hasExplicitQty: true };
+            setReviewItems(n);
+            setQtyPickerIdx(null);
+          }}
+          onClose={() => setQtyPickerIdx(null)}
+        />
+      )}
+
+      {/* Quantity Selector Sheet — opens when user taps qty number on a top-selling product card */}
+      {catalogQtyProduct && (() => {
+        const cartIdx = cart.findIndex((c: any) => c.productId === catalogQtyProduct.id);
+        const cartItem = cartIdx >= 0 ? cart[cartIdx] : null;
+        const currentQty = cartItem ? cartItem.quantity : 1;
+        const currentUnit = cartItem ? cartItem.unit : catalogQtyProduct.baseUnit;
+        return (
+          <QuantitySelectorSheet
+            item={{ ...catalogQtyProduct, productId: catalogQtyProduct.id, unit: currentUnit, quantity: currentQty }}
+            onSelect={(newQty: number, newUnit: string) => {
+              if (cartIdx >= 0) {
+                const newCart = [...cart];
+                newCart[cartIdx] = { ...newCart[cartIdx], quantity: newQty, unit: newUnit };
+                setCart(newCart);
+              } else {
+                addToCart({ ...catalogQtyProduct, quantity: newQty, unit: newUnit });
+              }
+              setCatalogQtyProduct(null);
+            }}
+            onClose={() => setCatalogQtyProduct(null)}
+          />
+        );
+      })()}
+
+      {/* ── Suggestions Bottom Drawer ── */}
+      {(() => {
+        const activeProduct = activeSuggestionId ? catalog.find((p: any) => p.id === activeSuggestionId) : null;
+        const suggestions = activeProduct
+          ? getSuggestions({ productId: activeProduct.id, name: activeProduct.name, localName: activeProduct.localName })
+          : { brandVariants: [], sizeVariants: [] };
+        const hasSugs = suggestions.brandVariants.length > 0 || suggestions.sizeVariants.length > 0;
+        const isOpen = !!activeSuggestionId && !!activeProduct && hasSugs;
+
+        // Compact suggestion card — button lives inside the image, no button row below
+        const SugCard = ({ sug, accentColor }: { sug: any; accentColor: 'amber' | 'indigo' }) => {
+          const sugCartItem = cart.find((c: any) => c.productId === sug.id && c.unit === sug.baseUnit);
+          const sugQty = sugCartItem ? sugCartItem.quantity : 0;
+          const sugCartIdx = cart.findIndex((c: any) => c.productId === sug.id && c.unit === sug.baseUnit);
+          const sugStep = Number(sug.baseQuantity) > 1 && ['g','ml','kg','l'].includes((sug.baseUnit||'').toLowerCase()) ? Number(sug.baseQuantity) : 1;
+          const isAmber = accentColor === 'amber';
+          return (
+            <div className="flex-shrink-0 w-20 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm active:scale-95 transition-all cursor-pointer">
+              {/* Image — tappable to add/increment */}
+              <div
+                className="relative w-full bg-slate-50 overflow-hidden"
+                style={{ paddingBottom: '90%' }}
+                onClick={() => sugQty > 0 ? updateCartItem(sugCartIdx, 'quantity', sugQty + sugStep) : addToCart(sug)}
+              >
+                <div className="absolute inset-0">
+                  {sug.imageUrl
+                    ? <img src={sug.imageUrl} alt={sug.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    : <div className="w-full h-full flex items-center justify-center"><Package className={isAmber ? 'text-amber-200' : 'text-indigo-200'} size={18} /></div>
+                  }
+                  {/* subtle tint when in cart */}
+                  {sugQty > 0 && <div className={`absolute inset-0 pointer-events-none ${isAmber ? 'bg-amber-500/10' : 'bg-indigo-600/10'}`} />}
+                </div>
+                {/* Bottom-right corner: Add pill or bigger stepper when in cart */}
+                <div className="absolute bottom-1 right-1" onClick={e => e.stopPropagation()}>
+                  {sugQty > 0 ? (
+                    <div className={`flex items-center rounded-full shadow-md overflow-hidden scale-110 origin-bottom-right ${isAmber ? 'bg-amber-500' : 'bg-indigo-600'}`}>
+                      <button onClick={() => { sugCartIdx >= 0 && (sugQty <= sugStep ? removeFromCart(sugCartIdx) : updateCartItem(sugCartIdx, 'quantity', sugQty - sugStep)); }} className="w-6 h-6 flex items-center justify-center text-white font-bold text-sm">−</button>
+                      <span className="text-white font-black text-[11px] px-0.5">{sugQty}</span>
+                      <button onClick={() => updateCartItem(sugCartIdx, 'quantity', sugQty + sugStep)} className="w-6 h-6 flex items-center justify-center text-white font-bold text-sm">+</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => addToCart(sug)}
+                      className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-black shadow-md ${isAmber ? 'bg-amber-500 text-white' : 'bg-indigo-600 text-white'}`}
+                    >
+                      <Plus size={8} strokeWidth={3} />Add
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* Minimal info — name + price only */}
+              <div className="px-1.5 py-1">
+                <p className="text-[9px] font-bold text-slate-800 line-clamp-2 leading-tight">{pName(sug.name, sug.localName)}</p>
+                <p className={`text-[10px] font-black mt-0.5 ${isAmber ? 'text-amber-600' : 'text-indigo-600'}`}>₹{(sug.price || 0).toFixed(0)}</p>
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <>
+            {/* Backdrop */}
+            <div
+              className={`fixed inset-0 z-40 bg-black/25 transition-opacity duration-300 ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+              onClick={() => setActiveSuggestionId(null)}
+            />
+            {/* Drawer — anchored to bottom, only as tall as content */}
+            <div
+              className={`fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl transition-transform duration-300 ease-out ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
+              onTouchStart={e => e.stopPropagation()}
+              onTouchMove={e => e.stopPropagation()}
+            >
+              {/* Drag handle */}
+              <div className="flex justify-center pt-2.5 pb-1">
+                <div className="w-8 h-1 rounded-full bg-slate-300" />
+              </div>
+
+              {activeProduct && (
+                <>
+                  {/* Compact header */}
+                  <div className="flex items-center gap-2.5 px-3 pt-1 pb-2 border-b border-slate-100">
+                    <div className="w-9 h-9 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
+                      {activeProduct.imageUrl
+                        ? <img src={activeProduct.imageUrl} alt={activeProduct.name} className="w-full h-full object-cover" />
+                        : <Package size={16} className="text-slate-300" />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-slate-400">Similar to</p>
+                      <p className="text-xs font-bold text-slate-900 truncate">{activeProduct.name}</p>
+                    </div>
+                    <button onClick={() => setActiveSuggestionId(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 text-slate-400 shrink-0">
+                      <X size={13} />
+                    </button>
+                  </div>
+
+                  {/* Sections */}
+                  <div className="pb-4">
+                    {suggestions.sizeVariants.length > 0 && (
+                      <div className="px-3 pt-2.5 pb-1">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-amber-500 mb-2">Pack Sizes</p>
+                        <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                          {suggestions.sizeVariants.map((sug: any) => <SugCard key={sug.id} sug={sug} accentColor="amber" />)}
+                        </div>
+                      </div>
+                    )}
+                    {suggestions.brandVariants.length > 0 && (
+                      <div className="px-3 pt-2 pb-1">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-400 mb-2">Other Brands</p>
+                        <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                          {suggestions.brandVariants.map((sug: any) => <SugCard key={sug.id} sug={sug} accentColor="indigo" />)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        );
+      })()}
+    </div>
+    {/* ── Developer Debug Panel (NEXT_PUBLIC_DEBUG=true only) ─────────── */}
+    {_isDebug && (
+      <DebugPanel dataRef={debugDataRef} updateTick={debugTick} />
+    )}
+    </>
+  );
+}
+
+function CartBottomSheet({ cart, catalog, totalAmount, customerInfo, setCustomerInfo, savingBill, calculateItemTotal, updateCartItem, removeFromCart, handleGenerateBill, expanded, onExpand, onCollapse, onClearCart, onPriceUpdate }: any) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const dragStartY = useRef(0);
+  const dragCurrentY = useRef(0);
+  const isDragging = useRef(false);
+  const { pName } = useHindi();
+
+  // Price edit state
+  const [editingPriceIdx, setEditingPriceIdx] = useState<number | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState('');
+  const priceInputRef = useRef<HTMLInputElement>(null);
+
+  const openPriceEdit = (idx: number) => {
+    setEditingPriceValue(String(cart[idx].price || 0));
+    setEditingPriceIdx(idx);
+    setTimeout(() => { priceInputRef.current?.select(); }, 80);
+  };
+
+  const confirmPriceEdit = () => {
+    if (editingPriceIdx === null) return;
+    const newPrice = parseFloat(editingPriceValue);
+    if (!isNaN(newPrice) && newPrice >= 0) {
+      updateCartItem(editingPriceIdx, 'price', newPrice);
+      // Also persist to the product database
+      const productId = cart[editingPriceIdx]?.productId;
+      if (productId && onPriceUpdate) {
+        onPriceUpdate(productId, newPrice);
+      }
+    }
+    setEditingPriceIdx(null);
+  };
+
+  // Bill-only: updates cart price without touching the product catalog
+  const confirmPriceEditBillOnly = () => {
+    if (editingPriceIdx === null) return;
+    const newPrice = parseFloat(editingPriceValue);
+    if (!isNaN(newPrice) && newPrice >= 0) {
+      updateCartItem(editingPriceIdx, 'price', newPrice);
+    }
+    setEditingPriceIdx(null);
+  };
+
+  // Full sheet height vs mini bar height (~64px)
+  const MINI_HEIGHT = 64;
+  const FULL_HEIGHT_VH = 96;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    dragStartY.current = e.touches[0].clientY;
+    dragCurrentY.current = 0;
+    isDragging.current = true;
+    if (sheetRef.current) sheetRef.current.style.transition = 'none';
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging.current) return;
+    const dy = e.touches[0].clientY - dragStartY.current;
+    if (expanded && dy < 0) return;   // can't drag up when already expanded
+    if (!expanded && dy > 0) return;  // can't drag down when already mini
+    dragCurrentY.current = dy;
+    if (sheetRef.current) {
+      sheetRef.current.style.transform = `translateY(${dy}px)`;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    isDragging.current = false;
+    if (sheetRef.current) sheetRef.current.style.transition = 'transform 220ms ease-out';
+    const dy = dragCurrentY.current;
+    if (expanded && dy > 100) {
+      // Collapse to mini
+      if (sheetRef.current) sheetRef.current.style.transform = 'translateY(0)';
+      onCollapse();
+    } else if (!expanded && dy < -60) {
+      // Expand to full
+      if (sheetRef.current) sheetRef.current.style.transform = 'translateY(0)';
+      onExpand();
+    } else {
+      // Snap back
+      if (sheetRef.current) sheetRef.current.style.transform = 'translateY(0)';
+    }
+    dragCurrentY.current = 0;
+  };
+
+  return (
+    <>
+      {/* Backdrop — only when expanded */}
+      {expanded && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
+          onClick={onCollapse}
+        />
+      )}
+
+      {/* The sheet itself — always mounted, switches between mini and full */}
+      <div
+        ref={sheetRef}
+        className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-white shadow-2xl"
+        style={{
+          borderRadius: expanded ? '24px 24px 0 0' : '20px 20px 0 0',
+          maxHeight: expanded ? `${FULL_HEIGHT_VH}vh` : `${MINI_HEIGHT}px`,
+          height: expanded ? `${FULL_HEIGHT_VH}vh` : `${MINI_HEIGHT}px`,
+          transition: 'max-height 220ms ease-out, height 220ms ease-out, border-radius 220ms ease-out',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {/* ── MINI BAR (collapsed) ── */}
+        {!expanded && (
+          <div
+            className="flex items-center gap-3 px-4 h-full cursor-pointer active:bg-slate-50 transition"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onClick={onExpand}
+          >
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full bg-slate-300" />
+            {(() => {
+              const lastItem = cart.length > 0 ? cart[cart.length - 1] : null;
+              const lastProduct = lastItem && catalog ? catalog.find((cp: any) => cp.id === lastItem.productId) : null;
+              return lastProduct?.imageUrl ? (
+                <div className="w-9 h-9 rounded-xl overflow-hidden border-2 border-indigo-400 shrink-0" style={{overflow:'hidden'}}>
+                  <div className="relative w-full h-full">
+                    <img src={lastProduct.imageUrl} alt={lastProduct.name} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                    <div className="absolute inset-0" style={{background:'rgba(79,70,229,0.12)'}} />
+                  </div>
+                </div>
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+                  <ShoppingCart size={18} className="text-white" />
+                </div>
+              );
+            })()}
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-slate-900 text-sm">{cart.length} item{cart.length !== 1 ? 's' : ''} in bill</p>
+              <p className="text-xs text-slate-500">Tap or swipe up to view</p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="font-bold text-emerald-600 text-base">₹{totalAmount.toFixed(0)}</p>
+            </div>
+            <button
+              onClick={e => { e.stopPropagation(); onClearCart(); }}
+              className="w-7 h-7 rounded-full bg-rose-100 flex items-center justify-center shrink-0 hover:bg-rose-200 active:scale-90 transition-all"
+              title="Clear all items"
+            >
+              <X size={14} className="text-rose-500" strokeWidth={2.5} />
+            </button>
+          </div>
+        )}
+
+        {/* ── FULL SHEET (expanded) ── */}
+        {expanded && (
+          <>
+            {/* Drag handle + down arrow button */}
+            <div
+              className="flex flex-col items-center pt-2 pb-1 flex-shrink-0 cursor-grab gap-1"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
+              <div className="w-10 h-1.5 rounded-full bg-slate-300" />
+              <button
+                onClick={onCollapse}
+                className="w-7 h-7 flex items-center justify-center rounded-full bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 transition"
+                title="Collapse"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 flex-shrink-0">
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <ShoppingCart size={18} className="text-indigo-500" /> Current Bill
+                <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2 py-0.5 rounded-full">{cart.length}</span>
+              </h2>
+              <button
+                onClick={onClearCart}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-100 transition"
+                title="Clear bill"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Cart items */}
+            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
+              {cart.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
+                  <ShoppingCart size={40} className="opacity-20" />
+                  <p className="text-sm">Cart is empty</p>
+                </div>
+              ) : (
+                cart.map((item: any, idx: number) => (
+                  <div key={idx} className="flex gap-2 items-center bg-slate-50 rounded-xl p-2 border border-slate-100">
+                    {/* Tappable left section — opens price editor */}
+                    <button
+                      className="flex items-center gap-2 flex-1 min-w-0 text-left active:opacity-70 transition-opacity"
+                      onClick={() => openPriceEdit(idx)}
+                      title="Tap to edit selling price"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-white overflow-hidden shrink-0 flex items-center justify-center border border-slate-200">
+                        {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="text-slate-400" size={14} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-900 text-sm truncate">{pName(item.name, item.localName)}</p>
+                        {(() => {
+                          const bq = Number(item.baseQuantity) || 1;
+                          const bu = (item.baseUnit || 'pc').toLowerCase();
+                          const isWV = ['g','ml','kg','l'].includes(bu);
+                          const unitLabel = isWV && bq > 1 ? `${bq}${bu}` : bu;
+                          return <p className="text-xs text-indigo-500 font-medium">₹{(item.price || 0).toFixed(2)} / {unitLabel} <span className="text-slate-400 font-normal">· tap to edit</span></p>;
+                        })()}
+                      </div>
+                    </button>
+                    {(() => {
+                      const bq = Number(item.baseQuantity) || 1;
+                      const bu = (item.baseUnit || 'pc').toLowerCase();
+                      const step = ['g','ml','kg','l'].includes(bu) && bq > 1 ? bq : 1;
+                      return (
+                        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg h-7 shrink-0">
+                          <button onClick={() => { const q = item.quantity - step; q <= 0 ? removeFromCart(idx) : updateCartItem(idx, 'quantity', q); }} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">−</button>
+                          <span className="text-xs font-bold text-slate-800 px-1">{item.quantity}</span>
+                          <button onClick={() => updateCartItem(idx, 'quantity', item.quantity + step)} className="w-6 h-full flex items-center justify-center text-slate-500 text-sm font-bold">+</button>
+                        </div>
+                      );
+                    })()}
+                    <p className="text-sm font-bold text-indigo-600 shrink-0 w-14 text-right">₹{calculateItemTotal(item).toFixed(0)}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            {cart.length > 0 && (
+              <div className="px-4 pb-4 pt-2 border-t border-slate-100 space-y-2 flex-shrink-0">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 text-sm">Total</span>
+                  <span className="text-xl font-bold text-emerald-600">₹{totalAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="text"
+                    placeholder="Customer Name (optional)"
+                    autoComplete="name"
+                    disabled={savingBill}
+                    value={customerInfo.name}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomerInfo({ ...customerInfo, name: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-indigo-400"
+                  />
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={10}
+                    placeholder="📱 Phone Number"
+                    autoComplete="tel-national"
+                    disabled={savingBill}
+                    value={customerInfo.phone}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      const newInfo = { ...customerInfo, phone: val };
+                      setCustomerInfo(newInfo);
+                      if (val.length === 10 && val !== customerInfo.phone && !savingBill) {
+                        return handleGenerateBill(newInfo).then((saved: boolean | undefined) => { if (saved) onCollapse(); });
+                      }
+                    }}
+                    className="w-full bg-white border-2 border-indigo-200 rounded-xl px-4 py-2.5 text-base font-semibold focus:outline-none focus:border-indigo-500 placeholder:text-slate-400 placeholder:font-normal tracking-wider"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setCustomerInfo({ ...customerInfo, status: 'PAID' })} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status === 'PAID' ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>✓ Paid</button>
+                  <button onClick={() => setCustomerInfo({ ...customerInfo, status: 'UNPAID' })} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${customerInfo.status === 'UNPAID' ? 'bg-rose-100 text-rose-700 border border-rose-300' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>Unpaid</button>
+                </div>
+                <button
+                  disabled={savingBill}
+                  onClick={async () => { if (await handleGenerateBill()) onCollapse(); }}
+                  className="w-full bg-indigo-600 text-white font-bold py-3 rounded-2xl hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                >
+                  <CheckCircle size={18} />
+                  {savingBill ? 'Saving…' : 'Generate Bill'}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Price Edit Modal — shown when a cart item card is tapped */}
+      {editingPriceIdx !== null && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center"
+          onClick={() => setEditingPriceIdx(null)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-t-3xl shadow-2xl px-5 pt-5 pb-8 border-t border-slate-100"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Handle */}
+            <div className="w-10 h-1.5 rounded-full bg-slate-300 mx-auto mb-4" />
+
+            {/* Product name */}
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">Edit Selling Price</p>
+            <p className="font-bold text-slate-900 text-base mb-4 truncate">
+              {pName(cart[editingPriceIdx]?.name, cart[editingPriceIdx]?.localName)}
+            </p>
+
+            {/* Price input */}
+            <div className="flex items-center bg-slate-50 border-2 border-indigo-300 rounded-2xl px-4 h-14 gap-2 focus-within:border-indigo-500 transition-colors">
+              <span className="text-2xl font-bold text-slate-400">₹</span>
+              <input
+                ref={priceInputRef}
+                type="number"
+                inputMode="decimal"
+                className="flex-1 bg-transparent text-2xl font-bold text-slate-900 focus:outline-none"
+                value={editingPriceValue}
+                onChange={e => setEditingPriceValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') confirmPriceEditBillOnly(); if (e.key === 'Escape') setEditingPriceIdx(null); }}
+                autoFocus
+              />
+              <span className="text-sm text-slate-400 font-medium">/ {cart[editingPriceIdx]?.baseUnit}</span>
+            </div>
+
+            <p className="text-xs text-slate-400 mt-2 mb-5">
+              Original price: ₹{(cart[editingPriceIdx]?.price || 0).toFixed(2)} — "This Bill Only" keeps catalog unchanged
+            </p>
+
+            {/* Actions */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setEditingPriceIdx(null)}
+                className="py-3 px-4 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmPriceEditBillOnly}
+                className="flex-1 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 ring-2 ring-indigo-400 ring-offset-1"
+              >
+                This Bill Only
+              </button>
+              <button
+                onClick={confirmPriceEdit}
+                className="py-3 px-4 rounded-2xl bg-slate-700 text-white font-bold text-sm hover:bg-slate-600 active:scale-[0.98] transition-all"
+              >
+                Update Price
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ProductCard({ p, qty, mini = false, onAdd, onInc, onDec, onSuggest, suggestedInCart, onQtyPicker, onEdit, selectionMode = false, selected = false, onSelect }: {
+  p: any; qty: number; mini?: boolean;
+  selectionMode?: boolean; selected?: boolean; onSelect?: () => void;
+  onEdit: () => void;
+  onAdd: () => void; onInc: () => void; onDec: () => void;
+  onSuggest?: () => void;
+  suggestedInCart?: any | null;
+  onQtyPicker?: () => void;
+}) {
+  const [pressed, setPressed] = useState(false);
+  const { pName } = useHindi();
+
+  const handlePress = () => {
+    setPressed(true);
+    onAdd();
+    setTimeout(() => setPressed(false), 600);
+  };
+
+  const inCart = qty > 0;
+
+  return (
+    <div
+      onClick={selectionMode ? onSelect : inCart ? onInc : handlePress}
+      className={`relative bg-white border rounded-2xl overflow-hidden shadow-sm transition-all select-none ${
+        mini ? 'flex-shrink-0 w-28' : ''
+      } ${(selectionMode ? selected : inCart) ? 'border-indigo-400 shadow-indigo-100' : 'border-slate-200'}`}
+    >
+      {/* Image area — tappable: adds when not in cart, increments when in cart */}
+      <div
+        className="relative w-full bg-slate-100 overflow-hidden"
+        style={{ paddingBottom: '100%' }}
+      >
+        <button aria-label={`${selectionMode ? selected ? 'Deselect' : 'Select' : 'Add to bill:'} ${pName(p.name, p.localName)}`} aria-pressed={selectionMode ? selected : undefined} onClick={e => { e.stopPropagation(); selectionMode ? onSelect?.() : inCart ? onInc() : handlePress(); }} className="absolute inset-0 z-[1] focus-visible:outline-2 focus-visible:outline-indigo-500">
+          <span className={`absolute bottom-1.5 right-1.5 rounded-full border-2 border-indigo-600 bg-white text-indigo-600 shadow-md font-black ${mini ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'}`}>{selectionMode ? selected ? '✓ Selected' : 'Select' : '+ Add'}</span>
+        </button>
+        {/* Product image */}
+        {p.imageUrl
+          ? <img src={p.imageUrl} alt={p.name} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+          : <div className="absolute inset-0 flex items-center justify-center"><Package className="text-slate-300" size={mini ? 22 : 28} /></div>
+        }
+
+        {/* Overlay: subtle indigo tint when in cart */}
+        {inCart && (
+          <div className="absolute inset-0 bg-indigo-600/10 transition-all pointer-events-none" />
+        )}
+
+        {/* Flash ripple on add */}
+        {pressed && (
+          <div className="absolute inset-0 bg-indigo-400/20 animate-ping rounded-2xl pointer-events-none" />
+        )}
+
+        {/* Suggested-product badge — top-right, shows which suggestion was added */}
+        {suggestedInCart && (
+          <div className="absolute top-1.5 right-1.5 w-9 h-9 rounded-full border-2 border-indigo-400 shadow-lg z-10 pointer-events-none" style={{overflow:'hidden'}}>
+            <div className="relative w-full h-full">
+              {suggestedInCart.imageUrl
+                ? <img src={suggestedInCart.imageUrl} alt={suggestedInCart.name} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                : <div className="absolute inset-0 bg-indigo-100 flex items-center justify-center"><Package size={14} className="text-indigo-400" /></div>
+              }
+              {/* Indigo tint overlay — stacked above image */}
+              <div className="absolute inset-0" style={{background:'rgba(79,70,229,0.12)'}} />
+            </div>
+          </div>
+        )}
+
+        {/* ── BigBasket-style corner control ── */}
+        {inCart && !selectionMode && (
+          /* Qty stepper pill — bottom-right corner, bigger when in cart */
+          <div
+            className="absolute bottom-10 right-1.5 z-[2] flex items-center bg-indigo-600 rounded-full shadow-lg overflow-hidden scale-110 origin-bottom-right"
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={e => { e.stopPropagation(); onDec(); }}
+              className="w-7 h-7 flex items-center justify-center text-white font-bold text-lg active:bg-indigo-700 transition"
+            >−</button>
+            <span
+              onClick={e => { e.stopPropagation(); onQtyPicker?.(); }}
+              className={`text-white font-black px-1 ${mini ? 'text-xs' : 'text-sm'} ${onQtyPicker ? 'underline decoration-dotted underline-offset-2 cursor-pointer active:opacity-70' : ''}`}
+            >{qty}</span>
+            <button
+              onClick={e => { e.stopPropagation(); onInc(); }}
+              className="w-7 h-7 flex items-center justify-center text-white font-bold text-lg active:bg-indigo-700 transition"
+            >+</button>
+          </div>
+        )}
+        <button onClick={e => { e.stopPropagation(); onEdit(); }} aria-label={`Edit ${pName(p.name, p.localName)}`} title="Edit product" className="absolute top-1.5 left-1.5 z-[2] h-8 w-8 bg-white/90 border border-indigo-100 text-indigo-600 rounded-full shadow-sm hover:bg-indigo-50 active:scale-90 transition-all flex items-center justify-center"><Pencil size={14} /></button>
+      </div>
+
+      {/* Info — name, unit, price + optional suggest arrow */}
+      <div className="p-2">
+        <p className={`font-semibold text-slate-900 line-clamp-2 leading-tight mb-0.5 ${mini ? 'text-[11px]' : 'text-xs'}`}>{pName(p.name, p.localName)}</p>
+        <p className="text-[10px] text-slate-400 mb-0.5">{formatProductPackSize(p)}</p>
+        <div className="flex items-center justify-between">
+          <p className={`font-bold text-slate-900 ${mini ? 'text-xs' : 'text-sm'}`}>₹{(p.price || 0).toFixed(0)}</p>
+          {onSuggest && (
+            <button
+              onClick={e => { e.stopPropagation(); onSuggest(); }}
+              className="w-5 h-5 flex items-center justify-center rounded-full bg-slate-100 hover:bg-indigo-100 text-slate-400 hover:text-indigo-500 transition-all active:scale-90"
+              title="See similar products"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QuantitySelectorSheet
+// Weight/liquid: 3 swipeable pages (Grams | Main | Kilograms).
+// Piece/packet: 3x3 grid + collapsible "By Weight" drawer at the bottom.
+//   Drawer auto-suggests nearest packet count from entered weight.
+// Does NOT touch any voice recognition, product matching, or billing logic.
+// ─────────────────────────────────────────────────────────────────────────────
+function QuantitySelectorSheet({ item, onSelect, onClose }: {
+  item: any;
+  onSelect: (qty: number, unit: string) => void;
+  onClose: () => void;
+}) {
+  const unit = (item.unit || item.baseUnit || 'pc').toLowerCase();
+  const currentQty = item.quantity || 1;
+
+  const isWeight = ['kg', 'g', 'gram', 'grams'].includes(unit);
+  const isLiquid = ['l', 'ml', 'litre', 'liter', 'liters', 'litres'].includes(unit);
+  const isPiece  = !isWeight && !isLiquid;
+
+  type QtyOption = { label: string; qty: number; unit: string; isCustom?: boolean };
+
+  // page: 0=grams/ml, 1=main, 2=kg/L
+  const [page, setPage] = useState(1);
+
+  // Weight drawer (piece/packet only)
+  const [weightDrawerOpen, setWeightDrawerOpen] = useState(false);
+  const [wPage, setWPage] = useState(1);
+  const [pendingWeight, setPendingWeight] = useState<{
+    requestedQty: number; requestedUnit: string;
+    nearestPkts: number; coveredLabel: string;
+  } | null>(null);
+
+  // Packet weight in grams derived from item metadata
+  const packetWeightG: number = (() => {
+    const pw = Number(item.packetWeight || item.baseQuantity || 0);
+    const pu = (item.packetUnit || item.baseUnit || 'g').toLowerCase();
+    if (!pw) return 0;
+    if (['kg', 'kilo', 'l'].includes(pu)) return pw * 1000;
+    return pw;
+  })();
+
+  // Weight option pages
+  const weightMain: QtyOption[][] = [
+    [{ label: '250g', qty: 250, unit: 'g'  }, { label: '500g', qty: 500, unit: 'g'  }],
+    [{ label: '1 kg', qty: 1,   unit: 'kg' }, { label: '2 kg', qty: 2,   unit: 'kg' }],
+    [{ label: '5 kg', qty: 5,   unit: 'kg' }, { label: 'Custom', qty: -1, unit, isCustom: true }],
+  ];
+  const weightGrams: QtyOption[][] = [
+    [{ label: '25g',  qty: 25,  unit: 'g' }, { label: '50g',  qty: 50,  unit: 'g' }],
+    [{ label: '100g', qty: 100, unit: 'g' }, { label: '200g', qty: 200, unit: 'g' }],
+    [{ label: '300g', qty: 300, unit: 'g' }, { label: '400g', qty: 400, unit: 'g' }],
+    [{ label: '750g', qty: 750, unit: 'g' }, { label: 'Custom', qty: -1, unit, isCustom: true }],
+  ];
+  const weightKg: QtyOption[][] = [
+    [{ label: '3 kg',  qty: 3,  unit: 'kg' }, { label: '4 kg',  qty: 4,  unit: 'kg' }],
+    [{ label: '7 kg',  qty: 7,  unit: 'kg' }, { label: '10 kg', qty: 10, unit: 'kg' }],
+    [{ label: '15 kg', qty: 15, unit: 'kg' }, { label: '20 kg', qty: 20, unit: 'kg' }],
+    [{ label: '25 kg', qty: 25, unit: 'kg' }, { label: 'Custom', qty: -1, unit, isCustom: true }],
+  ];
+
+  // Liquid option pages
+  const liquidMain: QtyOption[][] = [
+    [{ label: '250ml', qty: 250, unit: 'ml' }, { label: '500ml', qty: 500, unit: 'ml' }],
+    [{ label: '1 L',   qty: 1,   unit: 'l'  }, { label: '2 L',   qty: 2,   unit: 'l'  }],
+    [{ label: '5 L',   qty: 5,   unit: 'l'  }, { label: 'Custom', qty: -1, unit, isCustom: true }],
+  ];
+  const liquidSmall: QtyOption[][] = [
+    [{ label: '100ml', qty: 100, unit: 'ml' }, { label: '200ml', qty: 200, unit: 'ml' }],
+    [{ label: '300ml', qty: 300, unit: 'ml' }, { label: '400ml', qty: 400, unit: 'ml' }],
+    [{ label: '750ml', qty: 750, unit: 'ml' }, { label: 'Custom', qty: -1, unit, isCustom: true }],
+  ];
+  const liquidLarge: QtyOption[][] = [
+    [{ label: '3 L',  qty: 3,  unit: 'l' }, { label: '4 L',  qty: 4,  unit: 'l' }],
+    [{ label: '10 L', qty: 10, unit: 'l' }, { label: '15 L', qty: 15, unit: 'l' }],
+    [{ label: '20 L', qty: 20, unit: 'l' }, { label: 'Custom', qty: -1, unit, isCustom: true }],
+  ];
+
+  // Piece / packet — unchanged 3-column grid
+  const pieceRows: QtyOption[][] = [
+    [{ label: '1',  qty: 1,  unit }, { label: '2',  qty: 2,  unit }, { label: '3',  qty: 3,  unit }],
+    [{ label: '4',  qty: 4,  unit }, { label: '5',  qty: 5,  unit }, { label: '6',  qty: 6,  unit }],
+    [{ label: '10', qty: 10, unit }, { label: '12', qty: 12, unit }, { label: 'Custom', qty: -1, unit, isCustom: true }],
+  ];
+
+  // Custom input state
+  const [customMode, setCustomMode] = useState(false);
+  const [customValue, setCustomValue] = useState(String(currentQty));
+  const customInputRef = useRef<HTMLInputElement>(null);
+
+  // Touch tracking for swipe gesture on the options area
+  const swipeTouchStartX = useRef(0);
+  const swipeTouchStartY = useRef(0);
+  const swipeActive = useRef(false);
+
+  // Touch tracking for weight drawer grid swipe
+  const wSwipeStartX = useRef(0);
+  const wSwipeStartY = useRef(0);
+  const wSwipeActive = useRef(false);
+
+  useEffect(() => {
+    if (customMode) setTimeout(() => customInputRef.current?.focus(), 80);
+  }, [customMode]);
+
+  const handleCustomConfirm = () => {
+    const parsed = parseFloat(customValue);
+    if (!isNaN(parsed) && parsed > 0) onSelect(parsed, unit);
+  };
+
+  // Called when a weight button is tapped inside the drawer
+  const handleWeightSelect = (wQty: number, wUnit: string) => {
+    let requestedG = wQty;
+    if (wUnit === 'kg') requestedG = wQty * 1000;
+    if (packetWeightG > 0) {
+      const nearestPkts = Math.max(1, Math.round(requestedG / packetWeightG));
+      const coveredG = nearestPkts * packetWeightG;
+      // Exact multiple — no need for confirmation, select immediately
+      if (coveredG === requestedG) {
+        onSelect(nearestPkts, unit);
+        return;
+      }
+      const coveredLabel = coveredG >= 1000 ? `${coveredG / 1000}kg` : `${coveredG}g`;
+      setPendingWeight({ requestedQty: wQty, requestedUnit: wUnit, nearestPkts, coveredLabel });
+    } else {
+      onSelect(wQty, wUnit);
+    }
+  };
+
+  const isSelected = (opt: QtyOption) =>
+    !opt.isCustom && opt.qty === currentQty && opt.unit === unit;
+
+  const productName = item.localName || item.name || 'Product';
+  const hasExtraPages = isWeight || isLiquid;
+  const pageLabels = isWeight ? ['Grams', 'Main', 'Kilograms'] : isLiquid ? ['ml', 'Main', 'Litres'] : ['Main'];
+
+  const activeRows: QtyOption[][] = (() => {
+    if (isWeight) return page === 1 ? weightMain : page === 0 ? weightGrams : weightKg;
+    if (isLiquid) return page === 1 ? liquidMain : page === 0 ? liquidSmall : liquidLarge;
+    return pieceRows;
+  })();
+
+  const renderGrid = (rows: QtyOption[][], onWgt?: (q: number, u: string) => void) => (
+    <div className="space-y-2.5">
+      {rows.map((row, rowIdx) => (
+        <div key={rowIdx} className="grid gap-2.5" style={{ gridTemplateColumns: `repeat(${row.length}, 1fr)` }}>
+          {row.map((opt, optIdx) => {
+            const selected = isSelected(opt);
+            if (opt.isCustom) {
+              return (
+                <button key={optIdx} onClick={() => setCustomMode(true)}
+                  className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 font-bold py-4 text-base active:bg-slate-100 transition-all hover:border-indigo-300 hover:text-indigo-600">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                  <span className="text-sm font-bold mt-1">Custom</span>
+                </button>
+              );
+            }
+            const clickHandler = onWgt ? () => onWgt(opt.qty, opt.unit) : () => onSelect(opt.qty, opt.unit);
+            return (
+              <button key={optIdx} onClick={clickHandler}
+                className={`flex flex-col items-center justify-center rounded-2xl border-2 font-black py-4 text-xl active:scale-95 transition-all ${
+                  selected && !onWgt
+                    ? 'border-indigo-600 bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+                    : 'border-slate-200 bg-white text-slate-800 hover:border-indigo-300 hover:bg-indigo-50'
+                }`}>
+                {opt.label}
+                {selected && !onWgt && <span className="text-[10px] font-bold text-indigo-200 mt-0.5">selected</span>}
+              </button>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Sheet */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-[70] bg-white rounded-t-3xl shadow-2xl flex flex-col"
+        style={{ maxHeight: '88vh', position: 'fixed' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Drag pill */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1.5 rounded-full bg-slate-300" />
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pb-3 pt-1 border-b border-slate-100">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Select Quantity</p>
+            <p className="font-bold text-slate-900 text-base leading-tight mt-0.5 truncate max-w-[220px]">{productName}</p>
+          </div>
+          <button onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 active:bg-slate-300 transition">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ paddingBottom: isPiece ? '72px' : '24px' }}>
+          {/* Current quantity */}
+          <div className="flex items-center gap-2 bg-indigo-50 rounded-2xl px-4 py-2.5">
+            <span className="text-xs font-bold uppercase tracking-widest text-indigo-400">Current</span>
+            <span className="ml-auto text-lg font-black text-indigo-700">{currentQty} {unit}</span>
+          </div>
+
+          {/* Page tabs — weight / liquid only */}
+          {hasExtraPages && !customMode && (
+            <div className="flex gap-1.5">
+              {pageLabels.map((label, i) => (
+                <button key={i} onClick={() => setPage(i)}
+                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    page === i ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Options grid — swipe left/right to change page */}
+          {!customMode && (
+            <div
+              onTouchStart={e => {
+                swipeTouchStartX.current = e.touches[0].clientX;
+                swipeTouchStartY.current = e.touches[0].clientY;
+                swipeActive.current = false;
+              }}
+              onTouchMove={e => {
+                const dx = Math.abs(e.touches[0].clientX - swipeTouchStartX.current);
+                const dy = Math.abs(e.touches[0].clientY - swipeTouchStartY.current);
+                if (!swipeActive.current && dx > dy && dx > 10) swipeActive.current = true;
+              }}
+              onTouchEnd={e => {
+                if (!hasExtraPages || !swipeActive.current) return;
+                const dx = e.changedTouches[0].clientX - swipeTouchStartX.current;
+                if (dx < -40) setPage(p => Math.min(p + 1, 2));
+                else if (dx > 40) setPage(p => Math.max(p - 1, 0));
+                swipeActive.current = false;
+              }}
+            >
+              {renderGrid(activeRows)}
+              {hasExtraPages && page === 1 && (
+                <p className="text-center text-[10px] text-slate-300 font-medium mt-2 select-none">
+                  swipe left / right for more values
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Custom input */}
+          {customMode && (
+            <div className="space-y-3">
+              <button onClick={() => setCustomMode(false)}
+                className="flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800 transition">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+                Back to options
+              </button>
+              <div className="flex items-center bg-slate-50 border-2 border-indigo-300 rounded-2xl px-4 h-14 gap-2 focus-within:border-indigo-500 transition-colors">
+                <input ref={customInputRef} type="number" inputMode="decimal"
+                  className="flex-1 bg-transparent text-2xl font-bold text-slate-900 focus:outline-none"
+                  value={customValue} onChange={e => setCustomValue(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleCustomConfirm(); }}
+                  placeholder="0" />
+                <span className="text-base font-bold text-slate-400">{unit}</span>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setCustomMode(false)}
+                  className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition">
+                  Cancel
+                </button>
+                <button onClick={handleCustomConfirm}
+                  className="flex-1 py-3.5 rounded-2xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200">
+                  Set Quantity
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* By Weight drawer — piece/packet products only */}
+        {isPiece && !customMode && (
+          <div
+            className="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.10)] transition-all duration-300 ease-out"
+            style={{ height: weightDrawerOpen ? '340px' : '52px', overflow: 'hidden', zIndex: 10 }}
+          >
+            {/* Handle bar */}
+            <div
+              className="flex items-center gap-3 px-4 h-[52px] cursor-pointer select-none active:bg-slate-50"
+              onClick={() => { setWeightDrawerOpen(o => !o); setPendingWeight(null); }}
+            >
+              <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-amber-700">Enter by Weight</p>
+                {packetWeightG > 0 && (
+                  <p className="text-[10px] text-slate-400">
+                    1 packet = {packetWeightG >= 1000 ? `${packetWeightG / 1000}kg` : `${packetWeightG}g`}
+                  </p>
+                )}
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                style={{ transform: weightDrawerOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 300ms' }}>
+                <path d="M18 15l-6-6-6 6"/>
+              </svg>
+            </div>
+
+            {/* Drawer body */}
+            {weightDrawerOpen && (
+              <div className="px-4 pb-4 space-y-3 overflow-y-auto" style={{ height: '288px' }}>
+                {pendingWeight ? (
+                  <div className="space-y-3">
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
+                      <p className="text-xs font-bold text-amber-700 mb-1">
+                        Weight: {pendingWeight.requestedQty} {pendingWeight.requestedUnit}
+                      </p>
+                      <p className="text-sm text-slate-700">
+                        Nearest = <span className="font-black text-indigo-700">{pendingWeight.nearestPkts} packet{pendingWeight.nearestPkts > 1 ? 's' : ''}</span>
+                        <span className="text-slate-400 text-xs ml-1">({pendingWeight.coveredLabel})</span>
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => onSelect(pendingWeight.nearestPkts, unit)}
+                        className="flex-1 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm active:scale-95 transition-all shadow-md shadow-indigo-200">
+                        {pendingWeight.nearestPkts} pkt ({pendingWeight.coveredLabel})
+                      </button>
+                      <button onClick={() => onSelect(pendingWeight.requestedQty, pendingWeight.requestedUnit)}
+                        className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 font-bold text-sm active:scale-95 transition border border-slate-200">
+                        {pendingWeight.requestedQty}{pendingWeight.requestedUnit} exact
+                      </button>
+                    </div>
+                    <button onClick={() => setPendingWeight(null)}
+                      className="w-full text-xs text-slate-400 font-semibold py-1 hover:text-slate-600 transition">
+                      back to weight options
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-1.5">
+                      {['Grams', 'Main', 'Kilograms'].map((label, i) => (
+                        <button key={i} onClick={() => setWPage(i)}
+                          className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                            wPage === i ? 'bg-amber-500 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                          }`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div
+                      onTouchStart={e => { wSwipeStartX.current = e.touches[0].clientX; wSwipeStartY.current = e.touches[0].clientY; wSwipeActive.current = false; }}
+                      onTouchMove={e => { const dx = Math.abs(e.touches[0].clientX - wSwipeStartX.current); const dy = Math.abs(e.touches[0].clientY - wSwipeStartY.current); if (!wSwipeActive.current && dx > dy && dx > 10) wSwipeActive.current = true; }}
+                      onTouchEnd={e => { if (!wSwipeActive.current) return; const dx = e.changedTouches[0].clientX - wSwipeStartX.current; if (dx < -40) setWPage(p => Math.min(p + 1, 2)); else if (dx > 40) setWPage(p => Math.max(p - 1, 0)); wSwipeActive.current = false; }}
+                    >
+                      {renderGrid(wPage === 1 ? weightMain : wPage === 0 ? weightGrams : weightKg, handleWeightSelect)}
+                      {wPage === 1 && <p className="text-center text-[10px] text-slate-300 font-medium mt-2 select-none">swipe left / right for more values</p>}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="pb-6" />
+      </div>
+    </>
+  );
+}

@@ -1426,6 +1426,8 @@ export default function CustomerPage() {
     const infoToUse = (overrideInfo && !overrideInfo.type) ? overrideInfo : customerInfo;
 
     if (cart.length === 0) return alert('Cart is empty!');
+    if (savingBill) return;
+    setSavingBill(true);
 
     // Generate WhatsApp message if customer phone is available
     if (infoToUse.phone) {
@@ -1457,27 +1459,28 @@ export default function CustomerPage() {
       customerPhone: infoToUse.phone.trim() || null,
     };
 
-    // Instantly update UI without waiting for save
-    setCart([]);
-    setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' });
-    setMode('PENDING'); // Switch to pending orders instead of history page
-
-    // Save in background
-    fetch('/api/bills', {
+    // Keep the entered customer details until the bill has been saved.
+    return fetch('/api/bills', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     }).then(res => {
       if (res.ok) {
+        setCart([]);
+        setCustomerInfo({ name: '', phone: '', paymentMethod: 'CASH', status: 'PAID' });
+        setMode('PENDING');
         // Refresh bills to show the new one in the pending tab
         fetchBills(shop.id);
+        return true;
       } else {
         alert('Failed to save bill on server.');
+        return false;
       }
     }).catch(err => {
       console.error("Failed to save bill", err);
       alert('Network error while saving bill.');
-    });
+      return false;
+    }).finally(() => setSavingBill(false));
   };
 
   // AI & OCR Common Logic
@@ -2778,26 +2781,32 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
                 </div>
                 <div className="flex flex-col gap-2">
                   <input
+                    type="text"
+                    placeholder="Customer Name (optional)"
+                    autoComplete="name"
+                    disabled={savingBill}
+                    value={customerInfo.name}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomerInfo({ ...customerInfo, name: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400"
+                  />
+                  <input
                     type="tel"
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={10}
                     placeholder="📱 Phone Number"
+                    autoComplete="tel-national"
+                    disabled={savingBill}
                     value={customerInfo.phone}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const val = e.target.value.replace(/\D/g, '');
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
                       const newInfo = { ...customerInfo, phone: val };
                       setCustomerInfo(newInfo);
-                      if (val.length === 10) { handleGenerateBill(newInfo); onCollapse(); }
+                      if (val.length === 10 && val !== customerInfo.phone && !savingBill) {
+                        return handleGenerateBill(newInfo).then((saved: boolean | undefined) => { if (saved) onCollapse(); });
+                      }
                     }}
                     className="w-full bg-white border-2 border-indigo-200 rounded-xl px-4 py-3 text-base font-semibold focus:outline-none focus:border-indigo-500 placeholder:text-slate-400 placeholder:font-normal tracking-wider"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Customer Name (optional)"
-                    value={customerInfo.name}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomerInfo({ ...customerInfo, name: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -2806,7 +2815,7 @@ function CartBottomSheet({ cart, totalAmount, customerInfo, setCustomerInfo, sav
                 </div>
                 <button
                   disabled={savingBill}
-                  onClick={() => { handleGenerateBill(); onCollapse(); }}
+                  onClick={async () => { if (await handleGenerateBill()) onCollapse(); }}
                   className="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-2xl hover:bg-indigo-500 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50"
                 >
                   <CheckCircle size={18} />

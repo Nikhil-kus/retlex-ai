@@ -18,6 +18,7 @@ import { NextResponse } from 'next/server';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shop } from '@/types';
+import { isShopType, shopTypeName } from '@/lib/shop-types';
 
 function generateQrCodeId(): string {
   return Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
@@ -66,6 +67,15 @@ export async function PUT(request: Request, { params }: Params) {
 
     const data = await request.json();
 
+    if (data.shopType !== undefined && !isShopType(data.shopType)) {
+      return NextResponse.json({ error: 'Invalid shop category' }, { status: 400 });
+    }
+    for (const field of ['name', 'mobile', 'address']) {
+      if (data[field] !== undefined && (typeof data[field] !== 'string' || (field !== 'address' && !data[field].trim()))) {
+        return NextResponse.json({ error: `Invalid ${field}` }, { status: 400 });
+      }
+    }
+
     // TODO: When auth is added, verify request.user.uid owns this shopId
 
     const shopDoc = await getDoc(doc(db, 'shops', shopId));
@@ -81,11 +91,16 @@ export async function PUT(request: Request, { params }: Params) {
       Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
 
     const updateData: Partial<Omit<Shop, 'id'>> & { qrCodeId: string } = {
-      name: data.name,
-      mobile: data.mobile,
-      address: data.address,
       qrCodeId,
     };
+    if (data.name !== undefined) updateData.name = data.name.trim();
+    if (data.mobile !== undefined) updateData.mobile = data.mobile.trim();
+    if (data.address !== undefined) updateData.address = data.address.trim();
+    if (isShopType(data.shopType)) {
+      updateData.shopType = data.shopType;
+      updateData.businessType = { name: shopTypeName(data.shopType) };
+    }
+    if (data.catalogSetupComplete === true) updateData.catalogSetupComplete = true;
 
     // Persist logoUrl if provided (Firebase Storage URL)
     if (typeof data.logoUrl === 'string' || data.logoUrl === null) {

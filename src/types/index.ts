@@ -22,6 +22,9 @@ export interface Shop {
   address: string;
   qrCodeId: string;
   businessTypeId?: string | null;
+  shopType?: import('@/lib/shop-types').ShopType;
+  /** Only new shops have this flag; older shops keep their existing entry flow. */
+  catalogSetupComplete?: boolean;
   /** Embedded businessType object (denormalized for fast reads) */
   businessType?: { name: string } | null;
   /** ISO timestamp of creation */
@@ -33,6 +36,7 @@ export interface Shop {
 // ── Product ───────────────────────────────────────────────────────────────────
 
 export interface Product {
+  shopType?: import('@/lib/shop-types').CatalogScope;
   id: string;
   shopId: string;
   name: string;
@@ -108,6 +112,7 @@ export interface CartItem {
 // ── Global Catalog ────────────────────────────────────────────────────────────
 
 export interface GlobalCatalogProduct {
+  shopType?: import('@/lib/shop-types').CatalogScope;
   id: string;
   name: string;
   localName: string | null;

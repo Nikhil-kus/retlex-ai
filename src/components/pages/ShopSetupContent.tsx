@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import QRCodeDisplay from '@/components/QRCodeDisplay';
 import type { Shop } from '@/types';
+import ShopTypePicker from '@/components/ShopTypePicker';
+import { getShopType, shopEntryPath, type ShopType } from '@/lib/shop-types';
 
 // Remove Firebase Storage imports — logo is stored as base64 in Firestore
 // via POST /api/shops/[shopId]/logo to avoid Storage auth issues.
@@ -72,11 +74,12 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
     name: shop.name || '',
     mobile: shop.mobile || '',
     address: shop.address || '',
+    shopType: getShopType(shop),
   });
 
   // keep form in sync if parent refreshes shop
   useEffect(() => {
-    setFormData({ name: shop.name || '', mobile: shop.mobile || '', address: shop.address || '' });
+    setFormData({ name: shop.name || '', mobile: shop.mobile || '', address: shop.address || '', shopType: getShopType(shop) });
   }, [shop]);
 
   // ── logo upload ────────────────────────────────────────────────────────────
@@ -181,7 +184,7 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
   const [loadingShops, setLoadingShops] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [newShop, setNewShop] = useState({ name: '', mobile: '', address: '' });
+  const [newShop, setNewShop] = useState({ name: '', mobile: '', address: '', shopType: '' as ShopType | '' });
   const pickerRef = useRef<HTMLDivElement>(null);
 
   const loadShops = async () => {
@@ -217,7 +220,7 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
 
   const handleCreateShop = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newShop.name || !newShop.mobile) return;
+    if (!newShop.name || !newShop.mobile || !newShop.shopType) return;
     setCreating(true);
     try {
       const res = await fetch('/api/shops', {
@@ -228,7 +231,7 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
       if (res.ok) {
         const created: Shop = await res.json();
         try { localStorage.setItem('lastShopId', created.id); } catch {}
-        router.push(`/${created.id}/billing`);
+        router.push(shopEntryPath(created));
       } else {
         const err = await res.json();
         alert('Failed to create shop: ' + (err.error || 'Unknown error'));
@@ -327,6 +330,11 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
                 ) : (
                   <form onSubmit={handleCreateShop} className="space-y-2">
                     <p className="text-xs font-semibold text-slate-600 mb-2">New Shop Details</p>
+                    <label className="block text-xs font-medium text-slate-600">Shop category
+                      <select required value={newShop.shopType} onChange={e => setNewShop({ ...newShop, shopType: e.target.value as ShopType })} className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                        <option value="" disabled>Choose a category</option><option value="kirana">Kirana</option><option value="tent">Tent House</option><option value="electronics">Electronics</option>
+                      </select>
+                    </label>
                     <input
                       required
                       type="text"
@@ -399,6 +407,8 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
           <h2 className="font-bold text-slate-800 text-lg">Shop Profile</h2>
 
           <form onSubmit={handleSave} className="space-y-4">
+            <ShopTypePicker value={formData.shopType} onChange={shopType => setFormData({ ...formData, shopType })} disabled={saving} />
+            <p className="text-xs text-slate-500">Your category controls suggested products. Existing products and bills stay in your shop.</p>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Shop Name *</label>
               <input
@@ -509,7 +519,7 @@ export default function ShopSetupContent({ shop, shopId, onSaved }: Props) {
               className="flex items-center gap-3 p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 transition text-sm font-semibold text-indigo-700 border border-indigo-100"
             >
               <Package size={16} className="text-indigo-500" />
-              Import Products from Global Catalog
+              Browse Shop Catalog & Universal Items
               <span className="ml-auto text-indigo-400 text-xs">→</span>
             </a>
           </div>

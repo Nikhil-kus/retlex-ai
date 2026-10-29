@@ -47,3 +47,4 @@ next-env.d.ts
 
 # Local recovery archive
 /pre-vosk-2026-10-06.bundle
+/output/

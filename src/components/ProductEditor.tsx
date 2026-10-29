@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Package, Camera, Sparkles, Upload, Trash, X } from 'lucide-react';
+import { getShopType, SHOP_PRODUCT_CATEGORIES } from '@/lib/shop-types';
 
 const standardCategories = [
   'Grains & Cereals',
@@ -42,7 +43,9 @@ export default function ProductEditor({ product, products, shop, onClose, onSave
 
 
 const setIsModalOpen = (open: boolean) => { if (!open) onClose(); };
-const mergedCategories = Array.from(new Set([...standardCategories, ...products.map(p => p.category).filter(Boolean)])).sort() as string[];
+const shopType = getShopType(shop || {});
+const suggestedCategories = shopType === 'kirana' ? standardCategories : SHOP_PRODUCT_CATEGORIES[shopType];
+const mergedCategories = Array.from(new Set([...suggestedCategories, ...SHOP_PRODUCT_CATEGORIES.universal, ...products.map(p => p.category).filter(Boolean)])).sort() as string[];
   const resetForm = () => {
     setFormError(null);
     setFormData({ name: '', localName: '', barcode: '', sellingPrice: '', costPrice: '', unit: 'pc', category: '', imageUrl: '', packetWeight: '', packetUnit: 'g', localAliases: '' });

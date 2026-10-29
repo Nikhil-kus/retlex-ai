@@ -7,7 +7,7 @@ import { createVoiceProductMatcher, normalizeVoiceName, voiceQuantityForProduct 
 import { canCorrectProductByVoice } from './voice-review';
 
 // Exercise the actual page handlers with browser recognition events under our control.
-const source = readFileSync('src/app/billing/page.tsx', 'utf8');
+const source = readFileSync('src/components/pages/BillingWorkspace.tsx', 'utf8');
 const compile = (start: string, end: string) => transpileModule(
   source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start))),
   { compilerOptions: { target: ScriptTarget.ES2022 } },
@@ -61,7 +61,7 @@ function setup() {
   scope.document = { ...surface, hidden: false };
   // Use the production merger, including overlap detection, rather than a join stub.
   scope.mergeOverlappingStrings = new Function('scope', `with(scope) {
-    ${compile('const getLevenshteinDistance =', 'export default function BillingPage()')}
+    ${compile('const getLevenshteinDistance =', 'export default function BillingPage(')}
     ${compile('  const areWordsSimilar =', '  const recalculateQtyAndUnit =')}
     return mergeOverlappingStrings;
   }`)(scope);

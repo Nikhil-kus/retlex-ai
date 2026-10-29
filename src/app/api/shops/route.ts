@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server';
 import { collection, addDoc, getDocs, orderBy, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shop } from '@/types';
+import { isShopType, shopTypeName } from '@/lib/shop-types';
 
 export async function GET() {
   try {
@@ -40,8 +41,15 @@ export async function POST(request: Request) {
   try {
     const data = await request.json();
 
-    if (!data.name || !data.mobile) {
+    if (typeof data.name !== 'string' || !data.name.trim() || typeof data.mobile !== 'string' || !data.mobile.trim()) {
       return NextResponse.json({ error: 'Name and mobile are required' }, { status: 400 });
+    }
+
+    if (!isShopType(data.shopType)) {
+      return NextResponse.json({ error: 'Choose Kirana, Tent House or Electronics.' }, { status: 400 });
+    }
+    if (data.address !== undefined && typeof data.address !== 'string') {
+      return NextResponse.json({ error: 'Address must be text' }, { status: 400 });
     }
 
     // Generate a permanent QR code ID for the customer-facing bill page
@@ -53,6 +61,9 @@ export async function POST(request: Request) {
       name: data.name.trim(),
       mobile: data.mobile.trim(),
       address: (data.address || '').trim(),
+      shopType: data.shopType,
+      businessType: { name: shopTypeName(data.shopType) },
+      catalogSetupComplete: false,
       qrCodeId,
       createdAt: new Date().toISOString(),
     };
