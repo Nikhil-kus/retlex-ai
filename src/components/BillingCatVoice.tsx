@@ -14,11 +14,10 @@ type Props = {
   controls: HoldControls;
   isListening: boolean;
   hindiMode: boolean;
-  showFace?: boolean;
   className?: string;
 };
 
-export default function BillingCatVoice({ controls, isListening, hindiMode, showFace = true, className }: Props) {
+export default function BillingCatVoice({ controls, isListening, hindiMode, className }: Props) {
   const [isBooped, setIsBooped] = useState(false);
   const reactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const labelId = useId();
@@ -41,7 +40,6 @@ export default function BillingCatVoice({ controls, isListening, hindiMode, show
       className={`${styles.mascot} ${className ?? ''}`}
       data-reaction={isBooped ? 'true' : undefined}
       data-listening={isListening ? 'true' : undefined}
-      data-compact={!showFace ? 'true' : undefined}
     >
       <div className={styles.portrait} aria-hidden="true">
         <div className={`${styles.face} ${styles.happy}`} />
@@ -74,13 +72,11 @@ export default function BillingCatVoice({ controls, isListening, hindiMode, show
             ? (hindiMode ? 'छोड़कर पूरा करें' : 'Release to finish')
             : (hindiMode ? 'दबाकर बोलें' : 'Hold to speak')}
         </span>
-        {showFace && (
-          <span className={styles.captionHint}>
-            {isListening
-              ? (hindiMode ? 'मैं सुन रही हूँ…' : 'I’m listening…')
-              : (hindiMode ? 'मेरी नाक दबाकर रखें' : 'Press and hold my nose')}
-          </span>
-        )}
+        <span className={styles.captionHint}>
+          {isListening
+            ? (hindiMode ? 'मैं सुन रही हूँ…' : 'I’m listening…')
+            : (hindiMode ? 'मेरी नाक दबाकर रखें' : 'Press and hold my nose')}
+        </span>
       </div>
     </div>
   );

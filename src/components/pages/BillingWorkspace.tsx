@@ -2218,17 +2218,15 @@ export default function BillingPage({ initialShop }: { initialShop: Shop }) {
       {/* The cat's nose uses the existing hold-to-speak controls. */}
       {voiceMessage && (
         <div role="status"
-          data-compact={mode !== 'OCR' ? 'true' : undefined}
           className={`${dockStyles.voiceMessage} fixed left-1/2 -translate-x-1/2 z-50 max-w-sm w-[90%] rounded-xl bg-slate-900 px-4 py-3 text-center text-sm text-white shadow-lg`} onClick={() => setVoiceMessage('')}>
           {voiceMessage}
         </div>
       )}
-      {!(mode === 'MANUAL' && search.length > 0) && (
+      {mode === 'OCR' && (
       <BillingCatVoice
         controls={holdToSpeak()}
         isListening={isListening && correctingItemIdx === null}
         hindiMode={hindiMode}
-        showFace={mode === 'OCR'}
         className={dockStyles.voiceAction}
       />
       )}
