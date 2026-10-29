@@ -19,7 +19,11 @@
 }
 
 .voiceMessage {
-  bottom: calc(7rem + var(--billing-dock-reserve));
+  bottom: calc(19rem + var(--billing-dock-reserve));
+}
+
+.page[data-has-cart='true'] .voiceMessage {
+  bottom: calc(22.5rem + var(--billing-dock-reserve));
 }
 
 .dock {
@@ -137,6 +141,16 @@
 @media (max-width: 1023px) {
   .page[data-has-cart='true']:not([data-dock-hidden='true']) {
     --billing-dock-cart-offset: 64px;
+  }
+}
+
+@media (max-height: 600px) {
+  .voiceAction {
+    bottom: var(--billing-dock-reserve);
+  }
+
+  .page[data-has-cart='true'] .voiceAction {
+    bottom: calc(3.5rem + var(--billing-dock-reserve));
   }
 }
 

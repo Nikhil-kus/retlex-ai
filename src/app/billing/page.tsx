@@ -19,6 +19,7 @@ import VoiceEngineControl, { useVoiceEngine } from '@/components/VoiceEngineCont
 import BillDetails from '@/components/BillDetails';
 import BillingBillSection from '@/components/BillingBillSection';
 import BillingDock from '@/components/BillingDock';
+import BillingCatVoice from '@/components/BillingCatVoice';
 import dockStyles from '@/components/BillingDock.module.css';
 import DebugPanel, { makeEmptyDebugData, type DebugData, type TraceEntry } from '@/components/DebugPanel';
 
@@ -1530,8 +1531,8 @@ export default function BillingPage() {
                     <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 flex items-center gap-3">
                       <span className="text-2xl">🎤</span>
                       <div>
-                        <p className="text-sm font-semibold text-indigo-700">Speak your order</p>
-                        <p className="text-xs text-indigo-500 mt-0.5">Tap "Start Speaking" below and say items</p>
+                        <p className="text-sm font-semibold text-indigo-700">{hindiMode ? 'अपना ऑर्डर बोलें' : 'Speak your order'}</p>
+                        <p className="text-xs text-indigo-500 mt-0.5">{hindiMode ? 'बिल्ली की नाक दबाकर रखें और सामान बोलें' : "Hold the cat’s nose below and say your items"}</p>
                       </div>
                     </div>
                   )}
@@ -2246,28 +2247,12 @@ export default function BillingPage() {
         </div>
       )}
       {!(mode === 'MANUAL' && search.length > 0) && (
-      <button
-        {...holdToSpeak()}
-        aria-label="Hold to speak order. Release to stop."
-        aria-pressed={isListening && correctingItemIdx === null}
-        className={`${dockStyles.voiceAction} fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5 px-6 py-3.5 rounded-full font-bold text-white text-sm tracking-wide shadow-lg active:scale-95 transition-transform duration-150 ${
-          isListening
-            ? 'bg-rose-500'
-            : 'bg-indigo-600 hover:bg-indigo-700'
-        }`}
-        style={{
-          minWidth: '164px',
-          touchAction: 'none',
-          userSelect: 'none',
-          WebkitTouchCallout: 'none',
-          justifyContent: 'center',
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="shrink-0">
-          <path d="M12 1a4 4 0 0 1 4 4v7a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v7a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 9a7 7 0 0 0 14 0h2a9 9 0 0 1-8 8.94V23h-2v-2.06A9 9 0 0 1 3 12h2z"/>
-        </svg>
-        {isListening && correctingItemIdx === null ? 'Release to Finish' : 'Hold to Speak Order'}
-      </button>
+      <BillingCatVoice
+        controls={holdToSpeak()}
+        isListening={isListening && correctingItemIdx === null}
+        hindiMode={hindiMode}
+        className={dockStyles.voiceAction}
+      />
       )}
 
       {/* Cart Bottom Sheet — shown after "Add items to Bill" on mobile */}

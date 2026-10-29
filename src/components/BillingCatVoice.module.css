@@ -1,0 +1,192 @@
+.mascot {
+  --cat-size: 232px;
+  position: fixed;
+  left: 50%;
+  z-index: 40;
+  width: var(--cat-size);
+  height: calc(var(--cat-size) + 54px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.portrait {
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--cat-size);
+}
+
+.face {
+  position: absolute;
+  inset: 0;
+  background-image: url('/images/billing-cat-expressions.webp');
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  transition: opacity 200ms ease-out;
+}
+
+.happy {
+  background-position: left center;
+  opacity: 0.1;
+}
+
+.grumpy {
+  background-position: right center;
+  opacity: 0;
+}
+
+.mascot[data-reaction='true'] .happy {
+  opacity: 0;
+}
+
+.mascot[data-reaction='true'] .grumpy {
+  opacity: 1;
+  transition: none;
+}
+
+.nose {
+  position: absolute;
+  top: calc(var(--cat-size) * 0.578);
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 52px;
+  padding: 0;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  color: #fff;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.noseSurface {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(50px, calc(var(--cat-size) * 0.25), 58px);
+  height: clamp(38px, calc(var(--cat-size) * 0.19), 44px);
+  border: 1px solid #78616e;
+  border-radius: 18px 18px 23px 23px;
+  background: linear-gradient(160deg, #655260 0%, #493744 75%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 16%),
+    0 0 0 3px rgb(255 255 255 / 80%),
+    0 4px 9px rgb(62 41 55 / 16%);
+  transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.mic {
+  position: relative;
+  top: -1px;
+}
+
+@media (hover: hover) {
+  .nose:hover .noseSurface {
+    background: linear-gradient(160deg, #735e6d 0%, #51404c 75%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 18%),
+      0 0 0 3px rgb(255 255 255 / 90%),
+      0 5px 12px rgb(62 41 55 / 20%);
+    transform: translateY(-1px);
+  }
+}
+
+.nose:active .noseSurface {
+  transform: scale(0.94);
+}
+
+.nose:focus-visible {
+  outline: 3px solid #6366f1;
+  outline-offset: 4px;
+}
+
+.mascot[data-listening='true'] .noseSurface {
+  border-color: #8d556d;
+  background: linear-gradient(160deg, #a05d7a 0%, #77405d 75%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 18%),
+    0 0 0 3px rgb(255 255 255 / 85%),
+    0 0 0 6px rgb(160 93 122 / 10%),
+    0 4px 10px rgb(119 64 93 / 16%);
+}
+
+.caption {
+  position: absolute;
+  top: calc(var(--cat-size) - 3px);
+  left: 50%;
+  display: flex;
+  min-width: 164px;
+  max-width: 210px;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 16px 10px;
+  border: 1px solid #e8e4eb;
+  border-radius: 16px;
+  background: #fff;
+  transform: translateX(-50%);
+  text-align: center;
+  box-shadow: 0 4px 16px rgb(62 41 55 / 5%);
+}
+
+.caption::before {
+  position: absolute;
+  top: -6px;
+  left: calc(50% - 6px);
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid #e8e4eb;
+  border-left: 1px solid #e8e4eb;
+  background: #fff;
+  transform: rotate(45deg);
+  content: '';
+}
+
+.captionTitle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #463b49;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 18px;
+}
+
+.statusDot {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #a05d7a;
+  animation: listening 1s ease-in-out infinite;
+}
+
+.captionHint {
+  color: #746b78;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 15px;
+}
+
+@keyframes listening {
+  50% { box-shadow: 0 0 0 3px rgb(160 93 122 / 12%); }
+}
+
+@media (max-height: 600px) {
+  .mascot { --cat-size: 180px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .face,
+  .noseSurface { transition: none; }
+
+  .statusDot { animation: none; }
+}
